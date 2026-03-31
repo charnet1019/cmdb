@@ -1,0 +1,28 @@
+# Backend
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Alembic
+*.pyc

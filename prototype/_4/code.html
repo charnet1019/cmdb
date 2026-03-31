@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+
+<html class="light" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CMDB - 创建用户组</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "inverse-on-surface": "#eff1f4",
+                        "tertiary-container": "#b95a00",
+                        "surface-bright": "#f7f9fc",
+                        "surface-variant": "#e0e3e6",
+                        "secondary-fixed-dim": "#a9c8f9",
+                        "outline": "#707785",
+                        "on-tertiary": "#ffffff",
+                        "on-primary-container": "#fefcff",
+                        "inverse-surface": "#2d3133",
+                        "inverse-primary": "#a5c8ff",
+                        "on-error": "#ffffff",
+                        "on-tertiary-fixed-variant": "#733600",
+                        "on-secondary-fixed": "#001c3a",
+                        "primary-fixed-dim": "#a5c8ff",
+                        "on-surface": "#191c1e",
+                        "surface-container-high": "#e6e8eb",
+                        "on-background": "#191c1e",
+                        "primary-fixed": "#d4e3ff",
+                        "tertiary-fixed": "#ffdbc7",
+                        "surface-container-low": "#f2f4f7",
+                        "on-tertiary-fixed": "#311300",
+                        "on-surface-variant": "#404753",
+                        "surface-container-highest": "#e0e3e6",
+                        "primary": "#005daa",
+                        "secondary": "#40608b",
+                        "outline-variant": "#c0c7d6",
+                        "error": "#ba1a1a",
+                        "secondary-fixed": "#d4e3ff",
+                        "on-secondary-fixed-variant": "#274871",
+                        "secondary-container": "#afceff",
+                        "primary-container": "#0075d5",
+                        "error-container": "#ffdad6",
+                        "on-secondary-container": "#385782",
+                        "surface": "#f7f9fc",
+                        "on-secondary": "#ffffff",
+                        "tertiary-fixed-dim": "#ffb688",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-fixed-variant": "#004785",
+                        "on-primary-fixed": "#001c3a",
+                        "on-primary": "#ffffff",
+                        "surface-dim": "#d8dadd",
+                        "on-tertiary-container": "#fffbff",
+                        "on-error-container": "#93000a",
+                        "background": "#f7f9fc",
+                        "tertiary": "#934600",
+                        "surface-tint": "#005fae",
+                        "surface-container": "#eceef1"
+                    },
+                    fontFamily: {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3 { font-family: 'Manrope', sans-serif; }
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-surface text-on-surface">
+<!-- TopNavBar -->
+<nav class="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl docked full-width top-0 sticky z-40 no-border bg-surface-container-low shadow-sm shadow-blue-900/5 flex justify-between items-center w-full px-6 py-3 border-b border-outline-variant/10">
+<div class="flex items-center gap-4">
+<span class="text-xl font-bold bg-gradient-to-br from-blue-700 to-blue-500 bg-clip-text text-transparent font-manrope tracking-tight">CMDB</span>
+<div class="ml-8 relative hidden md:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="pl-10 pr-4 py-1.5 bg-surface-container rounded-full border-none text-sm focus:ring-2 focus:ring-primary/20 w-64" placeholder="搜索资产或用户..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 rounded-full hover:bg-slate-100/50 transition-all active:scale-95 duration-200 text-slate-500">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="p-2 rounded-full hover:bg-slate-100/50 transition-all active:scale-95 duration-200 text-slate-500">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<div class="h-8 w-px bg-outline-variant/30 mx-2"></div>
+<div class="flex items-center gap-3 pl-2">
+<div class="text-right hidden sm:block">
+<p class="text-xs font-semibold text-on-surface">Admin User</p>
+<p class="text-[10px] text-on-surface-variant">系统管理员</p>
+</div>
+<img alt="User profile" class="w-9 h-9 rounded-full border border-outline-variant/20" data-alt="Avatar of a male professional system administrator" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA5eWiCjdGn_RiB7XwsJvNDtenBp77GMxoJ_V06wh6P31VmmaKmF9T68oadr7oVjd3G8ODdu6f5jbeSvEt-fGYV61sCyDsXax1rUCgQA68rDp12iNSzRIkQkUIsgqSAtwBtJ9MhMXgrYwpS3ledY7YN5o-anJmnI_DNihI4o5xg7pU6Et0JC547cTJHU-K5CW2EfYUscjKElwKBwkAn5F3OHg9c_Q5_twr4tXBJRKqkFn8JQLaQ6j8WDUEFltXDPiXuixm5Sb8sfng"/>
+</div>
+</div>
+</nav>
+<div class="flex">
+<!-- SideNavBar -->
+<aside class="bg-slate-50 dark:bg-slate-950 h-[calc(100vh-60px)] w-64 fixed left-0 top-15 bg-slate-100 dark:bg-slate-900 flat no-border flex flex-col z-30 sidebar-scroll overflow-y-auto border-r border-outline-variant/10">
+<div class="py-4 space-y-1">
+<!-- 仪表盘 -->
+<a class="flex items-center gap-3 px-4 py-2.5 text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 mx-3 rounded-lg hover:translate-x-1 transition-transform duration-200 cursor-pointer font-inter text-sm font-medium">
+<span class="material-symbols-outlined text-[20px]" data-icon="dashboard">dashboard</span>
+<span>仪表盘</span>
+</a>
+<!-- 资产管理 -->
+<div class="px-3 py-1">
+<div class="flex items-center gap-3 px-4 py-2.5 text-slate-600 dark:text-slate-400 font-inter text-sm font-semibold opacity-70">
+<span class="material-symbols-outlined text-[20px]" data-icon="inventory_2">inventory_2</span>
+<span>资产管理</span>
+</div>
+<div class="ml-9 border-l border-outline-variant/20 space-y-1">
+<a class="block px-4 py-2 text-sm text-slate-500 hover:text-primary transition-colors cursor-pointer">资产列表</a>
+</div>
+</div>
+<!-- 用户管理 -->
+<div class="px-3 py-1">
+<div class="flex items-center gap-3 px-4 py-2.5 text-blue-600 dark:text-blue-400 font-inter text-sm font-semibold">
+<span class="material-symbols-outlined text-[20px]" data-icon="group">group</span>
+<span>用户管理</span>
+</div>
+<div class="ml-9 border-l-2 border-primary/30 space-y-1">
+<a class="block px-4 py-2 text-sm text-slate-500 hover:text-primary transition-colors cursor-pointer">用户</a>
+<a class="block px-4 py-2 text-sm text-primary font-medium bg-primary/5 rounded-r-md">用户组</a>
+</div>
+</div>
+<!-- 权限管理 -->
+<div class="px-3 py-1">
+<div class="flex items-center gap-3 px-4 py-2.5 text-slate-600 dark:text-slate-400 font-inter text-sm font-semibold opacity-70">
+<span class="material-symbols-outlined text-[20px]" data-icon="security">security</span>
+<span>权限管理</span>
+</div>
+<div class="ml-9 border-l border-outline-variant/20 space-y-1">
+<a class="block px-4 py-2 text-sm text-slate-500 hover:text-primary transition-colors cursor-pointer">资产授权</a>
+</div>
+</div>
+<!-- 日志审计 -->
+<div class="px-3 py-1">
+<div class="flex items-center gap-3 px-4 py-2.5 text-slate-600 dark:text-slate-400 font-inter text-sm font-semibold opacity-70">
+<span class="material-symbols-outlined text-[20px]" data-icon="terminal">terminal</span>
+<span>日志审计</span>
+</div>
+<div class="ml-9 border-l border-outline-variant/20 space-y-1">
+<a class="block px-4 py-2 text-sm text-slate-500 hover:text-primary transition-colors cursor-pointer">登录日志</a>
+<a class="block px-4 py-2 text-sm text-slate-500 hover:text-primary transition-colors cursor-pointer">操作日志</a>
+<a class="block px-4 py-2 text-sm text-slate-500 hover:text-primary transition-colors cursor-pointer">改密日志</a>
+</div>
+</div>
+<!-- 系统设置 -->
+<a class="flex items-center gap-3 px-4 py-2.5 text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 mx-3 rounded-lg hover:translate-x-1 transition-transform duration-200 cursor-pointer font-inter text-sm font-medium">
+<span class="material-symbols-outlined text-[20px]" data-icon="settings">settings</span>
+<span>系统设置</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 flex-1 p-8 bg-surface min-h-screen">
+<header class="mb-8 flex justify-between items-end">
+<div>
+<h1 class="text-3xl font-extrabold tracking-tight text-on-surface headline-lg mb-2">用户组</h1>
+<p class="text-on-surface-variant body-sm">管理企业层级中的用户分组与权限映射</p>
+</div>
+<button class="bg-gradient-to-br from-primary to-primary-container text-white px-6 py-2.5 rounded-full font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">add</span>
+                    创建用户组
+                </button>
+</header>
+<!-- Data Table Content -->
+<div class="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden border border-outline-variant/10">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container-low">
+<tr>
+<th class="px-6 py-4 text-on-surface-variant font-semibold text-sm">用户组名称</th>
+<th class="px-6 py-4 text-on-surface-variant font-semibold text-sm">描述</th>
+<th class="px-6 py-4 text-on-surface-variant font-semibold text-sm text-center">成员数量</th>
+<th class="px-6 py-4 text-on-surface-variant font-semibold text-sm">创建时间</th>
+<th class="px-6 py-4 text-on-surface-variant font-semibold text-sm text-right">操作</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/10">
+<tr class="hover:bg-surface-container-low/30 transition-colors">
+<td class="px-6 py-5">
+<span class="font-medium text-primary">System Administrators</span>
+</td>
+<td class="px-6 py-5 text-on-surface-variant body-sm">拥有所有系统组件的完全控制权限</td>
+<td class="px-6 py-5 text-center">
+<div class="flex justify-center -space-x-2">
+<img class="w-6 h-6 rounded-full border-2 border-white" data-alt="Small avatar of a team member" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAazTYnMroANrrjGw4_BBqEKMWff00HLhdkMs3aNTEcGz-hb1EJ_7J1NEJXnIwrNfw__rqJmmD4s8Ru2-hnMZ_bS2wdio2U1DumpfT17pmYqZNWIN3hAyOmtYUJPIYUjHkp23rn56s3IxmWEQePM0qRSWf85ICNZ5hMc3G8T9aC51ZoLxb9bcwCHDyBcaiTqf_Nv-AovT3W4oZ4iwFS21zVIL3u6LqrYYtufDwlq35v-p8bLSeaDA5gohKn_sKBapPV7DEfUkD0fmc"/>
+<img class="w-6 h-6 rounded-full border-2 border-white" data-alt="Small avatar of a team member" src="https://lh3.googleusercontent.com/aida-public/AB6AXuClixuMV9kWk2-0jnmGotjl2qXDGn6-KSxF_QLcRkBl83_bf3qn8Fd9eDoRKxuSQe4Shk3RlCKD8pHQ_YdK9wi0zUf7hkz5AwCAGAz-lnYwucs_5uffDpDFSHKJHBwz4yUYdBH8APIUjgj5ehfkCE3-LtUXNUcY39wymZI_VW6JsQjzHoJpQqBrT_wWEciXpYhJkrztdL5BWuk01EExkKUZT-wZbhdIXY5h3nxF_rqnFQgqNKEsyWHUJPVqSFznWXfXahMfm-CF7BY"/>
+<div class="w-6 h-6 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center text-[8px] font-bold">+5</div>
+</div>
+</td>
+<td class="px-6 py-5 text-on-surface-variant body-sm">2023-10-12</td>
+<td class="px-6 py-5 text-right">
+<button class="text-primary hover:underline text-sm font-medium">编辑</button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low/30 transition-colors">
+<td class="px-6 py-5">
+<span class="font-medium text-primary">Network Operators</span>
+</td>
+<td class="px-6 py-5 text-on-surface-variant body-sm">负责维护拓扑结构和资产发现</td>
+<td class="px-6 py-5 text-center">
+<div class="flex justify-center -space-x-2">
+<img class="w-6 h-6 rounded-full border-2 border-white" data-alt="Small avatar of a team member" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAFvX3YQStlqbDEn1EJxX36mlWDZLGHzs1KrMKD75EZnyjrP8wEKYQwOGR37DP6PwFwC_5P6ejTZfL4g34FqV44-Pun2pu4Z-jM1LmJ0Oxm50sACcid54R_KXNa5vsGjbn2ImlJYInoGa4ISU5al5DhtMQXhTLP-AofskMs_D_g7XTsIkYH7mDB8AJC9ZZo4o1bXce7hmoY0HG4bMhDRdbkM7vxFm9CiMawnx_h4Die2atN7F-k9AR-bMAfijHJgz2poU6rOW_OIys"/>
+<img class="w-6 h-6 rounded-full border-2 border-white" data-alt="Small avatar of a team member" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC1fM1N0igUFzxd9uD2kRG8wo3CDEZAk2iV4uoHxRtg-m_ALaoVd3bjMwW87nja8UIAVj5LXmLAthYp76w1Nsc_2lUGRqURy7flkSlq5aiLbxxBltUhfewP64uLLb9RISopKAzHZY7f4NjZvt5cO5TexBwi-JWSBV8cfaoppunao01iDgVOzq9rc_tu2kZq_gAdEHrZY1gZB2Gh1_z9uAiofWTJxqO0eqYL5OzCmBuFgW-qt1u7mlPPwzjQsfqFc95VxFWykRHXp9s"/>
+</div>
+</td>
+<td class="px-6 py-5 text-on-surface-variant body-sm">2023-11-05</td>
+<td class="px-6 py-5 text-right">
+<button class="text-primary hover:underline text-sm font-medium">编辑</button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low/30 transition-colors">
+<td class="px-6 py-5">
+<span class="font-medium text-primary">Security Auditors</span>
+</td>
+<td class="px-6 py-5 text-on-surface-variant body-sm">仅限审计日志查看和导出报表权限</td>
+<td class="px-6 py-5 text-center">
+<div class="flex justify-center -space-x-2">
+<img class="w-6 h-6 rounded-full border-2 border-white" data-alt="Small avatar of a team member" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDiS3cQv38q5FtPh7KltHVsH4mY09cL04u-2j1lsHkC0U4Pu-L5iPpcVJ8ywspaexc4w89KmdcEZfbpF-OZDU7kCoy2TQublNbnIAfhZ0jRRb39L7-C2QuhxplxhxwCq33Kywjmuxgihm2UU1L4MtZppn3r6KDE6hoBT8wDl4eDn30xG2gTfpYhTdYK2P8IwRcHpqkqd0FxqP390VgOb8rBXyjaAqx5DdYBjO6kEpBZEJqZD_0VW2GMnNcKplcY5-_xbhT4EFGFsdU"/>
+</div>
+</td>
+<td class="px-6 py-5 text-on-surface-variant body-sm">2024-01-20</td>
+<td class="px-6 py-5 text-right">
+<button class="text-primary hover:underline text-sm font-medium">编辑</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</main>
+</div>
+<!-- Modal Overlay: Create User Group -->
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+<!-- Backdrop -->
+<div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
+<!-- Modal Card -->
+<div class="relative w-full max-w-2xl bg-surface-container-lowest rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
+<!-- Modal Header -->
+<div class="px-8 py-6 border-b border-outline-variant/10 flex justify-between items-center bg-white">
+<h2 class="text-xl font-bold text-on-surface headline-md">创建用户组</h2>
+<button class="text-outline hover:text-on-surface transition-colors">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+<!-- Modal Body -->
+<div class="px-8 py-8 space-y-6 max-h-[768px] overflow-y-auto">
+<!-- Group Name -->
+<div class="space-y-2">
+<label class="block text-sm font-semibold text-on-surface">
+                        用户组名称 <span class="text-error">*</span>
+</label>
+<input class="w-full px-4 py-2.5 bg-surface-container-low rounded-xl border border-outline-variant/20 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all placeholder:text-outline/50" placeholder="例如：高级架构师组" type="text"/>
+</div>
+<!-- Description -->
+<div class="space-y-2">
+<label class="block text-sm font-semibold text-on-surface">用户组描述</label>
+<textarea class="w-full px-4 py-2.5 bg-surface-container-low rounded-xl border border-outline-variant/20 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all placeholder:text-outline/50" placeholder="简要说明该用户组的职责和权限范围..." rows="3"></textarea>
+</div>
+<!-- Initial Members -->
+<div class="space-y-2">
+<label class="block text-sm font-semibold text-on-surface">初始成员</label>
+<div class="relative">
+<div class="flex flex-wrap gap-2 p-2 min-h-[46px] bg-surface-container-low rounded-xl border border-outline-variant/20 focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all">
+<div class="flex items-center gap-1.5 bg-white px-2 py-1 rounded-lg border border-outline-variant/30 shadow-sm">
+<img class="w-4 h-4 rounded-full" data-alt="User chip avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC2sYOJR14iP_5S53X3crzK94h6cRb-ONqAiEZ89LZy0tLyMRn5599t_A-CKnR6Ci2JyhiEGOv5QK0XMYu5D_wwyo9PbRZekEg-D4a44lyyil-sq1IfaEPocffFyD1IuYPrgC9bb2H8qtmIBzCkwchBMCMYkDdOm5_mk-vzQM1_WU5lmp3tGOsMKOhhU3pJsjpxBCtHm8EmRd4D42DTHYpWsjBWoFpcm0dgxiXwqEshbULVfK2lbjCv2OcFLsnvl8ngv6ohI9CtRos"/>
+<span class="text-xs font-medium">Li Hua</span>
+<button class="text-outline hover:text-error transition-colors"><span class="material-symbols-outlined text-[14px]">close</span></button>
+</div>
+<div class="flex items-center gap-1.5 bg-white px-2 py-1 rounded-lg border border-outline-variant/30 shadow-sm">
+<img class="w-4 h-4 rounded-full" data-alt="User chip avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBcT4rz3cKX-9XHnPuzeyWmFLVqaS9_E-9h6E__O34wQzhtanXP3f0dUxLeN4KZD7_lbnp54x0APWe8M8VPuDHNKdxw_ywye90AwQ9eSqE6GjbbBnc0atER4S3ZE_1bOYyJzZ0Ily8k5vhQiq0aoajyRuj5CUqhASy_NgROwISCyOq2WjFi4MqbydyZGC5t98JLnOPZwILgORWpXlf9QtxSvGlJMyw9q7KweiGERlMKt-XPCTg3_bcm6jUSuz5Ov60vgJ2Uki85218"/>
+<span class="text-xs font-medium">Chen Wei</span>
+<button class="text-outline hover:text-error transition-colors"><span class="material-symbols-outlined text-[14px]">close</span></button>
+</div>
+<input class="flex-1 bg-transparent border-none focus:ring-0 text-sm py-1" placeholder="输入名称搜索成员..." type="text"/>
+</div>
+</div>
+</div>
+</div>
+<!-- Modal Footer -->
+<div class="px-8 py-6 border-t border-outline-variant/10 flex justify-end gap-3 bg-surface-container-low/50">
+<button class="px-6 py-2 rounded-xl text-on-surface-variant font-semibold hover:bg-surface-container-high transition-colors text-sm">取消</button>
+<button class="px-8 py-2 rounded-xl bg-gradient-to-br from-primary to-primary-container text-white font-semibold shadow-md hover:shadow-lg transition-all text-sm active:scale-[0.98]">保存</button>
+</div>
+</div>
+</div>
+</body></html>

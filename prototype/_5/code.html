@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+
+<html class="light" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>操作日志 | CMDB</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#1890ff",
+                        "primary-container": "#e6f7ff",
+                        surface: "#f5f7fa",
+                        "on-surface": "#1f1f1f",
+                        "on-surface-variant": "#8c8c8c",
+                        outline: "#d9d9d9",
+                        "outline-variant": "#f0f0f0",
+                        success: "#52c41a",
+                        error: "#ff4d4f",
+                        warning: "#faad14"
+                    },
+                    fontFamily: {
+                        headline: ["Manrope", "sans-serif"],
+                        body: ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {
+                        DEFAULT: "4px",
+                        lg: "8px",
+                        xl: "12px"
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+            vertical-align: middle;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3 { font-family: 'Manrope', sans-serif; }
+        .sidebar-item-active {
+            background-color: #e6f7ff;
+            color: #1890ff;
+            border-right: 3px solid #1890ff;
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface antialiased">
+<!-- Top Nav Bar -->
+<nav class="bg-white border-b border-outline-variant h-14 fixed w-full top-0 z-50 flex items-center justify-between px-6">
+<div class="flex items-center gap-8">
+<div class="text-xl font-extrabold tracking-tight text-primary">CMDB</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative hidden md:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg">search</span>
+<input class="bg-surface border-none rounded-lg py-1.5 pl-10 pr-4 text-sm w-64 focus:ring-1 focus:ring-primary" placeholder="全局搜索..." type="text"/>
+</div>
+<div class="flex items-center gap-3">
+<button class="p-2 text-on-surface-variant hover:bg-surface rounded-full transition-colors relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-2 right-2 w-1.5 h-1.5 bg-error rounded-full border border-white"></span>
+</button>
+<div class="h-8 w-8 rounded-full bg-primary-container flex items-center justify-center text-primary font-bold text-xs">AD</div>
+</div>
+</div>
+</nav>
+<div class="flex pt-14">
+<!-- Sidebar Navigation -->
+<aside class="w-64 bg-white border-r border-outline-variant h-[calc(100vh-3.5rem)] fixed left-0 overflow-y-auto">
+<div class="py-4">
+<nav class="space-y-1">
+<a class="flex items-center gap-3 px-6 py-2.5 text-sm font-medium text-on-surface-variant hover:bg-surface transition-colors" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+                        仪表盘
+                    </a>
+<div class="pt-2">
+<div class="px-6 py-2 text-[11px] font-bold text-on-surface-variant/60 uppercase tracking-wider">资产管理</div>
+<a class="flex items-center gap-3 px-6 py-2.5 text-sm font-medium text-on-surface-variant hover:bg-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-transparent select-none">circle</span>
+                            资产列表
+                        </a>
+</div>
+<div class="pt-2">
+<div class="px-6 py-2 text-[11px] font-bold text-on-surface-variant/60 uppercase tracking-wider">用户管理</div>
+<a class="flex items-center gap-3 px-6 py-2.5 text-sm font-medium text-on-surface-variant hover:bg-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-transparent select-none">circle</span>
+                            用户
+                        </a>
+<a class="flex items-center gap-3 px-6 py-2.5 text-sm font-medium text-on-surface-variant hover:bg-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-transparent select-none">circle</span>
+                            用户组
+                        </a>
+</div>
+<div class="pt-2">
+<div class="px-6 py-2 text-[11px] font-bold text-on-surface-variant/60 uppercase tracking-wider">权限管理</div>
+<a class="flex items-center gap-3 px-6 py-2.5 text-sm font-medium text-on-surface-variant hover:bg-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-transparent select-none">circle</span>
+                            资产授权
+                        </a>
+</div>
+<div class="pt-2">
+<div class="px-6 py-2 text-[11px] font-bold text-on-surface-variant/60 uppercase tracking-wider text-primary">日志审计</div>
+<a class="flex items-center gap-3 px-6 py-2.5 text-sm font-medium text-on-surface-variant hover:bg-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-transparent select-none">circle</span>
+                            登录日志
+                        </a>
+<a class="sidebar-item-active flex items-center gap-3 px-6 py-2.5 text-sm font-bold transition-colors" href="#">
+<span class="material-symbols-outlined text-transparent select-none">circle</span>
+                            操作日志
+                        </a>
+<a class="flex items-center gap-3 px-6 py-2.5 text-sm font-medium text-on-surface-variant hover:bg-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-transparent select-none">circle</span>
+                            改密日志
+                        </a>
+</div>
+<div class="pt-2 border-t border-outline-variant mt-2">
+<a class="flex items-center gap-3 px-6 py-2.5 text-sm font-medium text-on-surface-variant hover:bg-surface transition-colors" href="#">
+<span class="material-symbols-outlined">settings</span>
+                            系统设置
+                        </a>
+</div>
+</nav>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-64 flex-1 p-8">
+<header class="mb-8">
+<h1 class="text-2xl font-bold text-on-surface mb-1">操作日志 (Operation Logs)</h1>
+<p class="text-sm text-on-surface-variant">审计系统内所有用户的操作行为</p>
+</header>
+<!-- Statistics Cards -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+<div class="bg-white p-6 rounded-lg border border-outline-variant shadow-sm">
+<p class="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Today's Total Operations</p>
+<div class="flex items-end gap-2">
+<span class="text-3xl font-bold font-headline">1,482</span>
+<span class="text-xs text-success font-bold mb-1">+12% ↑</span>
+</div>
+</div>
+<div class="bg-white p-6 rounded-lg border border-outline-variant shadow-sm">
+<p class="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Success Rate</p>
+<div class="flex items-end gap-2">
+<span class="text-3xl font-bold font-headline">99.2%</span>
+<span class="text-xs text-on-surface-variant font-medium mb-1">Stability High</span>
+</div>
+</div>
+<div class="bg-white p-6 rounded-lg border border-outline-variant shadow-sm">
+<p class="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">High-Risk Activities</p>
+<div class="flex items-end gap-2">
+<span class="text-3xl font-bold font-headline text-error">07</span>
+<span class="text-xs text-error font-bold mb-1">Action Required</span>
+</div>
+</div>
+</div>
+<!-- Filter Bar -->
+<div class="bg-white p-4 rounded-lg border border-outline-variant shadow-sm mb-6">
+<div class="flex flex-wrap gap-4 items-center">
+<div class="flex-1 min-w-[200px] relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">person</span>
+<input class="w-full pl-10 pr-4 py-2 bg-surface border-none rounded text-sm focus:ring-1 focus:ring-primary" placeholder="搜索操作者..." type="text"/>
+</div>
+<div class="relative min-w-[200px]">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">calendar_today</span>
+<input class="w-full pl-10 pr-4 py-2 bg-surface border-none rounded text-sm focus:ring-1 focus:ring-primary" type="text" value="2023-10-20 - 2023-10-27"/>
+</div>
+<select class="bg-surface border-none rounded py-2 px-4 text-sm focus:ring-1 focus:ring-primary min-w-[150px]">
+<option>所有类型 (Type)</option>
+<option>CREATE</option>
+<option>EDIT</option>
+<option>DELETE</option>
+<option>AUTHORIZE</option>
+</select>
+<button class="bg-primary text-white px-6 py-2 rounded text-sm font-semibold hover:bg-blue-600 transition-colors flex items-center gap-2 shadow-sm">
+<span class="material-symbols-outlined text-lg">filter_list</span>
+                        筛选 (Filter)
+                    </button>
+<button class="text-on-surface-variant hover:text-on-surface p-2 transition-colors">
+<span class="material-symbols-outlined">refresh</span>
+</button>
+</div>
+</div>
+<!-- Data Table -->
+<div class="bg-white rounded-lg border border-outline-variant shadow-sm overflow-hidden">
+<table class="w-full text-left">
+<thead>
+<tr class="bg-surface border-b border-outline-variant">
+<th class="px-6 py-3.5 text-xs font-bold text-on-surface-variant uppercase tracking-wider">时间 (Time)</th>
+<th class="px-6 py-3.5 text-xs font-bold text-on-surface-variant uppercase tracking-wider">操作者 (Operator)</th>
+<th class="px-6 py-3.5 text-xs font-bold text-on-surface-variant uppercase tracking-wider">操作类型 (Type)</th>
+<th class="px-6 py-3.5 text-xs font-bold text-on-surface-variant uppercase tracking-wider">目标资产 (Target Asset)</th>
+<th class="px-6 py-3.5 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">状态 (Status)</th>
+<th class="px-6 py-3.5 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-right">详情 (Details)</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant">
+<!-- Row 1 -->
+<tr class="hover:bg-surface/30 transition-colors">
+<td class="px-6 py-4 text-sm text-on-surface-variant">2023-10-27 14:23:01</td>
+<td class="px-6 py-4">
+<div class="flex items-center gap-2">
+<div class="w-6 h-6 rounded bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">ZL</div>
+<span class="text-sm font-medium">Zhang Lei</span>
+</div>
+</td>
+<td class="px-6 py-4">
+<span class="bg-green-100 text-green-700 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">CREATE</span>
+</td>
+<td class="px-6 py-4 text-sm font-mono text-on-surface">srv-prod-db-01</td>
+<td class="px-6 py-4 text-center">
+<span class="inline-flex items-center gap-1.5 text-xs font-medium text-success">
+<span class="w-1.5 h-1.5 rounded-full bg-success"></span> 成功
+                                </span>
+</td>
+<td class="px-6 py-4 text-right">
+<button class="text-primary hover:text-blue-700 text-xs font-bold">查看详情</button>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-surface/30 transition-colors">
+<td class="px-6 py-4 text-sm text-on-surface-variant">2023-10-27 14:15:44</td>
+<td class="px-6 py-4">
+<div class="flex items-center gap-2">
+<div class="w-6 h-6 rounded bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold">AW</div>
+<span class="text-sm font-medium">Admin_Web</span>
+</div>
+</td>
+<td class="px-6 py-4">
+<span class="bg-blue-100 text-blue-700 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">EDIT</span>
+</td>
+<td class="px-6 py-4 text-sm font-mono text-on-surface">vpc-main-sg</td>
+<td class="px-6 py-4 text-center">
+<span class="inline-flex items-center gap-1.5 text-xs font-medium text-success">
+<span class="w-1.5 h-1.5 rounded-full bg-success"></span> 成功
+                                </span>
+</td>
+<td class="px-6 py-4 text-right">
+<button class="text-primary hover:text-blue-700 text-xs font-bold">查看详情</button>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-surface/30 transition-colors bg-error/5">
+<td class="px-6 py-4 text-sm text-on-surface-variant">2023-10-27 13:50:12</td>
+<td class="px-6 py-4">
+<div class="flex items-center gap-2">
+<div class="w-6 h-6 rounded bg-red-100 text-red-600 flex items-center justify-center text-[10px] font-bold">SY</div>
+<span class="text-sm font-medium">System_Bot</span>
+</div>
+</td>
+<td class="px-6 py-4">
+<span class="bg-red-100 text-red-700 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">DELETE</span>
+</td>
+<td class="px-6 py-4 text-sm font-mono text-on-surface">cluster-v3-backup</td>
+<td class="px-6 py-4 text-center">
+<span class="inline-flex items-center gap-1.5 text-xs font-medium text-error">
+<span class="w-1.5 h-1.5 rounded-full bg-error"></span> 失败
+                                </span>
+</td>
+<td class="px-6 py-4 text-right">
+<button class="text-error hover:underline text-xs font-bold">错误日志</button>
+</td>
+</tr>
+<!-- Row 4 -->
+<tr class="hover:bg-surface/30 transition-colors">
+<td class="px-6 py-4 text-sm text-on-surface-variant">2023-10-27 13:42:00</td>
+<td class="px-6 py-4">
+<div class="flex items-center gap-2">
+<div class="w-6 h-6 rounded bg-warning/10 text-warning flex items-center justify-center text-[10px] font-bold">JD</div>
+<span class="text-sm font-medium">Jane Doe</span>
+</div>
+</td>
+<td class="px-6 py-4">
+<span class="bg-yellow-100 text-yellow-700 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">AUTHORIZE</span>
+</td>
+<td class="px-6 py-4 text-sm font-mono text-on-surface">user-readonly-policy</td>
+<td class="px-6 py-4 text-center">
+<span class="inline-flex items-center gap-1.5 text-xs font-medium text-success">
+<span class="w-1.5 h-1.5 rounded-full bg-success"></span> 成功
+                                </span>
+</td>
+<td class="px-6 py-4 text-right">
+<button class="text-primary hover:text-blue-700 text-xs font-bold">查看详情</button>
+</td>
+</tr>
+</tbody>
+</table>
+<!-- Pagination -->
+<div class="px-6 py-4 border-t border-outline-variant flex items-center justify-between bg-surface/10">
+<span class="text-xs text-on-surface-variant">显示 1 至 10 条，共 1,482 条</span>
+<div class="flex items-center gap-1">
+<button class="w-8 h-8 flex items-center justify-center border border-outline-variant rounded hover:bg-surface transition-colors disabled:opacity-40" disabled="">
+<span class="material-symbols-outlined text-sm">chevron_left</span>
+</button>
+<button class="w-8 h-8 flex items-center justify-center bg-primary text-white rounded text-xs font-bold shadow-sm">1</button>
+<button class="w-8 h-8 flex items-center justify-center border border-outline-variant rounded text-xs font-medium text-on-surface-variant hover:bg-surface transition-colors">2</button>
+<button class="w-8 h-8 flex items-center justify-center border border-outline-variant rounded text-xs font-medium text-on-surface-variant hover:bg-surface transition-colors">3</button>
+<span class="px-1 text-on-surface-variant text-xs">...</span>
+<button class="w-8 h-8 flex items-center justify-center border border-outline-variant rounded text-xs font-medium text-on-surface-variant hover:bg-surface transition-colors">149</button>
+<button class="w-8 h-8 flex items-center justify-center border border-outline-variant rounded hover:bg-surface transition-colors">
+<span class="material-symbols-outlined text-sm">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

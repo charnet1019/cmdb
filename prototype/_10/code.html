@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+
+<html class="light" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>系统设置 - CMDB</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "outline-variant": "#c0c7d6",
+              "on-secondary-fixed": "#001c3a",
+              "on-tertiary-container": "#fffbff",
+              "surface-container-lowest": "#ffffff",
+              "outline": "#707785",
+              "on-secondary": "#ffffff",
+              "secondary-fixed-dim": "#a9c8f9",
+              "tertiary-container": "#b95a00",
+              "surface-container-low": "#f2f4f7",
+              "primary-fixed-dim": "#a5c8ff",
+              "tertiary": "#934600",
+              "secondary": "#40608b",
+              "surface-dim": "#d8dadd",
+              "inverse-surface": "#2d3133",
+              "background": "#f7f9fc",
+              "on-surface-variant": "#404753",
+              "on-tertiary-fixed": "#311300",
+              "inverse-primary": "#a5c8ff",
+              "secondary-container": "#afceff",
+              "surface-container-highest": "#e0e3e6",
+              "on-surface": "#191c1e",
+              "on-error-container": "#93000a",
+              "surface-variant": "#e0e3e6",
+              "on-background": "#191c1e",
+              "secondary-fixed": "#d4e3ff",
+              "primary-container": "#0075d5",
+              "on-tertiary": "#ffffff",
+              "error": "#ba1a1a",
+              "primary": "#005daa",
+              "on-primary-container": "#fefcff",
+              "surface-container-high": "#e6e8eb",
+              "on-secondary-fixed-variant": "#274871",
+              "surface-tint": "#005fae",
+              "on-error": "#ffffff",
+              "tertiary-fixed": "#ffdbc7",
+              "on-secondary-container": "#385782",
+              "tertiary-fixed-dim": "#ffb688",
+              "primary-fixed": "#d4e3ff",
+              "inverse-on-surface": "#eff1f4",
+              "on-primary-fixed-variant": "#004785",
+              "on-primary-fixed": "#001c3a",
+              "surface-container": "#eceef1",
+              "surface": "#f7f9fc",
+              "on-tertiary-fixed-variant": "#733600",
+              "error-container": "#ffdad6",
+              "on-primary": "#ffffff",
+              "surface-bright": "#f7f9fc"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #f7f9fc;
+      }
+      h1, h2, h3 {
+        font-family: 'Manrope', sans-serif;
+      }
+    </style>
+</head>
+<body class="bg-surface text-on-surface antialiased overflow-x-hidden">
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-16 h-[calc(100vh-4rem)] w-64 bg-slate-50 dark:bg-slate-950 flex flex-col p-4 gap-2 z-30 overflow-y-auto border-r border-outline-variant/10">
+<div class="mb-4 px-2 py-3 flex items-center gap-3">
+<div class="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="dns">dns</span>
+</div>
+<div>
+<div class="text-sm font-bold text-on-surface font-headline leading-tight">CMDB Core</div>
+<div class="text-[10px] text-on-surface-variant font-medium uppercase tracking-wider">Enterprise Instance</div>
+</div>
+</div>
+<nav class="flex-1 flex flex-col gap-1">
+<!-- 仪表盘 -->
+<a class="flex items-center gap-3 px-3 py-2.5 text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg transition-transform duration-200 hover:translate-x-1 font-body text-sm font-medium" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span> 仪表盘
+</a>
+<!-- 资产管理 -->
+<div class="flex flex-col gap-1">
+<div class="flex items-center gap-3 px-3 py-2 text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mt-2">资产管理</div>
+<a class="flex items-center gap-3 px-8 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg transition-transform duration-200 hover:translate-x-1 font-body text-sm font-medium" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="list_alt">list_alt</span> 资产列表
+</a>
+</div>
+<!-- 用户管理 -->
+<div class="flex flex-col gap-1">
+<div class="flex items-center gap-3 px-3 py-2 text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mt-2">用户管理</div>
+<a class="flex items-center gap-3 px-8 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg transition-transform duration-200 hover:translate-x-1 font-body text-sm font-medium" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="person">person</span> 用户
+</a>
+<a class="flex items-center gap-3 px-8 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg transition-transform duration-200 hover:translate-x-1 font-body text-sm font-medium" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="group">group</span> 用户组
+</a>
+</div>
+<!-- 权限管理 -->
+<div class="flex flex-col gap-1">
+<div class="flex items-center gap-3 px-3 py-2 text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mt-2">权限管理</div>
+<a class="flex items-center gap-3 px-8 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg transition-transform duration-200 hover:translate-x-1 font-body text-sm font-medium" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="verified_user">verified_user</span> 资产授权
+</a>
+</div>
+<!-- 日志审计 -->
+<div class="flex flex-col gap-1">
+<div class="flex items-center gap-3 px-3 py-2 text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mt-2">日志审计</div>
+<a class="flex items-center gap-3 px-8 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg transition-transform duration-200 hover:translate-x-1 font-body text-sm font-medium" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="login">login</span> 登录日志
+</a>
+<a class="flex items-center gap-3 px-8 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg transition-transform duration-200 hover:translate-x-1 font-body text-sm font-medium" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="history_edu">history_edu</span> 操作日志
+</a>
+<a class="flex items-center gap-3 px-8 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-lg transition-transform duration-200 hover:translate-x-1 font-body text-sm font-medium" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="lock_reset">lock_reset</span> 改密日志
+</a>
+</div>
+<!-- 系统设置 -->
+<a class="flex items-center gap-3 px-3 py-2.5 bg-primary/10 text-primary shadow-sm rounded-lg transition-transform duration-200 font-body text-sm font-bold mt-2" href="#">
+<span class="material-symbols-outlined" data-icon="settings" style="font-variation-settings: 'FILL' 1;">settings</span> 系统设置
+</a>
+</nav>
+</aside>
+<!-- TopNavBar Shell -->
+<header class="fixed top-0 right-0 left-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-sm h-16 border-b border-outline-variant/10">
+<div class="flex justify-between items-center px-8 h-full w-full">
+<div class="flex items-center gap-8">
+<span class="font-headline font-bold text-xl text-slate-900 dark:text-slate-100 tracking-tight">CMDB</span>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative">
+<span class="absolute inset-y-0 left-3 flex items-center text-slate-400">
+<span class="material-symbols-outlined text-lg">search</span>
+</span>
+<input class="pl-10 pr-4 py-2 bg-surface-container-low border-none rounded-full text-sm w-64 focus:ring-2 focus:ring-primary/20 transition-all" placeholder="Search settings..." type="text"/>
+</div>
+<button class="p-2 text-slate-500 hover:bg-slate-50 rounded-full transition-colors active:scale-95">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden bg-slate-200 ring-2 ring-surface-container-high ring-offset-2">
+<img alt="User profile" class="w-full h-full object-cover" data-alt="User avatar for profile access" src="https://lh3.googleusercontent.com/aida-public/AB6AXuALIfkCkiYMEaF2Jjy_GXGiC18E6nM3xk7jhDlq3tpILdVz4xSOvVlO5LWQhy-PbOpR35i0D8RNTcOsRLQjp9FX04UcqHe4XTEHI55_IiRRIaxhb8EYnDgw3P6nImi2s9MO0rQ1zN8zvSZ3dqnB42MOJP0i72i28mQwZSEg5x26_lqC4tp0Wj_qPwTqppzpUSPGQF2RdI2RTsgRqGHxgWj-hFinp0NdiJY3dFkShW1Dmh8sBMyFIOWW5uAaItJpR-xZS-dINpss4ZE"/>
+</div>
+</div>
+</div>
+</header>
+<!-- Main Canvas -->
+<main class="ml-64 pt-24 pb-12 px-8 min-h-screen">
+<div class="max-w-6xl mx-auto space-y-8">
+<!-- Bento Grid Section: General & Login -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+<!-- General Branding -->
+<div class="md:col-span-4 bg-surface-container-lowest p-8 rounded-xl shadow-sm border border-outline-variant/10 flex flex-col justify-between">
+<div>
+<div class="flex items-center gap-3 mb-6">
+<span class="material-symbols-outlined text-primary" data-icon="branding_watermark">branding_watermark</span>
+<h2 class="font-headline font-bold text-lg">基础配置</h2>
+</div>
+<div class="space-y-4">
+<div>
+<label class="block text-xs font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">站点标题</label>
+<input class="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20" type="text" value="Architect CMDB"/>
+</div>
+<div>
+<label class="block text-xs font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">组织名称</label>
+<input class="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20" type="text" value="Enterprise Solutions Corp"/>
+</div>
+</div>
+</div>
+<div class="mt-8 pt-6 border-t border-outline-variant/10">
+<p class="text-xs text-on-surface-variant">这些标题将出现在浏览器标签和应用程序各处的页眉部分。</p>
+</div>
+</div>
+<!-- Login Page Configuration -->
+<div class="md:col-span-8 bg-surface-container-lowest p-8 rounded-xl shadow-sm border border-outline-variant/10">
+<div class="flex items-center gap-3 mb-8">
+<span class="material-symbols-outlined text-primary" data-icon="login">login</span>
+<h2 class="font-headline font-bold text-lg">登录首页</h2>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<div class="space-y-6">
+<div>
+<label class="block text-xs font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">登录欢迎标题</label>
+<input class="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20" type="text" value="Welcome to the Architecture"/>
+</div>
+<div>
+<label class="block text-xs font-semibold text-on-surface-variant mb-2 uppercase tracking-wider">自定义背景图片</label>
+<div class="relative border-2 border-dashed border-outline-variant/30 rounded-xl p-4 bg-surface-container-low/50 hover:bg-surface-container-low transition-colors group cursor-pointer">
+<input class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" type="file"/>
+<div class="flex flex-col items-center justify-center py-4 text-center">
+<span class="material-symbols-outlined text-3xl text-primary/40 group-hover:text-primary transition-colors mb-2" data-icon="cloud_upload">cloud_upload</span>
+<p class="text-xs font-medium text-on-surface-variant">点击或拖拽上传背景图片</p>
+<p class="text-[10px] text-on-surface-variant/60 mt-1">支持 JPG, PNG (最大 5MB)</p>
+</div>
+</div>
+</div>
+<div class="pt-2">
+<label class="flex items-center gap-3 cursor-pointer group">
+<div class="relative inline-block w-10 h-6">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-10 h-6 bg-slate-200 rounded-full peer peer-checked:bg-primary transition-all duration-300"></div>
+<div class="absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform duration-300 peer-checked:translate-x-4"></div>
+</div>
+<span class="text-sm font-medium group-hover:text-primary transition-colors">在登录页显示组织 Logo</span>
+</label>
+</div>
+</div>
+<div class="bg-surface-container-low rounded-xl p-6 space-y-4">
+<h3 class="text-sm font-bold flex items-center gap-2">
+<span class="material-symbols-outlined text-xs text-tertiary" data-icon="security">security</span>
+                                访问限制
+                            </h3>
+<div class="grid grid-cols-2 gap-4">
+<div>
+<label class="block text-[10px] font-bold text-on-surface-variant mb-1 uppercase">最大登录失败次数</label>
+<select class="w-full bg-surface-container-lowest border-none rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20">
+<option>3 次尝试</option>
+<option selected="">5 次尝试</option>
+<option>10 次尝试</option>
+</select>
+</div>
+<div>
+<label class="block text-[10px] font-bold text-on-surface-variant mb-1 uppercase">锁定时间（分钟）</label>
+<select class="w-full bg-surface-container-lowest border-none rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20">
+<option>15 分钟</option>
+<option selected="">30 分钟</option>
+<option>1 小时</option>
+<option>24 小时</option>
+</select>
+</div>
+</div>
+<p class="text-[11px] leading-relaxed text-on-surface-variant italic">锁定账户必须由系统管理员手动重新激活，或通过安全电子邮件恢复。</p>
+<div class="pt-2 border-t border-outline-variant/10 space-y-3">
+<div>
+<label class="block text-xs font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">备案号</label>
+<input class="w-full bg-surface-container-lowest border-none rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20" placeholder="京ICP备12345678号" type="text"/>
+</div>
+<div>
+<label class="block text-xs font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">备案链接</label>
+<input class="w-full bg-surface-container-lowest border-none rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20" placeholder="https://beian.miit.gov.cn" type="text"/>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Password Security Section -->
+<div class="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/10 overflow-hidden">
+<div class="px-8 py-6 border-b border-outline-variant/10 bg-surface-container-low/50 flex justify-between items-center">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary" data-icon="password">password</span>
+<div>
+<h2 class="font-headline font-bold text-lg">密码复杂度规则</h2>
+<p class="text-xs text-on-surface-variant">为所有用户账户定义全局安全标准。</p>
+</div>
+</div>
+<div class="flex items-center gap-2 px-3 py-1.5 bg-tertiary/10 rounded-full">
+<span class="w-2 h-2 bg-tertiary rounded-full"></span>
+<span class="text-[11px] font-bold text-tertiary uppercase tracking-wider">高安全性强制执行</span>
+</div>
+</div>
+<div class="p-8">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+<!-- Requirement Card -->
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<span class="text-sm font-semibold">大写字母</span>
+<input checked="" class="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary" type="checkbox"/>
+</div>
+<p class="text-xs text-on-surface-variant">至少包含一个大写字母 (A-Z)</p>
+</div>
+<!-- Requirement Card -->
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<span class="text-sm font-semibold">小写字母</span>
+<input checked="" class="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary" type="checkbox"/>
+</div>
+<p class="text-xs text-on-surface-variant">至少包含一个小写字母 (a-z)</p>
+</div>
+<!-- Requirement Card -->
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<span class="text-sm font-semibold">数字</span>
+<input checked="" class="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary" type="checkbox"/>
+</div>
+<p class="text-xs text-on-surface-variant">至少包含一个数字 (0-9)</p>
+</div>
+<!-- Requirement Card -->
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<span class="text-sm font-semibold">特殊字符</span>
+<input checked="" class="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary" type="checkbox"/>
+</div>
+<p class="text-xs text-on-surface-variant">包含特殊符号 (! @ # $ % ^ &amp; *)</p>
+</div>
+</div>
+<div class="mt-12 pt-8 border-t border-outline-variant/10 grid grid-cols-1 md:grid-cols-3 gap-12">
+<div>
+<label class="block text-xs font-bold text-on-surface-variant mb-3 uppercase">最小长度</label>
+<input class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary" max="32" min="8" type="range" value="12"/>
+<div class="flex justify-between mt-2 text-[10px] font-bold text-slate-500">
+<span>8 个字符</span>
+<span class="text-primary">12 个字符</span>
+<span>32 个字符</span>
+</div>
+</div>
+<div class="md:col-span-2 flex items-start gap-4 p-4 bg-primary/5 rounded-xl">
+<span class="material-symbols-outlined text-primary mt-0.5" data-icon="info">info</span>
+<p class="text-xs text-on-primary-fixed-variant leading-relaxed">
+                                更新这些规则不会强制立即更改密码。用户在下次密码过期或手动更新时将被要求符合新标准。
+                            </p>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer Action Bar -->
+<div class="flex items-center justify-end gap-4 pt-4">
+<button class="px-6 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container-high rounded-xl transition-all">舍弃更改</button>
+<button class="px-8 py-2.5 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold text-sm rounded-xl shadow-lg shadow-primary/20 hover:shadow-xl hover:-translate-y-0.5 transition-all">保存系统配置</button>
+</div>
+</div>
+</main>
+<!-- Floating Toast Notification (Mockup) -->
+<div class="fixed bottom-8 right-8 flex items-center gap-4 bg-inverse-surface text-inverse-on-surface px-6 py-4 rounded-xl shadow-2xl z-50 animate-pulse">
+<span class="material-symbols-outlined text-primary-fixed" data-icon="cloud_done">cloud_done</span>
+<span class="text-sm font-medium">自动保存已启用</span>
+</div>
+</body></html>

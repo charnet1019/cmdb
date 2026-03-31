@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+
+<html class="light" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>用户管理 - CMDB Admin</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "on-tertiary-fixed": "#311300",
+                        "on-tertiary-container": "#fffbff",
+                        "primary": "#005daa",
+                        "error-container": "#ffdad6",
+                        "on-secondary-fixed-variant": "#274871",
+                        "primary-fixed-dim": "#a5c8ff",
+                        "inverse-on-surface": "#eff1f4",
+                        "surface-container-high": "#e6e8eb",
+                        "tertiary-fixed-dim": "#ffb688",
+                        "surface-bright": "#f7f9fc",
+                        "primary-fixed": "#d4e3ff",
+                        "on-error": "#ffffff",
+                        "on-primary-fixed-variant": "#004785",
+                        "secondary-fixed-dim": "#a9c8f9",
+                        "secondary-fixed": "#d4e3ff",
+                        "on-tertiary-fixed-variant": "#733600",
+                        "on-background": "#191c1e",
+                        "tertiary-fixed": "#ffdbc7",
+                        "surface-container-highest": "#e0e3e6",
+                        "on-surface-variant": "#404753",
+                        "surface-container-lowest": "#ffffff",
+                        "on-secondary-container": "#385782",
+                        "primary-container": "#0075d5",
+                        "tertiary": "#934600",
+                        "surface-tint": "#005fae",
+                        "secondary": "#40608b",
+                        "on-secondary": "#ffffff",
+                        "inverse-primary": "#a5c8ff",
+                        "surface-dim": "#d8dadd",
+                        "surface-container": "#eceef1",
+                        "on-error-container": "#93000a",
+                        "tertiary-container": "#b95a00",
+                        "surface": "#f7f9fc",
+                        "error": "#ba1a1a",
+                        "background": "#f7f9fc",
+                        "outline-variant": "#c0c7d6",
+                        "outline": "#707785",
+                        "on-secondary-fixed": "#001c3a",
+                        "on-surface": "#191c1e",
+                        "on-tertiary": "#ffffff",
+                        "on-primary-fixed": "#001c3a",
+                        "inverse-surface": "#2d3133",
+                        "surface-variant": "#e0e3e6",
+                        "on-primary-container": "#fefcff",
+                        "secondary-container": "#afceff",
+                        "on-primary": "#ffffff",
+                        "surface-container-low": "#f2f4f7"
+                    },
+                    fontFamily: {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3 { font-family: 'Manrope', sans-serif; }
+    </style>
+</head>
+<body class="bg-surface text-on-surface flex min-h-screen overflow-hidden">
+<!-- SideNavBar Component -->
+<aside class="hidden md:flex flex-col h-screen w-64 bg-slate-50 border-r border-slate-200/50 sticky top-0 left-0 z-40 overflow-y-auto">
+<div class="p-6">
+<div class="flex items-center space-x-3 mb-8">
+<div class="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/20">
+<span class="material-symbols-outlined" data-icon="architecture">architecture</span>
+</div>
+<div>
+<h2 class="text-xl font-bold text-slate-900 tracking-tight">CMDB</h2>
+</div>
+</div>
+<nav class="flex flex-col space-y-1">
+<!-- 仪表盘 -->
+<a class="flex items-center space-x-3 px-4 py-2.5 text-slate-600 hover:bg-slate-200/50 rounded-lg transition-all duration-200" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="dashboard">dashboard</span>
+<span class="text-sm font-medium">仪表盘</span>
+</a>
+<!-- 资产管理 -->
+<div class="space-y-1 pt-2">
+<div class="flex items-center space-x-3 px-4 py-2 text-slate-400">
+<span class="material-symbols-outlined text-[20px]" data-icon="inventory_2">inventory_2</span>
+<span class="text-xs font-bold uppercase tracking-wider">资产管理</span>
+</div>
+<a class="flex items-center space-x-3 px-10 py-2 text-slate-600 hover:bg-slate-200/50 rounded-lg transition-all duration-200" href="#">
+<span class="text-sm font-medium">资产列表</span>
+</a>
+</div>
+<!-- 用户管理 -->
+<div class="space-y-1 pt-2">
+<div class="flex items-center space-x-3 px-4 py-2 text-blue-700">
+<span class="material-symbols-outlined text-[20px]" data-icon="group">group</span>
+<span class="text-xs font-bold uppercase tracking-wider">用户管理</span>
+</div>
+<a class="flex items-center space-x-3 px-10 py-2 bg-white text-blue-700 font-bold shadow-sm rounded-lg border border-slate-200/50 transition-all duration-200" href="#">
+<span class="text-sm">用户</span>
+</a>
+<a class="flex items-center space-x-3 px-10 py-2 text-slate-600 hover:bg-slate-200/50 rounded-lg transition-all duration-200" href="#">
+<span class="text-sm font-medium">用户组</span>
+</a>
+</div>
+<!-- 权限管理 -->
+<div class="space-y-1 pt-2">
+<div class="flex items-center space-x-3 px-4 py-2 text-slate-400">
+<span class="material-symbols-outlined text-[20px]" data-icon="admin_panel_settings">admin_panel_settings</span>
+<span class="text-xs font-bold uppercase tracking-wider">权限管理</span>
+</div>
+<a class="flex items-center space-x-3 px-10 py-2 text-slate-600 hover:bg-slate-200/50 rounded-lg transition-all duration-200" href="#">
+<span class="text-sm font-medium">资产授权</span>
+</a>
+</div>
+<!-- 日志审计 -->
+<div class="space-y-1 pt-2">
+<div class="flex items-center space-x-3 px-4 py-2 text-slate-400">
+<span class="material-symbols-outlined text-[20px]" data-icon="history_edu">history_edu</span>
+<span class="text-xs font-bold uppercase tracking-wider">日志审计</span>
+</div>
+<a class="flex items-center space-x-3 px-10 py-2 text-slate-600 hover:bg-slate-200/50 rounded-lg transition-all duration-200" href="#">
+<span class="text-sm font-medium">登录日志</span>
+</a>
+<a class="flex items-center space-x-3 px-10 py-2 text-slate-600 hover:bg-slate-200/50 rounded-lg transition-all duration-200" href="#">
+<span class="text-sm font-medium">操作日志</span>
+</a>
+<a class="flex items-center space-x-3 px-10 py-2 text-slate-600 hover:bg-slate-200/50 rounded-lg transition-all duration-200" href="#">
+<span class="text-sm font-medium">改密日志</span>
+</a>
+</div>
+<!-- 系统设置 -->
+<div class="pt-2">
+<a class="flex items-center space-x-3 px-4 py-2.5 text-slate-600 hover:bg-slate-200/50 rounded-lg transition-all duration-200" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="settings">settings</span>
+<span class="text-sm font-medium">系统设置</span>
+</a>
+</div>
+</nav>
+</div>
+</aside>
+<div class="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+<!-- TopNavBar Component -->
+<header class="h-16 flex items-center justify-between px-8 bg-white/80 backdrop-blur-md border-b border-slate-200/50 shrink-0 z-50">
+<div class="flex items-center flex-1">
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[20px]" data-icon="search">search</span>
+<input class="w-full bg-slate-100 border-none rounded-full py-2 pl-10 pr-4 text-sm focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-slate-400" placeholder="搜索用户名、邮箱..." type="text"/>
+</div>
+</div>
+<div class="flex items-center space-x-4">
+<button class="p-2 text-slate-500 hover:bg-slate-50 rounded-full transition-colors relative">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full border-2 border-white"></span>
+</button>
+<button class="p-2 text-slate-500 hover:bg-slate-50 rounded-full transition-colors">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<div class="h-6 w-[1px] bg-slate-200 mx-2"></div>
+<div class="flex items-center space-x-3">
+<div class="text-right">
+<p class="text-xs font-bold text-slate-900">Admin User</p>
+<p class="text-[10px] text-slate-500 font-medium">System Administrator</p>
+</div>
+<img alt="User Profile Avatar" class="w-9 h-9 rounded-full object-cover border-2 border-slate-100" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDp4-3cLXGDLBS45GMG4JQytroD3nuF2_keeL-YrO1a1TqtyrsbpE9-H3r86wYBaiUhHaLhlBVoZzTjDYE-IL6TuxbpYOewKd7YafF6pPBTVNCK-mVYJzOcvEwcoinotsznWYVPrggYBTRjDFQAQ2nmRK7bN-YIndfDm_3fPQfl48eglkURGBb0We10eOu9UljmeaK5vwDSwvo9-O3VYlYh3ZUIb-j8ZjLmbAEtDEkQVU7OGeLhinPsBNY5x77tImararzjM3_r4Oo"/>
+</div>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class="flex-1 p-8 space-y-8 overflow-y-auto">
+<!-- Page Header Section -->
+<div class="flex items-end justify-between">
+<div>
+<h1 class="text-3xl font-extrabold tracking-tight text-slate-900">用户列表</h1>
+<p class="text-slate-500 mt-1 text-sm font-medium">管理企业架构中的所有系统访问用户及其权限角色</p>
+</div>
+<div class="flex items-center space-x-3">
+<button class="inline-flex items-center space-x-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold rounded-xl transition-all border border-slate-200/50">
+<span class="material-symbols-outlined text-[18px]" data-icon="layers">layers</span>
+<span>批量操作</span>
+<span class="material-symbols-outlined text-[16px]" data-icon="expand_more">expand_more</span>
+</button>
+<button class="inline-flex items-center space-x-2 px-5 py-2.5 bg-gradient-to-br from-primary to-primary-container text-white text-sm font-bold rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all">
+<span class="material-symbols-outlined text-[18px]" data-icon="add">add</span>
+<span>添加用户</span>
+</button>
+</div>
+</div>
+<!-- Data Table Section -->
+<div class="bg-surface-container-lowest rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+<div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
+<h3 class="text-sm font-bold text-slate-900">所有用户信息</h3>
+<div class="flex items-center space-x-2">
+<button class="p-2 text-slate-400 hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="filter_list">filter_list</span>
+</button>
+<button class="p-2 text-slate-400 hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="download">download</span>
+</button>
+</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-slate-50/50">
+<th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">用户名</th>
+<th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">姓名</th>
+<th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">邮箱</th>
+<th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">用户组</th>
+<th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">最后登录时间</th>
+<th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">状态</th>
+<th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">操作</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-100">
+<!-- User Row 1 -->
+<tr class="hover:bg-slate-50/50 transition-colors">
+<td class="px-6 py-4">
+<div class="flex items-center space-x-3">
+<div class="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700 text-xs font-bold">JD</div>
+<span class="text-sm font-semibold text-slate-900">johndoe</span>
+</div>
+</td>
+<td class="px-6 py-4 text-sm text-slate-600 font-medium">John Doe</td>
+<td class="px-6 py-4 text-sm text-slate-500">john.doe@enterprise.com</td>
+<td class="px-6 py-4">
+<span class="inline-flex px-2 py-1 rounded-md bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-100">Administrators</span>
+</td>
+<td class="px-6 py-4 text-sm text-slate-500">2023-10-24 14:32</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+<span class="w-1 h-1 rounded-full bg-emerald-500 mr-1.5"></span>
+                                        Active
+                                    </span>
+</td>
+<td class="px-6 py-4 text-right space-x-1">
+<button class="p-1.5 text-slate-400 hover:text-primary transition-colors rounded-lg hover:bg-white shadow-sm border border-transparent hover:border-slate-200">
+<span class="material-symbols-outlined text-[18px]" data-icon="edit">edit</span>
+</button>
+<button class="p-1.5 text-slate-400 hover:text-tertiary transition-colors rounded-lg hover:bg-white shadow-sm border border-transparent hover:border-slate-200">
+<span class="material-symbols-outlined text-[18px]" data-icon="lock_reset">lock_reset</span>
+</button>
+<button class="p-1.5 text-slate-400 hover:text-error transition-colors rounded-lg hover:bg-white shadow-sm border border-transparent hover:border-slate-200">
+<span class="material-symbols-outlined text-[18px]" data-icon="delete">delete</span>
+</button>
+</td>
+</tr>
+<!-- User Row 2 -->
+<tr class="hover:bg-slate-50/50 transition-colors">
+<td class="px-6 py-4">
+<div class="flex items-center space-x-3">
+<div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 text-xs font-bold">AL</div>
+<span class="text-sm font-semibold text-slate-900">alevelyn</span>
+</div>
+</td>
+<td class="px-6 py-4 text-sm text-slate-600 font-medium">Alice Evelyn</td>
+<td class="px-6 py-4 text-sm text-slate-500">alice.e@enterprise.com</td>
+<td class="px-6 py-4">
+<span class="inline-flex px-2 py-1 rounded-md bg-slate-50 text-slate-700 text-[10px] font-bold border border-slate-100">Engineering</span>
+</td>
+<td class="px-6 py-4 text-sm text-slate-500">2023-10-23 09:15</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+<span class="w-1 h-1 rounded-full bg-emerald-500 mr-1.5"></span>
+                                        Active
+                                    </span>
+</td>
+<td class="px-6 py-4 text-right space-x-1">
+<button class="p-1.5 text-slate-400 hover:text-primary transition-colors rounded-lg hover:bg-white">
+<span class="material-symbols-outlined text-[18px]" data-icon="edit">edit</span>
+</button>
+<button class="p-1.5 text-slate-400 hover:text-tertiary transition-colors rounded-lg hover:bg-white">
+<span class="material-symbols-outlined text-[18px]" data-icon="lock_reset">lock_reset</span>
+</button>
+<button class="p-1.5 text-slate-400 hover:text-error transition-colors rounded-lg hover:bg-white">
+<span class="material-symbols-outlined text-[18px]" data-icon="delete">delete</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination -->
+<div class="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
+<p class="text-xs font-medium text-slate-500">显示 1 到 2 共 1,284 条记录</p>
+<div class="flex items-center space-x-2">
+<button class="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-white transition-all disabled:opacity-50" disabled="">
+<span class="material-symbols-outlined text-[18px]" data-icon="chevron_left">chevron_left</span>
+</button>
+<button class="w-8 h-8 rounded-lg bg-primary text-white text-xs font-bold shadow-sm">1</button>
+<button class="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-600 text-xs font-bold hover:bg-white transition-all">2</button>
+<button class="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-600 text-xs font-bold hover:bg-white transition-all">3</button>
+<button class="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-white transition-all">
+<span class="material-symbols-outlined text-[18px]" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+</div>
+<!-- Add/Edit User Modal -->
+<div class="fixed inset-0 z-[100] flex items-center justify-center p-4" id="user-modal">
+<!-- Backdrop -->
+<div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"></div>
+<!-- Modal Content -->
+<div class="relative bg-white w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+<!-- Header -->
+<div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+<h2 class="text-xl font-extrabold text-slate-900 tracking-tight">添加用户</h2>
+<button class="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-colors">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+<!-- Form Body -->
+<form class="p-6 space-y-6 overflow-y-auto max-h-[calc(100vh-200px)]">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Username -->
+<div class="space-y-1.5">
+<label class="text-xs font-bold text-slate-500 uppercase tracking-wider">用户名</label>
+<input class="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" placeholder="例如: johndoe" type="text"/>
+</div>
+<!-- Full Name -->
+<div class="space-y-1.5">
+<label class="text-xs font-bold text-slate-500 uppercase tracking-wider">姓名</label>
+<input class="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" placeholder="例如: John Doe" type="text"/>
+</div>
+<!-- Email -->
+<div class="space-y-1.5">
+<label class="text-xs font-bold text-slate-500 uppercase tracking-wider">邮箱</label>
+<input class="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" placeholder="john.doe@enterprise.com" type="email"/>
+</div>
+<!-- Phone Number -->
+<div class="space-y-1.5">
+<label class="text-xs font-bold text-slate-500 uppercase tracking-wider">手机号 (选填)</label>
+<input class="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" placeholder="+86 138..." type="text"/>
+</div>
+<!-- User Group -->
+<div class="space-y-1.5">
+<label class="text-xs font-bold text-slate-500 uppercase tracking-wider">用户组</label>
+<select class="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all">
+<option>Administrators</option>
+<option>Engineering</option>
+<option>Support</option>
+<option>Compliance</option>
+</select>
+</div>
+<!-- Status -->
+<div class="space-y-1.5">
+<label class="text-xs font-bold text-slate-500 uppercase tracking-wider">状态</label>
+<div class="flex items-center space-x-4 h-[42px]">
+<label class="flex items-center space-x-2 cursor-pointer">
+<input checked="" class="text-primary focus:ring-primary border-slate-300" name="status" type="radio" value="active"/>
+<span class="text-sm font-medium text-slate-700">活跃</span>
+</label>
+<label class="flex items-center space-x-2 cursor-pointer">
+<input class="text-primary focus:ring-primary border-slate-300" name="status" type="radio" value="disabled"/>
+<span class="text-sm font-medium text-slate-700">禁用</span>
+</label>
+</div>
+</div>
+<!-- Enable MFA -->
+<div class="space-y-1.5">
+<label class="text-xs font-bold text-slate-500 uppercase tracking-wider">是否开启 MFA</label>
+<div class="flex items-center space-x-4 h-[42px]">
+<label class="flex items-center space-x-2 cursor-pointer">
+<input class="text-primary focus:ring-primary border-slate-300" name="mfa_enabled" type="radio" value="yes"/>
+<span class="text-sm font-medium text-slate-700">开启</span>
+</label>
+<label class="flex items-center space-x-2 cursor-pointer">
+<input checked="" class="text-primary focus:ring-primary border-slate-300" name="mfa_enabled" type="radio" value="no"/>
+<span class="text-sm font-medium text-slate-700">关闭</span>
+</label>
+</div>
+</div>
+<div></div>
+<!-- Password and Confirm Password aligned -->
+<div class="space-y-1.5">
+<label class="text-xs font-bold text-slate-500 uppercase tracking-wider">密码</label>
+<div class="relative">
+<input class="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" type="password"/>
+<button class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" type="button">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</button>
+</div>
+</div>
+<div class="space-y-1.5">
+<label class="text-xs font-bold text-slate-500 uppercase tracking-wider">确认密码</label>
+<input class="w-full px-4 py-2.5 bg-slate-50 border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" type="password"/>
+</div>
+</div>
+</form>
+<!-- Footer -->
+<div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end space-x-3">
+<button class="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-all">取消</button>
+<button class="px-8 py-2.5 bg-primary text-white text-sm font-bold rounded-xl shadow-lg shadow-primary/20 hover:bg-primary-container hover:scale-[1.02] active:scale-95 transition-all">保存</button>
+</div>
+</div>
+</div>
+</body></html>

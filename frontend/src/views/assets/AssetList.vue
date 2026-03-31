@@ -1,0 +1,494 @@
+<script setup lang="ts">
+import { ref, onMounted, computed } from 'vue'
+import { message } from 'ant-design-vue'
+import { getAssets, getOrganizations, createAsset, updateAsset, deleteAsset } from '@/api/assets'
+import type { Asset, AssetCategory, Organization } from '@/types'
+
+// Data
+const assets = ref<Asset[]>([])
+const organizations = ref<Organization[]>([])
+const loading = ref(false)
+const total = ref(0)
+const page = ref(1)
+const limit = ref(20)
+
+// Filters
+const activeCategory = ref<AssetCategory | 'all'>('all')
+const searchQuery = ref('')
+const selectedOrgId = ref<number | null>(null)
+
+// Modal
+const showModal = ref(false)
+const modalLoading = ref(false)
+const editingAsset = ref<Asset | null>(null)
+
+// Form
+const form = ref({
+  name: '',
+  asset_code: '',
+  category: 'host' as AssetCategory,
+  address: '',
+  platform: '',
+  organization_id: null as number | null,
+  device_type: '',
+  vendor: '',
+  model: '',
+  serial_number: '',
+  url: '',
+  notes: ''
+})
+
+// Categories
+const categories = [
+  { key: 'all', label: '所有', icon: 'menu' },
+  { key: 'host', label: '主机', icon: 'dns' },
+  { key: 'network', label: '网络设备', icon: 'router' },
+  { key: 'database', label: '数据库', icon: 'database' },
+  { key: 'cloud', label: '云服务', icon: 'cloud' },
+  { key: 'web', label: 'Web', icon: 'public' },
+  { key: 'gpt', label: 'GPT', icon: 'psychology' }
+]
+
+// Category options for form
+const categoryOptions = categories.filter(c => c.key !== 'all')
+
+// Platform options by category
+const platformOptions: Record<string, string[]> = {
+  host: ['Linux', 'Windows', 'Unix', 'macOS'],
+  network: ['Cisco IOS', 'Huawei VRP', 'Juniper JunOS', 'Aruba OS'],
+  database: ['MySQL', 'PostgreSQL', 'MongoDB', 'Redis', 'Oracle'],
+  cloud: ['AWS', '阿里云', '腾讯云', 'Azure', 'GCP'],
+  web: ['Nginx', 'Apache', 'IIS', 'Tomcat'],
+  gpt: ['OpenAI', 'Claude', 'ChatGLM', '通义千问']
+}
+
+// Device type options for network
+const deviceTypeOptions = ['交换机', '路由器', '防火墙', '无线控制器', '负载均衡']
+
+// Modal title
+const modalTitle = computed(() => editingAsset.value ? '编辑资产' : '创建资产')
+
+// Fetch assets
+async function fetchAssets() {
+  loading.value = true
+  try {
+    const result = await getAssets({
+      page: page.value,
+      limit: limit.value,
+      category: activeCategory.value !== 'all' ? activeCategory.value : undefined,
+      search: searchQuery.value || undefined,
+      organization_id: selectedOrgId.value || undefined
+    })
+    assets.value = result.items || []
+    total.value = result.total || 0
+  } catch (error) {
+    message.error('获取资产列表失败')
+    assets.value = []
+    total.value = 0
+  } finally {
+    loading.value = false
+  }
+}
+
+// Fetch organizations
+async function fetchOrganizations() {
+  try {
+    organizations.value = await getOrganizations() || []
+  } catch (error) {
+    console.error('Failed to fetch organizations')
+    organizations.value = []
+  }
+}
+
+// Change category
+function changeCategory(category: AssetCategory | 'all') {
+  activeCategory.value = category
+  page.value = 1
+  fetchAssets()
+}
+
+// Handle search
+function handleSearch() {
+  page.value = 1
+  fetchAssets()
+}
+
+// Handle page change
+function handlePageChange(newPage: number) {
+  page.value = newPage
+  fetchAssets()
+}
+
+// Get category icon
+function getCategoryIcon(category: string): string {
+  const cat = categories.find(c => c.key === category)
+  return cat?.icon || 'inventory_2'
+}
+
+// Open create modal
+function openCreateModal() {
+  editingAsset.value = null
+  form.value = {
+    name: '',
+    asset_code: '',
+    category: 'host',
+    address: '',
+    platform: '',
+    organization_id: null,
+    device_type: '',
+    vendor: '',
+    model: '',
+    serial_number: '',
+    url: '',
+    notes: ''
+  }
+  showModal.value = true
+}
+
+// Open edit modal
+function openEditModal(asset: Asset) {
+  editingAsset.value = asset
+  form.value = {
+    name: asset.name,
+    asset_code: asset.asset_code || '',
+    category: asset.category,
+    address: asset.address || '',
+    platform: asset.platform || '',
+    organization_id: asset.organization_id,
+    device_type: asset.device_type || '',
+    vendor: asset.vendor || '',
+    model: asset.model || '',
+    serial_number: asset.serial_number || '',
+    url: asset.url || '',
+    notes: asset.notes || ''
+  }
+  showModal.value = true
+}
+
+// Submit form
+async function handleSubmit() {
+  if (!form.value.name) {
+    message.error('请输入资产名称')
+    return
+  }
+
+  modalLoading.value = true
+  try {
+    const data = {
+      name: form.value.name,
+      asset_code: form.value.asset_code || undefined,
+      category: form.value.category,
+      address: form.value.address || undefined,
+      platform: form.value.platform || undefined,
+      organization_id: form.value.organization_id || undefined,
+      device_type: form.value.device_type || undefined,
+      vendor: form.value.vendor || undefined,
+      model: form.value.model || undefined,
+      serial_number: form.value.serial_number || undefined,
+      url: form.value.url || undefined,
+      notes: form.value.notes || undefined
+    }
+
+    if (editingAsset.value) {
+      await updateAsset(editingAsset.value.id, data)
+      message.success('资产更新成功')
+    } else {
+      await createAsset(data)
+      message.success('资产创建成功')
+    }
+    showModal.value = false
+    fetchAssets()
+  } catch (error: any) {
+    message.error(error.response?.data?.detail || '操作失败')
+  } finally {
+    modalLoading.value = false
+  }
+}
+
+// Delete asset
+async function handleDelete(asset: Asset) {
+  if (!confirm(`确定要删除资产 "${asset.name}" 吗?`)) return
+
+  try {
+    await deleteAsset(asset.id)
+    message.success('资产已删除')
+    fetchAssets()
+  } catch (error) {
+    message.error('删除失败')
+  }
+}
+
+// Initial load
+onMounted(() => {
+  fetchAssets()
+  fetchOrganizations()
+})
+</script>
+
+<template>
+  <div class="space-y-6">
+    <!-- Page Header -->
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-900">资产列表</h1>
+        <p class="text-slate-500 mt-1">管理和查看所有IT基础设施资产</p>
+      </div>
+      <button @click="openCreateModal" class="btn-primary flex items-center gap-2">
+        <span class="material-symbols-outlined">add</span>
+        创建资产
+      </button>
+    </div>
+
+    <!-- Category Tabs -->
+    <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+      <div class="flex border-b border-slate-100">
+        <button
+          v-for="cat in categories"
+          :key="cat.key"
+          @click="changeCategory(cat.key as AssetCategory | 'all')"
+          class="flex items-center gap-2 px-6 py-4 text-sm font-medium transition-colors whitespace-nowrap"
+          :class="
+            activeCategory === cat.key
+              ? 'text-teal-600 border-b-2 border-teal-600'
+              : 'text-slate-500 hover:text-slate-700'
+          "
+        >
+          <span class="material-symbols-outlined text-lg">{{ cat.icon }}</span>
+          {{ cat.label }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex gap-6">
+      <!-- Asset Tree (Left Panel) -->
+      <div class="hidden lg:block w-60 flex-shrink-0">
+        <div class="card">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold text-slate-900">资产树</h3>
+          </div>
+          <!-- Tree placeholder -->
+          <div class="text-sm text-slate-500">
+            <div v-for="org in organizations" :key="org.id" class="py-1.5 cursor-pointer hover:text-primary" @click="selectedOrgId = org.id; handleSearch()">
+              {{ org.name }} ({{ org.count }})
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Asset Table (Right Panel) -->
+      <div class="flex-1">
+        <!-- Toolbar -->
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+          <div class="flex items-center gap-4">
+            <div class="relative flex-1 max-w-md">
+              <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+              <input
+                v-model="searchQuery"
+                type="text"
+                placeholder="搜索资产..."
+                class="input-field pl-10"
+                @keyup.enter="handleSearch"
+              />
+            </div>
+            <button @click="handleSearch" class="btn-secondary">
+              搜索
+            </button>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>地址</th>
+                <th>平台</th>
+                <th>凭证</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="loading">
+                <td colspan="5" class="text-center py-8 text-slate-500">
+                  加载中...
+                </td>
+              </tr>
+              <tr v-else-if="assets.length === 0">
+                <td colspan="5" class="text-center py-8 text-slate-500">
+                  暂无数据
+                </td>
+              </tr>
+              <tr v-for="asset in assets" :key="asset.id">
+                <td>
+                  <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-primary">{{ getCategoryIcon(asset.category) }}</span>
+                    <div>
+                      <p class="font-medium text-slate-900">{{ asset.name }}</p>
+                      <p v-if="asset.asset_code" class="text-xs text-slate-400">{{ asset.asset_code }}</p>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <span class="text-sm text-slate-600 font-mono">{{ asset.address || '-' }}</span>
+                </td>
+                <td>
+                  <span class="text-sm text-slate-600">{{ asset.platform || '-' }}</span>
+                </td>
+                <td>
+                  <div v-if="asset.credentials && asset.credentials.length > 0" class="space-y-1">
+                    <div
+                      v-for="cred in asset.credentials"
+                      :key="cred.id"
+                      class="inline-flex items-center gap-2 bg-slate-100/80 rounded px-2 py-1 text-xs"
+                    >
+                      <span class="font-medium">{{ cred.username }}</span>
+                    </div>
+                  </div>
+                  <span v-else class="text-slate-400 text-sm">-</span>
+                </td>
+                <td>
+                  <div class="flex items-center gap-2">
+                    <button @click="openEditModal(asset)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="编辑">
+                      <span class="material-symbols-outlined text-lg">edit</span>
+                    </button>
+                    <button
+                      @click="handleDelete(asset)"
+                      class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600"
+                      title="删除"
+                    >
+                      <span class="material-symbols-outlined text-lg">delete</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Pagination -->
+          <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
+            <span class="text-sm text-slate-500">
+              共 {{ total }} 条记录
+            </span>
+            <div class="flex items-center gap-2">
+              <button
+                @click="handlePageChange(page - 1)"
+                :disabled="page === 1"
+                class="px-3 py-1.5 text-sm border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-50"
+              >
+                上一页
+              </button>
+              <span class="text-sm text-slate-600">{{ page }} / {{ Math.ceil(total / limit) || 1 }}</span>
+              <button
+                @click="handlePageChange(page + 1)"
+                :disabled="page >= Math.ceil(total / limit)"
+                class="px-3 py-1.5 text-sm border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-50"
+              >
+                下一页
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create/Edit Asset Modal -->
+    <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showModal = false"></div>
+      <div class="relative bg-white w-full max-w-2xl rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="text-xl font-bold text-slate-900">{{ modalTitle }}</h2>
+          <button @click="showModal = false" class="p-2 hover:bg-slate-50 rounded-full">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div class="p-6">
+          <form @submit.prevent="handleSubmit" class="space-y-4">
+            <!-- Basic Info -->
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">资产名称 <span class="text-red-500">*</span></label>
+                <input v-model="form.name" type="text" class="input-field" placeholder="请输入资产名称" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">资产编号</label>
+                <input v-model="form.asset_code" type="text" class="input-field" placeholder="CI编号" />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">资产类型 <span class="text-red-500">*</span></label>
+                <select v-model="form.category" class="input-field">
+                  <option v-for="cat in categoryOptions" :key="cat.key" :value="cat.key">{{ cat.label }}</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">所属组织</label>
+                <select v-model="form.organization_id" class="input-field">
+                  <option :value="null">无</option>
+                  <option v-for="org in organizations" :key="org.id" :value="org.id">{{ org.name }}</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Address/URL based on category -->
+            <div class="grid grid-cols-2 gap-4">
+              <div v-if="form.category !== 'cloud' && form.category !== 'gpt' && form.category !== 'web'">
+                <label class="block text-sm font-medium text-slate-700 mb-1">地址</label>
+                <input v-model="form.address" type="text" class="input-field" placeholder="IP 或 主机名:端口" />
+              </div>
+              <div v-if="form.category === 'web' || form.category === 'gpt'">
+                <label class="block text-sm font-medium text-slate-700 mb-1">URL</label>
+                <input v-model="form.url" type="text" class="input-field" placeholder="https://" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">平台</label>
+                <select v-model="form.platform" class="input-field">
+                  <option value="">请选择</option>
+                  <option v-for="p in platformOptions[form.category]" :key="p" :value="p">{{ p }}</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Network specific -->
+            <template v-if="form.category === 'network'">
+              <div class="grid grid-cols-3 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 mb-1">设备类型</label>
+                  <select v-model="form.device_type" class="input-field">
+                    <option value="">请选择</option>
+                    <option v-for="t in deviceTypeOptions" :key="t" :value="t">{{ t }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 mb-1">厂商</label>
+                  <input v-model="form.vendor" type="text" class="input-field" placeholder="如: Cisco" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 mb-1">型号</label>
+                  <input v-model="form.model" type="text" class="input-field" placeholder="如: C9300-48P" />
+                </div>
+              </div>
+            </template>
+
+            <!-- Notes -->
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">备注</label>
+              <textarea v-model="form.notes" class="input-field h-24 resize-none" placeholder="资产描述或备注"></textarea>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex justify-end gap-2 pt-4">
+              <button type="button" @click="showModal = false" class="btn-secondary">取消</button>
+              <button type="submit" :disabled="modalLoading" class="btn-primary">
+                {{ modalLoading ? '处理中...' : '保存' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
