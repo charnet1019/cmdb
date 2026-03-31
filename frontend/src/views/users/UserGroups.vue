@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { getGroups, createGroup, deleteGroup } from '@/api/users'
-import type { Group } from '@/types'
+import { getGroups, createGroup, deleteGroup, updateGroup, getGroupAuthorizations, getGroupMembers, addGroupMembers, removeGroupMember, getUsers } from '@/api/users'
+import type { Group, User } from '@/types'
+import type { GroupAuthorization, GroupMember } from '@/api/users'
 
 // Data
 const groups = ref<Group[]>([])
+const allUsers = ref<User[]>([])
 const loading = ref(false)
 const total = ref(0)
 const page = ref(1)
@@ -16,13 +18,47 @@ const searchQuery = ref('')
 
 // Modal states
 const showModal = ref(false)
+const showAuthModal = ref(false)
+const showMembersModal = ref(false)
+const showEditModal = ref(false)
 const modalLoading = ref(false)
+
+// Selected group
+const selectedGroup = ref<Group | null>(null)
+const groupAuthorizations = ref<GroupAuthorization[]>([])
+const groupMembers = ref<GroupMember[]>([])
+const authLoading = ref(false)
+const membersLoading = ref(false)
 
 // Form state
 const groupForm = ref({
   name: '',
   description: ''
 })
+
+// Add members form
+const selectedUserIds = ref<number[]>([])
+
+// Asset category labels
+const categoryLabels: Record<string, string> = {
+  host: '主机',
+  network: '网络设备',
+  database: '数据库',
+  cloud: '云服务',
+  web: 'Web',
+  gpt: 'GPT'
+}
+
+// Permission labels
+const permissionLabels: Record<string, string> = {
+  view: '查看资产',
+  manage: '管理资产',
+  user_mgmt: '用户管理',
+  sys_config: '系统设置',
+  audit_log: '日志审计',
+  view_pwd: '查看密码',
+  manage_pwd: '管理密码'
+}
 
 // Fetch groups
 async function fetchGroups() {
@@ -44,6 +80,16 @@ async function fetchGroups() {
   }
 }
 
+// Fetch all users for adding members
+async function fetchUsers() {
+  try {
+    const result = await getUsers({ limit: 1000 })
+    allUsers.value = result.items || []
+  } catch (error) {
+    console.error('Failed to fetch users')
+  }
+}
+
 // Handle search
 function handleSearch() {
   page.value = 1
@@ -59,7 +105,17 @@ function openCreateModal() {
   showModal.value = true
 }
 
-// Submit group form
+// Open edit modal
+function openEditModal(group: Group) {
+  selectedGroup.value = group
+  groupForm.value = {
+    name: group.name,
+    description: group.description || ''
+  }
+  showEditModal.value = true
+}
+
+// Submit group form (create)
 async function handleSubmit() {
   if (!groupForm.value.name) {
     message.error('请输入用户组名称')
@@ -82,6 +138,29 @@ async function handleSubmit() {
   }
 }
 
+// Submit edit form
+async function handleEditSubmit() {
+  if (!groupForm.value.name || !selectedGroup.value) {
+    message.error('请输入用户组名称')
+    return
+  }
+
+  modalLoading.value = true
+  try {
+    await updateGroup(selectedGroup.value.id, {
+      name: groupForm.value.name,
+      description: groupForm.value.description
+    })
+    message.success('用户组更新成功')
+    showEditModal.value = false
+    fetchGroups()
+  } catch (error: any) {
+    message.error(error.response?.data?.detail || '更新失败')
+  } finally {
+    modalLoading.value = false
+  }
+}
+
 // Delete group
 async function handleDelete(group: Group) {
   if (!confirm(`确定要删除用户组 "${group.name}" 吗?`)) return
@@ -95,15 +174,87 @@ async function handleDelete(group: Group) {
   }
 }
 
+// Open authorizations modal
+async function openAuthModal(group: Group) {
+  selectedGroup.value = group
+  groupAuthorizations.value = []
+  authLoading.value = true
+  showAuthModal.value = true
+
+  try {
+    groupAuthorizations.value = await getGroupAuthorizations(group.id)
+  } catch (error) {
+    message.error('获取授权列表失败')
+  } finally {
+    authLoading.value = false
+  }
+}
+
+// Open members modal
+async function openMembersModal(group: Group) {
+  selectedGroup.value = group
+  groupMembers.value = []
+  selectedUserIds.value = []
+  membersLoading.value = true
+  showMembersModal.value = true
+
+  try {
+    groupMembers.value = await getGroupMembers(group.id)
+  } catch (error) {
+    message.error('获取成员列表失败')
+  } finally {
+    membersLoading.value = false
+  }
+}
+
+// Add members
+async function handleAddMembers() {
+  if (!selectedGroup.value || selectedUserIds.value.length === 0) {
+    message.error('请选择要添加的成员')
+    return
+  }
+
+  try {
+    await addGroupMembers(selectedGroup.value.id, selectedUserIds.value)
+    message.success('成员添加成功')
+    selectedUserIds.value = []
+    groupMembers.value = await getGroupMembers(selectedGroup.value.id)
+    fetchGroups()
+  } catch (error: any) {
+    message.error(error.response?.data?.detail || '添加失败')
+  }
+}
+
+// Remove member
+async function handleRemoveMember(member: GroupMember) {
+  if (!selectedGroup.value) return
+  if (!confirm(`确定要将 "${member.username}" 从用户组移除吗?`)) return
+
+  try {
+    await removeGroupMember(selectedGroup.value.id, member.id)
+    message.success('成员已移除')
+    groupMembers.value = groupMembers.value.filter(m => m.id !== member.id)
+    fetchGroups()
+  } catch (error) {
+    message.error('移除失败')
+  }
+}
+
 // Format date
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '-'
   return new Date(dateStr).toLocaleDateString('zh-CN')
 }
 
+// Check if user is already a member
+function isMember(userId: number): boolean {
+  return groupMembers.value.some(m => m.id === userId)
+}
+
 // Initial load
 onMounted(() => {
   fetchGroups()
+  fetchUsers()
 })
 </script>
 
@@ -179,9 +330,16 @@ onMounted(() => {
             </td>
             <td>
               <div class="flex items-center gap-2">
-                <button class="text-xs text-primary hover:underline flex items-center gap-1">
+                <button @click="openAuthModal(group)" class="text-xs text-primary hover:underline flex items-center gap-1">
                   <span class="material-symbols-outlined text-sm">shield</span>
-                  已授权资产
+                  授权
+                </button>
+                <button @click="openMembersModal(group)" class="text-xs text-primary hover:underline flex items-center gap-1">
+                  <span class="material-symbols-outlined text-sm">group</span>
+                  成员
+                </button>
+                <button @click="openEditModal(group)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="编辑">
+                  <span class="material-symbols-outlined text-lg">edit</span>
                 </button>
                 <button @click="handleDelete(group)" class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600" title="删除">
                   <span class="material-symbols-outlined text-lg">delete</span>
@@ -242,6 +400,164 @@ onMounted(() => {
               </button>
             </div>
           </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Group Modal -->
+    <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showEditModal = false"></div>
+      <div class="relative bg-white w-full max-w-md rounded-xl shadow-2xl">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="text-xl font-bold text-slate-900">编辑用户组</h2>
+          <button @click="showEditModal = false" class="p-2 hover:bg-slate-50 rounded-full">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div class="p-6">
+          <form @submit.prevent="handleEditSubmit" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">用户组名称 <span class="text-red-500">*</span></label>
+              <input v-model="groupForm.name" type="text" class="input-field" placeholder="请输入用户组名称" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">用户组描述</label>
+              <textarea v-model="groupForm.description" class="input-field h-24 resize-none" placeholder="请输入描述"></textarea>
+            </div>
+            <div class="flex justify-end gap-2 pt-4">
+              <button type="button" @click="showEditModal = false" class="btn-secondary">取消</button>
+              <button type="submit" :disabled="modalLoading" class="btn-primary">
+                {{ modalLoading ? '处理中...' : '保存' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Authorizations Modal -->
+    <div v-if="showAuthModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showAuthModal = false"></div>
+      <div class="relative bg-white w-full max-w-3xl rounded-xl shadow-2xl max-h-[80vh] overflow-y-auto">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="text-xl font-bold text-slate-900">已授权资产 - {{ selectedGroup?.name }}</h2>
+          <button @click="showAuthModal = false" class="p-2 hover:bg-slate-50 rounded-full">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div class="p-6">
+          <div v-if="authLoading" class="text-center py-8 text-slate-500">加载中...</div>
+          <div v-else-if="groupAuthorizations.length === 0" class="text-center py-8 text-slate-500">暂无授权记录</div>
+          <table v-else class="data-table">
+            <thead>
+              <tr>
+                <th>资产名称</th>
+                <th>资产类型</th>
+                <th>权限</th>
+                <th>有效期</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="auth in groupAuthorizations" :key="auth.id">
+                <td>
+                  <span class="font-medium text-slate-900">{{ auth.asset_name }}</span>
+                </td>
+                <td>
+                  <span class="text-sm text-slate-600">{{ categoryLabels[auth.asset_category] || auth.asset_category }}</span>
+                </td>
+                <td>
+                  <div class="flex flex-wrap gap-1">
+                    <span
+                      v-for="perm in auth.permissions"
+                      :key="perm"
+                      class="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded font-medium"
+                    >
+                      {{ permissionLabels[perm] || perm }}
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <span class="text-sm text-slate-600">{{ auth.valid_until ? formatDate(auth.valid_until) : '永久' }}</span>
+                </td>
+                <td>
+                  <span class="badge badge-success">
+                    <span class="inline-block w-1.5 h-1.5 rounded-full mr-1 bg-success"></span>
+                    {{ auth.status === 'active' ? 'Active' : 'Inactive' }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="flex justify-end mt-4">
+            <button @click="showAuthModal = false" class="btn-secondary">关闭</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Members Modal -->
+    <div v-if="showMembersModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showMembersModal = false"></div>
+      <div class="relative bg-white w-full max-w-2xl rounded-xl shadow-2xl max-h-[80vh] overflow-y-auto">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="text-xl font-bold text-slate-900">管理成员 - {{ selectedGroup?.name }}</h2>
+          <button @click="showMembersModal = false" class="p-2 hover:bg-slate-50 rounded-full">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div class="p-6">
+          <!-- Add Members -->
+          <div class="bg-slate-50 rounded-lg p-4 mb-4">
+            <h4 class="font-medium text-slate-700 mb-3">添加成员</h4>
+            <div class="flex gap-2">
+              <select v-model="selectedUserIds" multiple class="input-field flex-1 h-auto min-h-[80px]">
+                <option v-for="user in allUsers.filter(u => !isMember(u.id))" :key="user.id" :value="user.id">
+                  {{ user.username }} ({{ user.full_name || user.email }})
+                </option>
+              </select>
+              <button @click="handleAddMembers" class="btn-primary" :disabled="selectedUserIds.length === 0">
+                <span class="material-symbols-outlined text-sm mr-1">person_add</span>
+                添加
+              </button>
+            </div>
+            <p class="text-xs text-slate-500 mt-2">按住 Ctrl/Cmd 可多选</p>
+          </div>
+
+          <!-- Members List -->
+          <h4 class="font-medium text-slate-700 mb-3">当前成员 ({{ groupMembers.length }})</h4>
+          <div v-if="membersLoading" class="text-center py-4 text-slate-500">加载中...</div>
+          <div v-else-if="groupMembers.length === 0" class="text-center py-4 text-slate-500">暂无成员</div>
+          <div v-else class="space-y-2">
+            <div
+              v-for="member in groupMembers"
+              :key="member.id"
+              class="flex items-center justify-between bg-slate-50 rounded-lg p-3"
+            >
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+                  <span class="text-primary font-medium text-sm">
+                    {{ member.full_name?.[0] || member.username[0]?.toUpperCase() || 'U' }}
+                  </span>
+                </div>
+                <div>
+                  <p class="font-medium text-slate-900">{{ member.username }}</p>
+                  <p class="text-xs text-slate-500">{{ member.full_name || member.email }}</p>
+                </div>
+              </div>
+              <button
+                @click="handleRemoveMember(member)"
+                class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600"
+                title="移除"
+              >
+                <span class="material-symbols-outlined text-lg">person_remove</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="flex justify-end mt-4">
+            <button @click="showMembersModal = false" class="btn-secondary">关闭</button>
+          </div>
         </div>
       </div>
     </div>

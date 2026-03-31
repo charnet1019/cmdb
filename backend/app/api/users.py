@@ -585,3 +585,199 @@ async def delete_group(
     await db.commit()
 
     return ResponseBase(message="用户组已删除")
+
+
+@group_router.get("/{group_id}/authorizations")
+async def get_group_authorizations(
+    group_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get group's asset authorizations"""
+    # Check group exists
+    result = await db.execute(select(Group).where(Group.id == group_id))
+    group = result.scalar_one_or_none()
+    if not group:
+        raise HTTPException(status_code=404, detail="用户组不存在")
+
+    # Get group authorizations
+    auths_result = await db.execute(
+        select(Authorization).where(
+            Authorization.entity_type == "group",
+            Authorization.entity_id == group_id,
+            Authorization.is_active == True,
+        )
+    )
+    auths = auths_result.scalars().all()
+
+    # Collect asset IDs
+    asset_ids = [auth.target_id for auth in auths if auth.target_type == "asset"]
+
+    # Batch fetch assets
+    assets_map = {}
+    if asset_ids:
+        assets_result = await db.execute(select(Asset).where(Asset.id.in_(asset_ids)))
+        for asset in assets_result.scalars().all():
+            assets_map[asset.id] = asset
+
+    # Build response
+    auth_list = []
+    for auth in auths:
+        asset = assets_map.get(auth.target_id)
+        if asset:
+            auth_list.append({
+                "id": auth.id,
+                "asset_id": asset.id,
+                "asset_name": asset.name,
+                "asset_category": asset.category,
+                "permissions": auth.permissions,
+                "valid_until": auth.valid_until.isoformat() if auth.valid_until else None,
+                "status": "active" if auth.is_active else "inactive",
+            })
+
+    return {
+        "code": 0,
+        "data": auth_list,
+        "total": len(auth_list),
+    }
+
+
+@group_router.put("/{group_id}", response_model=GroupResponse)
+async def update_group(
+    group_id: int,
+    name: Optional[str] = Query(None),
+    description: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_superuser),
+):
+    """Update a user group"""
+    result = await db.execute(select(Group).where(Group.id == group_id))
+    group = result.scalar_one_or_none()
+
+    if not group:
+        raise HTTPException(status_code=404, detail="用户组不存在")
+
+    if name:
+        # Check name uniqueness
+        existing = await db.execute(
+            select(Group).where(Group.name == name, Group.id != group_id)
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="用户组名称已存在")
+        group.name = name
+
+    if description is not None:
+        group.description = description
+
+    await db.commit()
+    await db.refresh(group)
+
+    # Get member count
+    member_count_result = await db.execute(
+        select(func.count()).select_from(UserGroup).where(UserGroup.group_id == group.id)
+    )
+    member_count = member_count_result.scalar() or 0
+
+    return GroupResponse(
+        id=group.id,
+        name=group.name,
+        description=group.description,
+        created_at=group.created_at,
+        member_count=member_count,
+    )
+
+
+@group_router.get("/{group_id}/members")
+async def get_group_members(
+    group_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get members of a group"""
+    result = await db.execute(select(Group).where(Group.id == group_id))
+    group = result.scalar_one_or_none()
+    if not group:
+        raise HTTPException(status_code=404, detail="用户组不存在")
+
+    # Get members
+    members_result = await db.execute(
+        select(User).join(UserGroup).where(UserGroup.group_id == group_id)
+    )
+    members = members_result.scalars().all()
+
+    return {
+        "code": 0,
+        "data": [
+            {
+                "id": u.id,
+                "username": u.username,
+                "full_name": u.full_name,
+                "email": u.email,
+                "is_active": u.is_active,
+            }
+            for u in members
+        ]
+    }
+
+
+@group_router.post("/{group_id}/members")
+async def add_group_members(
+    group_id: int,
+    user_ids: List[int],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_superuser),
+):
+    """Add members to a group"""
+    result = await db.execute(select(Group).where(Group.id == group_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="用户组不存在")
+
+    added = 0
+    for user_id in user_ids:
+        # Check user exists
+        user_result = await db.execute(select(User).where(User.id == user_id))
+        if not user_result.scalar_one_or_none():
+            continue
+
+        # Check if already member
+        existing = await db.execute(
+            select(UserGroup).where(
+                UserGroup.group_id == group_id,
+                UserGroup.user_id == user_id
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+
+        user_group = UserGroup(user_id=user_id, group_id=group_id)
+        db.add(user_group)
+        added += 1
+
+    await db.commit()
+
+    return {"code": 0, "message": f"已添加 {added} 名成员"}
+
+
+@group_router.delete("/{group_id}/members/{user_id}")
+async def remove_group_member(
+    group_id: int,
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_superuser),
+):
+    """Remove a member from a group"""
+    result = await db.execute(
+        select(UserGroup).where(
+            UserGroup.group_id == group_id,
+            UserGroup.user_id == user_id
+        )
+    )
+    user_group = result.scalar_one_or_none()
+
+    if not user_group:
+        raise HTTPException(status_code=404, detail="成员不存在")
+
+    await db.delete(user_group)
+    await db.commit()
+
+    return ResponseBase(message="成员已移除")

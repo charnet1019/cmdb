@@ -95,3 +95,46 @@ export async function createGroup(data: {
 export async function deleteGroup(id: number): Promise<void> {
   await api.delete(`/groups/${id}`)
 }
+
+// Group Authorizations API
+export interface GroupAuthorization {
+  id: number
+  asset_id: number
+  asset_name: string
+  asset_category: string
+  permissions: string[]
+  valid_until: string | null
+  status: string
+}
+
+export async function getGroupAuthorizations(groupId: number): Promise<GroupAuthorization[]> {
+  const response = await api.get(`/groups/${groupId}/authorizations`)
+  return response.data.data
+}
+
+// Group Members API
+export interface GroupMember {
+  id: number
+  username: string
+  full_name: string | null
+  email: string
+  is_active: boolean
+}
+
+export async function getGroupMembers(groupId: number): Promise<GroupMember[]> {
+  const response = await api.get(`/groups/${groupId}/members`)
+  return response.data.data
+}
+
+export async function addGroupMembers(groupId: number, userIds: number[]): Promise<void> {
+  await api.post(`/groups/${groupId}/members`, userIds)
+}
+
+export async function removeGroupMember(groupId: number, userId: number): Promise<void> {
+  await api.delete(`/groups/${groupId}/members/${userId}`)
+}
+
+export async function updateGroup(id: number, data: { name?: string; description?: string }): Promise<Group> {
+  const response = await api.put(`/groups/${id}`, null, { params: data })
+  return response.data.data
+}
