@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
+import { ref, watch } from 'vue'
 
 defineProps<{
   collapsed?: boolean
@@ -7,6 +8,9 @@ defineProps<{
 
 const route = useRoute()
 const router = useRouter()
+
+// 当前展开的父菜单ID（手风琴模式：只允许一个展开）
+const expandedParentId = ref<string | null>(null)
 
 const menuItems = [
   { id: 'dashboard', icon: 'dashboard', label: '仪表盘', path: '/dashboard' },
@@ -49,13 +53,39 @@ function isParentSelfActive(item: any): boolean {
   return item.path && isActive(item.path)
 }
 
-// 父菜单下是否有子菜单被选中（用于展开状态）
+// 父菜单下是否有子菜单被选中
 function hasActiveChild(item: any): boolean {
   if (item.children) {
     return item.children.some((child: any) => isActive(child.path))
   }
   return false
 }
+
+// 点击父菜单：展开/折叠
+function toggleParent(item: any) {
+  if (expandedParentId.value === item.id) {
+    // 点击已展开的菜单 -> 折叠
+    expandedParentId.value = null
+  } else {
+    // 点击其他菜单 -> 展开该菜单（自动折叠其他）
+    expandedParentId.value = item.id
+  }
+}
+
+// 判断父菜单是否展开
+function isParentExpanded(item: any): boolean {
+  return expandedParentId.value === item.id
+}
+
+// 监听路由变化：自动展开包含当前路由的父菜单
+watch(() => route.path, (path) => {
+  for (const item of menuItems) {
+    if (item.children && item.children.some((child: any) => child.path === path)) {
+      expandedParentId.value = item.id
+      break
+    }
+  }
+}, { immediate: true })
 </script>
 
 <template>
@@ -65,7 +95,7 @@ function hasActiveChild(item: any): boolean {
   >
     <nav style="padding: 12px;">
       <template v-for="item in menuItems" :key="item.id">
-        <!-- Single item -->
+        <!-- Single item (无子菜单) -->
         <div
           v-if="!item.children"
           @click="navigateTo(item.path)"
@@ -78,16 +108,29 @@ function hasActiveChild(item: any): boolean {
 
         <!-- Parent with children -->
         <div v-else>
-          <div class="nav-item" :class="{ active: isParentSelfActive(item), expanded: hasActiveChild(item) }">
+          <!-- 父菜单项：点击展开/折叠 -->
+          <div
+            @click="toggleParent(item)"
+            class="nav-item"
+            :class="{ active: isParentSelfActive(item), expanded: hasActiveChild(item) }"
+          >
             <span class="material-symbols-outlined" style="font-size: 20px;">{{ item.icon }}</span>
-            <span v-if="!collapsed" style="font-size: 14px;">{{ item.label }}</span>
+            <span v-if="!collapsed" style="font-size: 14px; flex: 1;">{{ item.label }}</span>
+            <!-- 展开/折叠箭头 -->
+            <span v-if="!collapsed" class="material-symbols-outlined" style="font-size: 16px; transition: transform 0.2s;" :style="{ transform: isParentExpanded(item) ? 'rotate(180deg)' : 'rotate(0deg)' }">
+              expand_more
+            </span>
           </div>
 
-          <div v-if="!collapsed" style="margin-left: 16px; padding-left: 16px; border-left: 1px solid #f1f5f9;">
+          <!-- 子菜单：仅当父菜单展开时显示 -->
+          <div
+            v-if="!collapsed && isParentExpanded(item)"
+            style="margin-left: 16px; padding-left: 16px; border-left: 1px solid #f1f5f9; margin-top: 4px;"
+          >
             <div
               v-for="child in item.children"
               :key="child.id"
-              @click="navigateTo(child.path)"
+              @click.stop="navigateTo(child.path)"
               class="nav-item"
               :class="{ active: isActive(child.path) }"
               style="font-size: 12px; padding: 8px 16px;"
