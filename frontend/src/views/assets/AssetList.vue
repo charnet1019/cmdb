@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
-import { getAssets, getOrganizations, createAsset, updateAsset, deleteAsset } from '@/api/assets'
-import type { Asset, AssetCategory, Organization } from '@/types'
+import { getAssets, getOrganizations, createAsset, updateAsset, deleteAsset, getCredentials, createCredential, decryptCredential, deleteCredential } from '@/api/assets'
+import type { Asset, AssetCategory, Organization, Credential } from '@/types'
 
 // Data
 const assets = ref<Asset[]>([])
@@ -17,10 +17,27 @@ const activeCategory = ref<AssetCategory | 'all'>('all')
 const searchQuery = ref('')
 const selectedOrgId = ref<number | null>(null)
 
+// Asset tree expansion
+const expandedOrgIds = ref<Set<number>>(new Set())
+
 // Modal
 const showModal = ref(false)
+const showCredentialModal = ref(false)
 const modalLoading = ref(false)
 const editingAsset = ref<Asset | null>(null)
+const selectedAsset = ref<Asset | null>(null)
+const credentials = ref<Credential[]>([])
+const credentialLoading = ref(false)
+
+// Credential form
+const credentialForm = ref({
+  username: '',
+  password: '',
+  credential_type: 'password'
+})
+
+// Decrypted passwords cache
+const decryptedPasswords = ref<Map<number, string>>(new Map())
 
 // Form
 const form = ref({
@@ -125,6 +142,49 @@ function getCategoryIcon(category: string): string {
   return cat?.icon || 'inventory_2'
 }
 
+// Toggle org expansion
+function toggleOrg(orgId: number) {
+  if (expandedOrgIds.value.has(orgId)) {
+    expandedOrgIds.value.delete(orgId)
+  } else {
+    expandedOrgIds.value.add(orgId)
+  }
+}
+
+// Check if org is expanded
+function isOrgExpanded(orgId: number): boolean {
+  return expandedOrgIds.value.has(orgId)
+}
+
+// Select organization
+function selectOrganization(orgId: number | null) {
+  selectedOrgId.value = orgId
+  handleSearch()
+}
+
+// Get flattened org tree for display
+const flattenedOrgs = computed(() => {
+  const result: { id: number; name: string; count: number; level: number; hasChildren: boolean }[] = []
+
+  function flatten(orgs: Organization[], level: number = 0) {
+    for (const org of orgs) {
+      result.push({
+        id: org.id,
+        name: org.name,
+        count: org.count || 0,
+        level,
+        hasChildren: (org.children?.length || 0) > 0
+      })
+      if (isOrgExpanded(org.id) && org.children) {
+        flatten(org.children, level + 1)
+      }
+    }
+  }
+
+  flatten(organizations.value)
+  return result
+})
+
 // Open create modal
 function openCreateModal() {
   editingAsset.value = null
@@ -134,7 +194,7 @@ function openCreateModal() {
     category: 'host',
     address: '',
     platform: '',
-    organization_id: null,
+    organization_id: selectedOrgId.value,
     device_type: '',
     vendor: '',
     model: '',
@@ -218,6 +278,105 @@ async function handleDelete(asset: Asset) {
   }
 }
 
+// Open credential modal
+async function openCredentialModal(asset: Asset) {
+  selectedAsset.value = asset
+  credentials.value = []
+  credentialLoading.value = true
+  showCredentialModal.value = true
+  decryptedPasswords.value.clear()
+
+  try {
+    credentials.value = await getCredentials(asset.id)
+  } catch (error) {
+    message.error('获取凭证失败')
+  } finally {
+    credentialLoading.value = false
+  }
+}
+
+// View/decrypt password
+async function viewPassword(credential: Credential) {
+  if (decryptedPasswords.value.has(credential.id)) {
+    // Already decrypted, copy to clipboard
+    const password = decryptedPasswords.value.get(credential.id)!
+    await copyToClipboard(password)
+    return
+  }
+
+  try {
+    const result = await decryptCredential(credential.id)
+    if (result.password) {
+      decryptedPasswords.value.set(credential.id, result.password)
+      message.success('密码已解密')
+    }
+  } catch (error: any) {
+    message.error(error.response?.data?.detail || '解密失败')
+  }
+}
+
+// Copy to clipboard
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    message.success('已复制到剪贴板')
+  } catch {
+    message.error('复制失败')
+  }
+}
+
+// Copy username
+function copyUsername(username: string) {
+  copyToClipboard(username)
+}
+
+// Copy password
+function copyPassword(credential: Credential) {
+  const password = decryptedPasswords.value.get(credential.id)
+  if (password) {
+    copyToClipboard(password)
+  } else {
+    message.warning('请先点击查看密码')
+  }
+}
+
+// Add credential
+async function addCredential() {
+  if (!credentialForm.value.username || !credentialForm.value.password) {
+    message.error('请填写用户名和密码')
+    return
+  }
+
+  if (!selectedAsset.value) return
+
+  try {
+    await createCredential(selectedAsset.value.id, {
+      username: credentialForm.value.username,
+      password: credentialForm.value.password,
+      credential_type: credentialForm.value.credential_type
+    })
+    message.success('凭证添加成功')
+    credentialForm.value = { username: '', password: '', credential_type: 'password' }
+    credentials.value = await getCredentials(selectedAsset.value.id)
+  } catch (error: any) {
+    message.error(error.response?.data?.detail || '添加失败')
+  }
+}
+
+// Delete credential
+async function handleDeleteCredential(credential: Credential) {
+  if (!confirm(`确定要删除凭证 "${credential.username}" 吗?`)) return
+
+  try {
+    await deleteCredential(credential.id)
+    message.success('凭证已删除')
+    credentials.value = credentials.value.filter(c => c.id !== credential.id)
+    decryptedPasswords.value.delete(credential.id)
+  } catch (error) {
+    message.error('删除失败')
+  }
+}
+
 // Initial load
 onMounted(() => {
   fetchAssets()
@@ -266,12 +425,46 @@ onMounted(() => {
         <div class="card">
           <div class="flex items-center justify-between mb-4">
             <h3 class="font-semibold text-slate-900">资产树</h3>
+            <button
+              v-if="selectedOrgId"
+              @click="selectOrganization(null)"
+              class="text-xs text-primary hover:underline"
+            >
+              清除筛选
+            </button>
           </div>
-          <!-- Tree placeholder -->
-          <div class="text-sm text-slate-500">
-            <div v-for="org in organizations" :key="org.id" class="py-1.5 cursor-pointer hover:text-primary" @click="selectedOrgId = org.id; handleSearch()">
-              {{ org.name }} ({{ org.count }})
+          <!-- Tree -->
+          <div class="text-sm">
+            <div
+              class="py-2 px-2 rounded cursor-pointer hover:bg-slate-50 mb-1"
+              :class="selectedOrgId === null ? 'bg-primary/10 text-primary' : 'text-slate-600'"
+              @click="selectOrganization(null)"
+            >
+              <span class="material-symbols-outlined text-sm mr-1">folder_open</span>
+              全部资产
             </div>
+            <template v-for="org in flattenedOrgs" :key="org.id">
+              <div
+                class="py-1.5 px-2 rounded cursor-pointer hover:bg-slate-50 flex items-center gap-1"
+                :class="selectedOrgId === org.id ? 'bg-primary/10 text-primary' : 'text-slate-600'"
+                :style="{ paddingLeft: `${org.level * 16 + 8}px` }"
+                @click="selectOrganization(org.id)"
+              >
+                <span
+                  v-if="org.hasChildren"
+                  class="material-symbols-outlined text-xs cursor-pointer hover:bg-slate-200 rounded"
+                  @click.stop="toggleOrg(org.id)"
+                >
+                  {{ isOrgExpanded(org.id) ? 'expand_more' : 'chevron_right' }}
+                </span>
+                <span v-else class="w-4"></span>
+                <span class="material-symbols-outlined text-sm mr-1">
+                  {{ org.hasChildren ? 'folder' : 'description' }}
+                </span>
+                <span class="flex-1 truncate">{{ org.name }}</span>
+                <span class="text-xs text-slate-400">({{ org.count }})</span>
+              </div>
+            </template>
           </div>
         </div>
       </div>
@@ -331,22 +524,19 @@ onMounted(() => {
                   </div>
                 </td>
                 <td>
-                  <span class="text-sm text-slate-600 font-mono">{{ asset.address || '-' }}</span>
+                  <span class="text-sm text-slate-600 font-mono">{{ asset.address || asset.url || '-' }}</span>
                 </td>
                 <td>
                   <span class="text-sm text-slate-600">{{ asset.platform || '-' }}</span>
                 </td>
                 <td>
-                  <div v-if="asset.credentials && asset.credentials.length > 0" class="space-y-1">
-                    <div
-                      v-for="cred in asset.credentials"
-                      :key="cred.id"
-                      class="inline-flex items-center gap-2 bg-slate-100/80 rounded px-2 py-1 text-xs"
-                    >
-                      <span class="font-medium">{{ cred.username }}</span>
-                    </div>
-                  </div>
-                  <span v-else class="text-slate-400 text-sm">-</span>
+                  <button
+                    @click="openCredentialModal(asset)"
+                    class="flex items-center gap-1 text-primary hover:underline"
+                  >
+                    <span class="material-symbols-outlined text-sm">key</span>
+                    <span class="text-xs">{{ asset.credentials?.length || 0 }} 个凭证</span>
+                  </button>
                 </td>
                 <td>
                   <div class="flex items-center gap-2">
@@ -487,6 +677,99 @@ onMounted(() => {
               </button>
             </div>
           </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Credential Modal -->
+    <div v-if="showCredentialModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showCredentialModal = false"></div>
+      <div class="relative bg-white w-full max-w-2xl rounded-xl shadow-2xl max-h-[80vh] overflow-y-auto">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="text-xl font-bold text-slate-900">凭证管理 - {{ selectedAsset?.name }}</h2>
+          <button @click="showCredentialModal = false" class="p-2 hover:bg-slate-50 rounded-full">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div class="p-6">
+          <!-- Add Credential Form -->
+          <div class="bg-slate-50 rounded-lg p-4 mb-4">
+            <h4 class="font-medium text-slate-700 mb-3">添加凭证</h4>
+            <div class="grid grid-cols-3 gap-3">
+              <input
+                v-model="credentialForm.username"
+                type="text"
+                class="input-field"
+                placeholder="用户名"
+              />
+              <input
+                v-model="credentialForm.password"
+                type="password"
+                class="input-field"
+                placeholder="密码"
+              />
+              <button @click="addCredential" class="btn-primary">
+                <span class="material-symbols-outlined text-sm mr-1">add</span>
+                添加
+              </button>
+            </div>
+          </div>
+
+          <!-- Credentials List -->
+          <div v-if="credentialLoading" class="text-center py-8 text-slate-500">加载中...</div>
+          <div v-else-if="credentials.length === 0" class="text-center py-8 text-slate-500">暂无凭证</div>
+          <div v-else class="space-y-3">
+            <div
+              v-for="cred in credentials"
+              :key="cred.id"
+              class="flex items-center justify-between bg-slate-50 rounded-lg p-3"
+            >
+              <div class="flex items-center gap-4">
+                <span class="material-symbols-outlined text-slate-400">person</span>
+                <div>
+                  <p class="font-medium text-slate-900">{{ cred.username }}</p>
+                  <p v-if="decryptedPasswords.has(cred.id)" class="text-sm text-slate-600 font-mono">
+                    {{ decryptedPasswords.get(cred.id) }}
+                  </p>
+                  <p v-else class="text-sm text-slate-400">••••••••</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <button
+                  @click="copyUsername(cred.username)"
+                  class="p-1.5 hover:bg-white rounded text-slate-400 hover:text-slate-600"
+                  title="复制用户名"
+                >
+                  <span class="material-symbols-outlined text-lg">content_copy</span>
+                </button>
+                <button
+                  @click="viewPassword(cred)"
+                  class="p-1.5 hover:bg-white rounded text-slate-400 hover:text-slate-600"
+                  title="查看密码"
+                >
+                  <span class="material-symbols-outlined text-lg">visibility</span>
+                </button>
+                <button
+                  @click="copyPassword(cred)"
+                  class="p-1.5 hover:bg-white rounded text-slate-400 hover:text-slate-600"
+                  title="复制密码"
+                >
+                  <span class="material-symbols-outlined text-lg">key</span>
+                </button>
+                <button
+                  @click="handleDeleteCredential(cred)"
+                  class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600"
+                  title="删除"
+                >
+                  <span class="material-symbols-outlined text-lg">delete</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex justify-end mt-4">
+            <button @click="showCredentialModal = false" class="btn-secondary">关闭</button>
+          </div>
         </div>
       </div>
     </div>
