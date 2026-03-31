@@ -83,10 +83,10 @@ async function fetchGroups() {
 // Fetch all users for adding members
 async function fetchUsers() {
   try {
-    const result = await getUsers({ limit: 1000 })
+    const result = await getUsers({ limit: 100 })
     allUsers.value = result.items || []
-  } catch (error) {
-    console.error('Failed to fetch users')
+  } catch {
+    // Handle silently
   }
 }
 
