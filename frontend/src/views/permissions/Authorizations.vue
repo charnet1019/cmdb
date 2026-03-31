@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   getAuthorizations,
@@ -27,12 +27,14 @@ const isActiveFilter = ref<boolean | null>(null)
 // Modal
 const showModal = ref(false)
 const modalLoading = ref(false)
+const isEditMode = ref(false)
+const editingAuthId = ref<number | null>(null)
 
 // Form
 const form = ref({
   entity_type: 'user' as 'user' | 'group',
   entity_id: null as number | null,
-  target_type: 'asset' as 'asset' | 'asset_group',
+  target_type: 'asset' as 'asset' | 'organization',
   target_id: null as number | null,
   permissions: [] as string[],
   valid_until: ''
@@ -43,6 +45,45 @@ const users = ref<Array<{ id: number; name: string; full_name: string | null }>>
 const groups = ref<Array<{ id: number; name: string }>>([])
 const assets = ref<Array<{ id: number; name: string; category: string }>>([])
 const organizations = ref<Array<{ id: number; name: string; path: string | null }>>([])
+
+// Search filters for modal
+const userSearch = ref('')
+const groupSearch = ref('')
+const assetSearch = ref('')
+const orgSearch = ref('')
+
+// Computed filtered lists
+const filteredUsers = computed(() => {
+  if (!userSearch.value) return users.value
+  const search = userSearch.value.toLowerCase()
+  return users.value.filter(u =>
+    u.name.toLowerCase().includes(search) ||
+    (u.full_name && u.full_name.toLowerCase().includes(search))
+  )
+})
+
+const filteredGroups = computed(() => {
+  if (!groupSearch.value) return groups.value
+  return groups.value.filter(g => g.name.toLowerCase().includes(groupSearch.value.toLowerCase()))
+})
+
+const filteredAssets = computed(() => {
+  if (!assetSearch.value) return assets.value
+  const search = assetSearch.value.toLowerCase()
+  return assets.value.filter(a =>
+    a.name.toLowerCase().includes(search) ||
+    a.category.toLowerCase().includes(search)
+  )
+})
+
+const filteredOrgs = computed(() => {
+  if (!orgSearch.value) return organizations.value
+  const search = orgSearch.value.toLowerCase()
+  return organizations.value.filter(o =>
+    o.name.toLowerCase().includes(search) ||
+    (o.path && o.path.toLowerCase().includes(search))
+  )
+})
 
 // Permission options
 const permissionOptions = [
@@ -88,8 +129,8 @@ async function fetchSelectionOptions() {
     groups.value = groupsData
     assets.value = assetsData
     organizations.value = orgsData
-  } catch (error) {
-    console.error('Failed to fetch selection options')
+  } catch {
+    // Handle silently
   }
 }
 
@@ -107,6 +148,8 @@ function handlePageChange(newPage: number) {
 
 // Open create modal
 function openCreateModal() {
+  isEditMode.value = false
+  editingAuthId.value = null
   form.value = {
     entity_type: 'user',
     entity_id: null,
@@ -115,18 +158,45 @@ function openCreateModal() {
     permissions: [],
     valid_until: ''
   }
+  // Clear search filters
+  userSearch.value = ''
+  groupSearch.value = ''
+  assetSearch.value = ''
+  orgSearch.value = ''
+  showModal.value = true
+}
+
+// Open edit modal
+function openEditModal(auth: any) {
+  isEditMode.value = true
+  editingAuthId.value = auth.id
+  form.value = {
+    entity_type: auth.entity_type,
+    entity_id: auth.entity_id,
+    target_type: auth.target_type,
+    target_id: auth.target_id,
+    permissions: auth.permissions || [],
+    valid_until: auth.valid_until ? auth.valid_until.slice(0, 16) : ''
+  }
+  // Clear search filters
+  userSearch.value = ''
+  groupSearch.value = ''
+  assetSearch.value = ''
+  orgSearch.value = ''
   showModal.value = true
 }
 
 // Submit form
 async function handleSubmit() {
-  if (!form.value.entity_id) {
-    message.error('请选择授权对象')
-    return
-  }
-  if (!form.value.target_id) {
-    message.error('请选择资产')
-    return
+  if (!isEditMode.value) {
+    if (!form.value.entity_id) {
+      message.error('请选择授权对象')
+      return
+    }
+    if (!form.value.target_id) {
+      message.error('请选择资产')
+      return
+    }
   }
   if (form.value.permissions.length === 0) {
     message.error('请选择权限')
@@ -135,22 +205,35 @@ async function handleSubmit() {
 
   modalLoading.value = true
   try {
-    const data: AuthorizationCreate = {
-      entity_type: form.value.entity_type,
-      entity_id: form.value.entity_id!,
-      target_type: form.value.target_type,
-      target_id: form.value.target_id!,
-      permissions: form.value.permissions,
+    if (isEditMode.value && editingAuthId.value) {
+      // Update existing authorization
+      const updateData: any = {
+        permissions: form.value.permissions,
+      }
+      if (form.value.valid_until) {
+        updateData.valid_until = form.value.valid_until
+      }
+      await updateAuthorization(editingAuthId.value, updateData)
+      message.success('授权更新成功')
+    } else {
+      // Create new authorization
+      const data: AuthorizationCreate = {
+        entity_type: form.value.entity_type,
+        entity_id: form.value.entity_id!,
+        target_type: form.value.target_type,
+        target_id: form.value.target_id!,
+        permissions: form.value.permissions,
+      }
+      if (form.value.valid_until) {
+        data.valid_until = form.value.valid_until
+      }
+      await createAuthorization(data)
+      message.success('授权创建成功')
     }
-    if (form.value.valid_until) {
-      data.valid_until = form.value.valid_until
-    }
-    await createAuthorization(data)
-    message.success('授权创建成功')
     showModal.value = false
     fetchAuthorizations()
   } catch (error: any) {
-    message.error(error.response?.data?.detail || '创建失败')
+    message.error(error.response?.data?.detail || '操作失败')
   } finally {
     modalLoading.value = false
   }
@@ -164,7 +247,7 @@ async function handleDelete(auth: any) {
     await deleteAuthorization(auth.id)
     message.success('授权已删除')
     fetchAuthorizations()
-  } catch (error) {
+  } catch {
     message.error('删除失败')
   }
 }
@@ -175,7 +258,7 @@ async function toggleStatus(auth: any) {
     await updateAuthorization(auth.id, { is_active: !auth.is_active })
     message.success(auth.is_active ? '授权已禁用' : '授权已启用')
     fetchAuthorizations()
-  } catch (error) {
+  } catch {
     message.error('操作失败')
   }
 }
@@ -184,6 +267,12 @@ async function toggleStatus(auth: any) {
 function formatDateTime(dateStr: string | null): string {
   if (!dateStr) return '-'
   return new Date(dateStr).toLocaleString('zh-CN')
+}
+
+// Get permission label
+function getPermissionLabel(key: string): string {
+  const opt = permissionOptions.find(p => p.key === key)
+  return opt ? opt.label : key
 }
 
 // Initial load
@@ -273,7 +362,7 @@ onMounted(() => {
                   :key="perm"
                   class="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded font-bold"
                 >
-                  {{ perm }}
+                  {{ getPermissionLabel(perm) }}
                 </span>
               </div>
             </td>
@@ -289,6 +378,9 @@ onMounted(() => {
             </td>
             <td>
               <div class="flex items-center gap-1">
+                <button @click="openEditModal(auth)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="编辑">
+                  <span class="material-symbols-outlined text-lg">edit</span>
+                </button>
                 <button @click="toggleStatus(auth)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" :title="auth.is_active ? '禁用' : '启用'">
                   <span class="material-symbols-outlined text-lg">{{ auth.is_active ? 'block' : 'check_circle' }}</span>
                 </button>
@@ -324,20 +416,20 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Create Authorization Modal -->
+    <!-- Create/Edit Authorization Modal -->
     <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showModal = false"></div>
       <div class="relative bg-white w-full max-w-2xl rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h2 class="text-xl font-bold text-slate-900">新增授权</h2>
+          <h2 class="text-xl font-bold text-slate-900">{{ isEditMode ? '编辑授权' : '新增授权' }}</h2>
           <button @click="showModal = false" class="p-2 hover:bg-slate-50 rounded-full">
             <span class="material-symbols-outlined">close</span>
           </button>
         </div>
         <div class="p-6">
           <form @submit.prevent="handleSubmit" class="space-y-6">
-            <!-- Entity Selection -->
-            <div>
+            <!-- Entity Selection (disabled in edit mode) -->
+            <div v-if="!isEditMode">
               <label class="block text-sm font-medium text-slate-700 mb-2">授权对象</label>
               <div class="flex gap-4 mb-3">
                 <label class="flex items-center gap-2 cursor-pointer">
@@ -349,23 +441,54 @@ onMounted(() => {
                   <span class="text-sm">用户组</span>
                 </label>
               </div>
-              <select v-model="form.entity_id" class="input-field">
-                <option :value="null">请选择{{ form.entity_type === 'user' ? '用户' : '用户组' }}</option>
-                <template v-if="form.entity_type === 'user'">
-                  <option v-for="user in users" :key="user.id" :value="user.id">
-                    {{ user.name }}{{ user.full_name ? ` (${user.full_name})` : '' }}
-                  </option>
-                </template>
-                <template v-else>
-                  <option v-for="group in groups" :key="group.id" :value="group.id">
-                    {{ group.name }}
-                  </option>
-                </template>
-              </select>
+              <div class="relative">
+                <input
+                  v-if="form.entity_type === 'user'"
+                  type="text"
+                  v-model="userSearch"
+                  placeholder="搜索用户..."
+                  class="input-field mb-2"
+                />
+                <input
+                  v-else
+                  type="text"
+                  v-model="groupSearch"
+                  placeholder="搜索用户组..."
+                  class="input-field mb-2"
+                />
+                <select v-model="form.entity_id" class="input-field">
+                  <option :value="null">请选择{{ form.entity_type === 'user' ? '用户' : '用户组' }}</option>
+                  <template v-if="form.entity_type === 'user'">
+                    <option v-for="user in filteredUsers" :key="user.id" :value="user.id">
+                      {{ user.name }}{{ user.full_name ? ` (${user.full_name})` : '' }}
+                    </option>
+                  </template>
+                  <template v-else>
+                    <option v-for="group in filteredGroups" :key="group.id" :value="group.id">
+                      {{ group.name }}
+                    </option>
+                  </template>
+                </select>
+              </div>
             </div>
 
-            <!-- Target Selection -->
-            <div>
+            <!-- Show entity info in edit mode -->
+            <div v-else>
+              <label class="block text-sm font-medium text-slate-700 mb-2">授权对象</label>
+              <div class="p-3 bg-slate-50 rounded-lg">
+                <p class="font-medium text-slate-900">
+                  {{ form.entity_type === 'user'
+                    ? users.find(u => u.id === form.entity_id)?.name
+                    : groups.find(g => g.id === form.entity_id)?.name }}
+                </p>
+                <p class="text-sm text-slate-500">
+                  {{ form.entity_type === 'user' ? '用户' : '用户组' }}
+                </p>
+              </div>
+            </div>
+
+            <!-- Target Selection (disabled in edit mode) -->
+            <div v-if="!isEditMode">
               <label class="block text-sm font-medium text-slate-700 mb-2">资产范围</label>
               <div class="flex gap-4 mb-3">
                 <label class="flex items-center gap-2 cursor-pointer">
@@ -373,16 +496,54 @@ onMounted(() => {
                   <span class="text-sm">单个资产</span>
                 </label>
                 <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" v-model="form.target_type" value="asset_group" class="text-primary" />
-                  <span class="text-sm">资产组</span>
+                  <input type="radio" v-model="form.target_type" value="organization" class="text-primary" />
+                  <span class="text-sm">组织</span>
                 </label>
               </div>
-              <select v-model="form.target_id" class="input-field">
-                <option :value="null">请选择{{ form.target_type === 'asset' ? '资产' : '资产组' }}</option>
-                <option v-for="item in (form.target_type === 'asset' ? assets : organizations)" :key="item.id" :value="item.id">
-                  {{ item.name }}
-                </option>
-              </select>
+              <div class="relative">
+                <input
+                  v-if="form.target_type === 'asset'"
+                  type="text"
+                  v-model="assetSearch"
+                  placeholder="搜索资产..."
+                  class="input-field mb-2"
+                />
+                <input
+                  v-else
+                  type="text"
+                  v-model="orgSearch"
+                  placeholder="搜索组织..."
+                  class="input-field mb-2"
+                />
+                <select v-model="form.target_id" class="input-field">
+                  <option :value="null">请选择{{ form.target_type === 'asset' ? '资产' : '组织' }}</option>
+                  <template v-if="form.target_type === 'asset'">
+                    <option v-for="item in filteredAssets" :key="item.id" :value="item.id">
+                      {{ item.name }} ({{ item.category }})
+                    </option>
+                  </template>
+                  <template v-else>
+                    <option v-for="item in filteredOrgs" :key="item.id" :value="item.id">
+                      {{ item.name }}{{ item.path ? ` - ${item.path}` : '' }}
+                    </option>
+                  </template>
+                </select>
+              </div>
+            </div>
+
+            <!-- Show target info in edit mode -->
+            <div v-else>
+              <label class="block text-sm font-medium text-slate-700 mb-2">资产范围</label>
+              <div class="p-3 bg-slate-50 rounded-lg">
+                <p class="font-medium text-slate-900">
+                  {{ form.target_type === 'asset'
+                    ? assets.find(a => a.id === form.target_id)?.name
+                    : organizations.find(o => o.id === form.target_id)?.name }}
+                </p>
+                <p class="text-sm text-slate-500">
+                  {{ form.target_type === 'asset' ? '资产' : '组织' }}
+                </p>
+              </div>
             </div>
 
             <!-- Permissions -->
@@ -416,7 +577,7 @@ onMounted(() => {
             <div class="flex justify-end gap-2 pt-4">
               <button type="button" @click="showModal = false" class="btn-secondary">取消</button>
               <button type="submit" :disabled="modalLoading" class="btn-primary">
-                {{ modalLoading ? '处理中...' : '创建授权' }}
+                {{ modalLoading ? '处理中...' : (isEditMode ? '保存修改' : '创建授权') }}
               </button>
             </div>
           </form>

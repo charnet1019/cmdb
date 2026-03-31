@@ -4,7 +4,7 @@ import type { Authorization } from '@/types'
 export interface AuthorizationCreate {
   entity_type: 'user' | 'group'
   entity_id: number
-  target_type: 'asset' | 'asset_group'
+  target_type: 'asset' | 'organization'
   target_id: number
   permissions: string[]
   valid_from?: string
