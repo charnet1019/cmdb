@@ -2,7 +2,7 @@
 User Management API
 CRUD operations for users and user groups
 """
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
