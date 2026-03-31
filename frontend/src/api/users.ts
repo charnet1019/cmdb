@@ -49,6 +49,31 @@ export async function resetUserPassword(id: number, data: {
   return response.data.data
 }
 
+// User Authorizations API
+export interface UserAuthorization {
+  id: number
+  asset_id: number
+  asset_name: string
+  asset_category: string
+  permissions: string[]
+  valid_until: string | null
+  status: string
+  source_type: 'direct' | 'group'
+  group_id?: number
+  group_name?: string
+}
+
+export interface UserAuthorizationsResponse {
+  direct: UserAuthorization[]
+  inherited: UserAuthorization[]
+  total: number
+}
+
+export async function getUserAuthorizations(userId: number): Promise<UserAuthorizationsResponse> {
+  const response = await api.get(`/users/${userId}/authorizations`)
+  return response.data.data
+}
+
 // Group APIs
 export async function getGroups(params: {
   page?: number

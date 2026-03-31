@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
 from app.database import get_db
-from app.models import User, Group, UserGroup
+from app.models import User, Group, UserGroup, Authorization, Asset
 from app.schemas import (
     UserCreate, UserUpdate, UserResponse, UserSimple,
     UserListResponse, PaginationMeta,
@@ -361,6 +361,106 @@ async def reset_user_password(
         response_data["temp_password"] = temp_password
 
     return {"code": 0, "message": "密码重置成功", "data": response_data}
+
+
+@router.get("/{user_id}/authorizations")
+async def get_user_authorizations(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get user's asset authorizations (direct and inherited through groups)"""
+    # Check user exists
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    # Get user's groups
+    groups_result = await db.execute(
+        select(Group).join(UserGroup).where(UserGroup.user_id == user_id)
+    )
+    user_groups = groups_result.scalars().all()
+    group_ids = [g.id for g in user_groups]
+
+    # Get direct authorizations (entity_type='user')
+    direct_auths_result = await db.execute(
+        select(Authorization).where(
+            Authorization.entity_type == "user",
+            Authorization.entity_id == user_id,
+            Authorization.is_active == True,
+        )
+    )
+    direct_auths = direct_auths_result.scalars().all()
+
+    # Get inherited authorizations (entity_type='group')
+    inherited_auths = []
+    if group_ids:
+        inherited_auths_result = await db.execute(
+            select(Authorization).where(
+                Authorization.entity_type == "group",
+                Authorization.entity_id.in_(group_ids),
+                Authorization.is_active == True,
+            )
+        )
+        inherited_auths = inherited_auths_result.scalars().all()
+
+    # Collect all asset IDs
+    asset_ids = set()
+    for auth in direct_auths + inherited_auths:
+        if auth.target_type == "asset":
+            asset_ids.add(auth.target_id)
+
+    # Batch fetch assets
+    assets_map = {}
+    if asset_ids:
+        assets_result = await db.execute(select(Asset).where(Asset.id.in_(asset_ids)))
+        for asset in assets_result.scalars().all():
+            assets_map[asset.id] = asset
+
+    # Build response
+    direct_list = []
+    for auth in direct_auths:
+        asset = assets_map.get(auth.target_id)
+        if asset:
+            direct_list.append({
+                "id": auth.id,
+                "asset_id": asset.id,
+                "asset_name": asset.name,
+                "asset_category": asset.category,
+                "permissions": auth.permissions,
+                "valid_until": auth.valid_until.isoformat() if auth.valid_until else None,
+                "status": "active" if auth.is_active else "inactive",
+                "source_type": "direct",
+            })
+
+    inherited_list = []
+    for auth in inherited_auths:
+        asset = assets_map.get(auth.target_id)
+        if asset:
+            # Find group name
+            group_name = next((g.name for g in user_groups if g.id == auth.entity_id), "Unknown")
+            inherited_list.append({
+                "id": auth.id,
+                "asset_id": asset.id,
+                "asset_name": asset.name,
+                "asset_category": asset.category,
+                "permissions": auth.permissions,
+                "valid_until": auth.valid_until.isoformat() if auth.valid_until else None,
+                "status": "active" if auth.is_active else "inactive",
+                "source_type": "group",
+                "group_id": auth.entity_id,
+                "group_name": group_name,
+            })
+
+    return {
+        "code": 0,
+        "data": {
+            "direct": direct_list,
+            "inherited": inherited_list,
+            "total": len(direct_list) + len(inherited_list),
+        }
+    }
 
 
 # ============== Group APIs ==============

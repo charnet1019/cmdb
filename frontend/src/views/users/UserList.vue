@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
-import { getUsers, createUser, updateUser, deleteUser, resetUserPassword } from '@/api/users'
+import { getUsers, createUser, updateUser, deleteUser, resetUserPassword, getUserAuthorizations } from '@/api/users'
 import { getGroups } from '@/api/users'
 import type { User, Group } from '@/types'
+import type { UserAuthorization } from '@/api/users'
 
 // Data
 const users = ref<User[]>([])
@@ -20,9 +21,13 @@ const statusFilter = ref<boolean | null>(null)
 // Modal states
 const showUserModal = ref(false)
 const showResetPasswordModal = ref(false)
+const showAuthorizationsModal = ref(false)
 const modalLoading = ref(false)
 const editingUser = ref<User | null>(null)
 const resetPasswordUser = ref<User | null>(null)
+const authUser = ref<User | null>(null)
+const authorizations = ref<UserAuthorization[]>([])
+const authorizationsLoading = ref(false)
 
 // Form state
 const userForm = ref({
@@ -251,6 +256,46 @@ function formatDate(dateStr: string | null): string {
   })
 }
 
+// Asset category labels
+const categoryLabels: Record<string, string> = {
+  host: '主机',
+  network: '网络设备',
+  database: '数据库',
+  cloud: '云服务',
+  web: 'Web',
+  gpt: 'GPT'
+}
+
+// Permission labels
+const permissionLabels: Record<string, string> = {
+  view: '查看资产',
+  manage: '管理资产',
+  user_mgmt: '用户管理',
+  sys_config: '系统设置',
+  audit_log: '日志审计',
+  view_pwd: '查看密码',
+  manage_pwd: '管理密码'
+}
+
+// Open authorizations modal
+async function openAuthorizationsModal(user: User) {
+  authUser.value = user
+  authorizations.value = []
+  authorizationsLoading.value = true
+  showAuthorizationsModal.value = true
+
+  try {
+    const result = await getUserAuthorizations(user.id)
+    // Combine direct and inherited authorizations
+    authorizations.value = [...result.direct, ...result.inherited]
+  } catch (error) {
+    message.error('获取授权列表失败')
+    authorizations.value = []
+  } finally {
+    authorizationsLoading.value = false
+  }
+}
+
 // Initial load
 onMounted(() => {
   fetchUsers()
@@ -356,6 +401,10 @@ onMounted(() => {
             </td>
             <td>
               <div class="flex items-center gap-1">
+                <button @click="openAuthorizationsModal(user)" class="text-xs text-primary hover:underline flex items-center gap-1 mr-2" title="已授权资产">
+                  <span class="material-symbols-outlined text-sm">shield</span>
+                  授权
+                </button>
                 <button @click="openEditModal(user)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="编辑">
                   <span class="material-symbols-outlined text-lg">edit</span>
                 </button>
@@ -558,6 +607,72 @@ onMounted(() => {
               </button>
             </div>
           </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Authorizations Modal -->
+    <div v-if="showAuthorizationsModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showAuthorizationsModal = false"></div>
+      <div class="relative bg-white w-full max-w-3xl rounded-xl shadow-2xl max-h-[80vh] overflow-y-auto">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="text-xl font-bold text-slate-900">已授权资产 - {{ authUser?.full_name || authUser?.username }}</h2>
+          <button @click="showAuthorizationsModal = false" class="p-2 hover:bg-slate-50 rounded-full">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div class="p-6">
+          <div v-if="authorizationsLoading" class="text-center py-8 text-slate-500">加载中...</div>
+          <div v-else-if="authorizations.length === 0" class="text-center py-8 text-slate-500">暂无授权记录</div>
+          <table v-else class="data-table">
+            <thead>
+              <tr>
+                <th>资产名称</th>
+                <th>资产类型</th>
+                <th>权限</th>
+                <th>授权来源</th>
+                <th>有效期</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="auth in authorizations" :key="auth.id">
+                <td>
+                  <span class="font-medium text-slate-900">{{ auth.asset_name }}</span>
+                </td>
+                <td>
+                  <span class="text-sm text-slate-600">{{ categoryLabels[auth.asset_category] || auth.asset_category }}</span>
+                </td>
+                <td>
+                  <div class="flex flex-wrap gap-1">
+                    <span
+                      v-for="perm in auth.permissions"
+                      :key="perm"
+                      class="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded font-medium"
+                    >
+                      {{ permissionLabels[perm] || perm }}
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <span v-if="auth.source_type === 'direct'" class="text-xs text-primary">直接授权</span>
+                  <span v-else class="text-xs text-slate-500">用户组: {{ auth.group_name }}</span>
+                </td>
+                <td>
+                  <span class="text-sm text-slate-600">{{ auth.valid_until ? formatDate(auth.valid_until) : '永久' }}</span>
+                </td>
+                <td>
+                  <span class="badge badge-success">
+                    <span class="inline-block w-1.5 h-1.5 rounded-full mr-1 bg-success"></span>
+                    {{ auth.status === 'active' ? 'Active' : 'Inactive' }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="flex justify-end mt-4">
+            <button @click="showAuthorizationsModal = false" class="btn-secondary">关闭</button>
+          </div>
         </div>
       </div>
     </div>
