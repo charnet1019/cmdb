@@ -120,30 +120,5 @@
     </div>
     <div id="app" v-cloak></div>
     <script type="module" src="/src/main.ts"></script>
-    <!-- Hide loading indicator after fonts load -->
-    <script>
-      (function() {
-        function hideLoading() {
-          var loading = document.getElementById('app-loading');
-          if (loading) {
-            loading.style.opacity = '0';
-            loading.style.transition = 'opacity 0.2s';
-            setTimeout(function() {
-              loading.classList.add('hidden');
-            }, 200);
-          }
-        }
-
-        // Wait for fonts to load before hiding loading indicator
-        if (document.fonts && document.fonts.ready) {
-          document.fonts.ready.then(hideLoading);
-        } else {
-          // Fallback: wait 300ms after DOMContentLoaded
-          document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(hideLoading, 300);
-          });
-        }
-      })();
-    </script>
   </body>
 </html>
