@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
+import { UsergroupAddOutlined, SearchOutlined, SafetyCertificateOutlined, GroupOutlined, EditOutlined, DeleteOutlined, CloseOutlined, UserAddOutlined, UserDeleteOutlined } from '@ant-design/icons-vue'
 import { getGroups, createGroup, deleteGroup, updateGroup, getGroupAuthorizations, getGroupMembers, addGroupMembers, removeGroupMember, getUsers } from '@/api/users'
 import type { Group, User } from '@/types'
 import type { GroupAuthorization, GroupMember } from '@/api/users'
@@ -45,8 +46,8 @@ const categoryLabels: Record<string, string> = {
   network: '网络设备',
   database: '数据库',
   cloud: '云服务',
-  web: 'Web',
-  gpt: 'GPT'
+  web: '网站服务',
+  gpt: 'AI服务'
 }
 
 // Permission labels
@@ -267,7 +268,7 @@ onMounted(() => {
         <p class="text-slate-500 mt-1">管理用户组及其所属权限</p>
       </div>
       <button @click="openCreateModal" class="btn-primary flex items-center gap-2">
-        <span class="material-symbols-outlined">group_add</span>
+        <UsergroupAddOutlined />
         创建用户组
       </button>
     </div>
@@ -276,7 +277,7 @@ onMounted(() => {
     <div class="bg-white rounded-xl shadow-sm p-4">
       <div class="flex items-center gap-4">
         <div class="relative flex-1 max-w-md">
-          <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+          <SearchOutlined class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             v-model="searchQuery"
             type="text"
@@ -312,7 +313,7 @@ onMounted(() => {
             <td>
               <div class="flex items-center gap-3">
                 <div class="w-10 h-10 rounded bg-primary/10 flex items-center justify-center">
-                  <span class="material-symbols-outlined text-primary">shield</span>
+                  <SafetyCertificateOutlined class="text-primary" />
                 </div>
                 <span class="font-medium text-slate-900">{{ group.name }}</span>
               </div>
@@ -331,18 +332,18 @@ onMounted(() => {
             <td>
               <div class="flex items-center gap-2">
                 <button @click="openAuthModal(group)" class="text-xs text-primary hover:underline flex items-center gap-1">
-                  <span class="material-symbols-outlined text-sm">shield</span>
+                  <SafetyCertificateOutlined class="text-sm" />
                   授权
                 </button>
                 <button @click="openMembersModal(group)" class="text-xs text-primary hover:underline flex items-center gap-1">
-                  <span class="material-symbols-outlined text-sm">group</span>
+                  <GroupOutlined class="text-sm" />
                   成员
                 </button>
                 <button @click="openEditModal(group)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="编辑">
-                  <span class="material-symbols-outlined text-lg">edit</span>
+                  <EditOutlined class="text-lg" />
                 </button>
                 <button @click="handleDelete(group)" class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600" title="删除">
-                  <span class="material-symbols-outlined text-lg">delete</span>
+                  <DeleteOutlined class="text-lg" />
                 </button>
               </div>
             </td>
@@ -380,7 +381,7 @@ onMounted(() => {
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h2 class="text-xl font-bold text-slate-900">创建用户组</h2>
           <button @click="showModal = false" class="p-2 hover:bg-slate-50 rounded-full">
-            <span class="material-symbols-outlined">close</span>
+            <CloseOutlined />
           </button>
         </div>
         <div class="p-6">
@@ -411,7 +412,7 @@ onMounted(() => {
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h2 class="text-xl font-bold text-slate-900">编辑用户组</h2>
           <button @click="showEditModal = false" class="p-2 hover:bg-slate-50 rounded-full">
-            <span class="material-symbols-outlined">close</span>
+            <CloseOutlined />
           </button>
         </div>
         <div class="p-6">
@@ -442,7 +443,7 @@ onMounted(() => {
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h2 class="text-xl font-bold text-slate-900">已授权资产 - {{ selectedGroup?.name }}</h2>
           <button @click="showAuthModal = false" class="p-2 hover:bg-slate-50 rounded-full">
-            <span class="material-symbols-outlined">close</span>
+            <CloseOutlined />
           </button>
         </div>
         <div class="p-6">
@@ -503,7 +504,7 @@ onMounted(() => {
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h2 class="text-xl font-bold text-slate-900">管理成员 - {{ selectedGroup?.name }}</h2>
           <button @click="showMembersModal = false" class="p-2 hover:bg-slate-50 rounded-full">
-            <span class="material-symbols-outlined">close</span>
+            <CloseOutlined />
           </button>
         </div>
         <div class="p-6">
@@ -517,7 +518,7 @@ onMounted(() => {
                 </option>
               </select>
               <button @click="handleAddMembers" class="btn-primary" :disabled="selectedUserIds.length === 0">
-                <span class="material-symbols-outlined text-sm mr-1">person_add</span>
+                <UserAddOutlined class="text-sm mr-1" />
                 添加
               </button>
             </div>
@@ -550,7 +551,7 @@ onMounted(() => {
                 class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600"
                 title="移除"
               >
-                <span class="material-symbols-outlined text-lg">person_remove</span>
+                <UserDeleteOutlined class="text-lg" />
               </button>
             </div>
           </div>

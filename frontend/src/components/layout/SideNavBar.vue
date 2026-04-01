@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
 import { ref, watch } from 'vue'
+import {
+  AppstoreOutlined,
+  ClusterOutlined,
+  TeamOutlined,
+  SafetyCertificateOutlined,
+  HistoryOutlined,
+  SettingOutlined,
+  DownOutlined
+} from '@ant-design/icons-vue'
 
 defineProps<{
   collapsed?: boolean
@@ -13,31 +22,31 @@ const router = useRouter()
 const expandedParentId = ref<string | null>(null)
 
 const menuItems = [
-  { id: 'dashboard', icon: 'dashboard', label: '仪表盘', path: '/dashboard' },
+  { id: 'dashboard', icon: AppstoreOutlined, label: '仪表盘', path: '/dashboard' },
   {
-    id: 'assets', icon: 'inventory_2', label: '资产管理',
+    id: 'assets', icon: ClusterOutlined, label: '资产管理',
     children: [{ id: 'assets-list', label: '资产列表', path: '/assets' }]
   },
   {
-    id: 'users', icon: 'group', label: '用户管理',
+    id: 'users', icon: TeamOutlined, label: '用户管理',
     children: [
       { id: 'users-list', label: '用户', path: '/users' },
       { id: 'users-groups', label: '用户组', path: '/users/groups' }
     ]
   },
   {
-    id: 'permissions', icon: 'verified_user', label: '权限管理',
+    id: 'permissions', icon: SafetyCertificateOutlined, label: '权限管理',
     children: [{ id: 'authorizations', label: '资产授权', path: '/permissions/authorizations' }]
   },
   {
-    id: 'logs', icon: 'history_edu', label: '日志审计',
+    id: 'logs', icon: HistoryOutlined, label: '日志审计',
     children: [
       { id: 'logs-login', label: '登录日志', path: '/logs/login' },
       { id: 'logs-operation', label: '操作日志', path: '/logs/operation' },
       { id: 'logs-password', label: '改密日志', path: '/logs/password' }
     ]
   },
-  { id: 'settings', icon: 'settings', label: '系统设置', path: '/settings' }
+  { id: 'settings', icon: SettingOutlined, label: '系统设置', path: '/settings' }
 ]
 
 function navigateTo(path: string) {
@@ -102,7 +111,7 @@ watch(() => route.path, (path) => {
           class="nav-item"
           :class="{ active: isActive(item.path) }"
         >
-          <span class="material-symbols-outlined" style="font-size: 20px;">{{ item.icon }}</span>
+          <component :is="item.icon" style="font-size: 20px;"/>
           <span v-if="!collapsed" style="font-size: 14px;">{{ item.label }}</span>
         </div>
 
@@ -114,12 +123,10 @@ watch(() => route.path, (path) => {
             class="nav-item"
             :class="{ active: isParentSelfActive(item), expanded: hasActiveChild(item) }"
           >
-            <span class="material-symbols-outlined" style="font-size: 20px;">{{ item.icon }}</span>
+            <component :is="item.icon" style="font-size: 20px;"/>
             <span v-if="!collapsed" style="font-size: 14px; flex: 1;">{{ item.label }}</span>
             <!-- 展开/折叠箭头 -->
-            <span v-if="!collapsed" class="material-symbols-outlined" style="font-size: 16px; transition: transform 0.2s;" :style="{ transform: isParentExpanded(item) ? 'rotate(180deg)' : 'rotate(0deg)' }">
-              expand_more
-            </span>
+            <component v-if="!collapsed" :is="DownOutlined" style="font-size: 16px; transition: transform 0.2s;" :style="{ transform: isParentExpanded(item) ? 'rotate(180deg)' : 'rotate(0deg)' }"/>
           </div>
 
           <!-- 子菜单：仅当父菜单展开时显示 -->

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
+import { UserAddOutlined, SearchOutlined, SafetyCertificateOutlined, EditOutlined, LockOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-vue'
 import { getUsers, createUser, updateUser, deleteUser, resetUserPassword, getUserAuthorizations } from '@/api/users'
 import { getGroups } from '@/api/users'
 import type { User, Group } from '@/types'
@@ -262,8 +263,8 @@ const categoryLabels: Record<string, string> = {
   network: '网络设备',
   database: '数据库',
   cloud: '云服务',
-  web: 'Web',
-  gpt: 'GPT'
+  web: '网站服务',
+  gpt: 'AI服务'
 }
 
 // Permission labels
@@ -312,7 +313,7 @@ onMounted(() => {
         <p class="text-slate-500 mt-1">管理企业架构中的所有系统访问用户及其权限角色</p>
       </div>
       <button @click="openCreateModal" class="btn-primary flex items-center gap-2">
-        <span class="material-symbols-outlined">person_add</span>
+        <UserAddOutlined />
         添加用户
       </button>
     </div>
@@ -321,7 +322,7 @@ onMounted(() => {
     <div class="bg-white rounded-xl shadow-sm p-4">
       <div class="flex items-center gap-4">
         <div class="relative flex-1 max-w-md">
-          <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+          <SearchOutlined class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             v-model="searchQuery"
             type="text"
@@ -402,17 +403,17 @@ onMounted(() => {
             <td>
               <div class="flex items-center gap-1">
                 <button @click="openAuthorizationsModal(user)" class="text-xs text-primary hover:underline flex items-center gap-1 mr-2" title="已授权资产">
-                  <span class="material-symbols-outlined text-sm">shield</span>
+                  <SafetyCertificateOutlined class="text-sm" />
                   授权
                 </button>
                 <button @click="openEditModal(user)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="编辑">
-                  <span class="material-symbols-outlined text-lg">edit</span>
+                  <EditOutlined class="text-lg" />
                 </button>
                 <button @click="openResetPasswordModal(user)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="重置密码">
-                  <span class="material-symbols-outlined text-lg">lock_reset</span>
+                  <LockOutlined class="text-lg" />
                 </button>
                 <button @click="handleDelete(user)" class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600" title="删除">
-                  <span class="material-symbols-outlined text-lg">delete</span>
+                  <DeleteOutlined class="text-lg" />
                 </button>
               </div>
             </td>
@@ -450,7 +451,7 @@ onMounted(() => {
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h2 class="text-xl font-bold text-slate-900">{{ modalTitle }}</h2>
           <button @click="showUserModal = false" class="p-2 hover:bg-slate-50 rounded-full">
-            <span class="material-symbols-outlined">close</span>
+            <CloseOutlined />
           </button>
         </div>
         <div class="p-6">
@@ -560,7 +561,7 @@ onMounted(() => {
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h2 class="text-xl font-bold text-slate-900">重置密码 - {{ resetPasswordUser?.full_name || resetPasswordUser?.username }}</h2>
           <button @click="showResetPasswordModal = false" class="p-2 hover:bg-slate-50 rounded-full">
-            <span class="material-symbols-outlined">close</span>
+            <CloseOutlined />
           </button>
         </div>
         <div class="p-6">
@@ -618,7 +619,7 @@ onMounted(() => {
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h2 class="text-xl font-bold text-slate-900">已授权资产 - {{ authUser?.full_name || authUser?.username }}</h2>
           <button @click="showAuthorizationsModal = false" class="p-2 hover:bg-slate-50 rounded-full">
-            <span class="material-symbols-outlined">close</span>
+            <CloseOutlined />
           </button>
         </div>
         <div class="p-6">

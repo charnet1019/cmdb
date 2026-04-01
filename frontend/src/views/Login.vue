@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
+import { UserOutlined, LockOutlined, EyeOutlined, EyeInvisibleOutlined, LoadingOutlined, DatabaseOutlined, CheckCircleOutlined } from '@ant-design/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
@@ -72,28 +73,27 @@ async function handleLogin() {
       <div class="relative z-10 flex flex-col items-center justify-center w-full p-12">
         <!-- Logo -->
         <div class="bg-white/10 backdrop-blur-xl border border-white/20 rounded-full p-8 mb-8">
-          <span class="material-symbols-outlined text-white text-5xl">dns</span>
+          <DatabaseOutlined class="text-white text-5xl" />
         </div>
 
         <!-- Title -->
         <h1 class="text-4xl font-bold text-white mb-4 font-headline">CMDB</h1>
         <p class="text-white/80 text-center max-w-md text-lg">
-          Configuration Management Database<br />
           企业资产配置管理平台
         </p>
 
         <!-- Features -->
         <div class="mt-12 space-y-4">
           <div class="flex items-center gap-3 text-white/90">
-            <span class="material-symbols-outlined">check_circle</span>
+            <CheckCircleOutlined class="text-white/90" />
             <span>统一管理IT基础设施资产</span>
           </div>
           <div class="flex items-center gap-3 text-white/90">
-            <span class="material-symbols-outlined">check_circle</span>
+            <CheckCircleOutlined class="text-white/90" />
             <span>凭证加密存储与访问控制</span>
           </div>
           <div class="flex items-center gap-3 text-white/90">
-            <span class="material-symbols-outlined">check_circle</span>
+            <CheckCircleOutlined class="text-white/90" />
             <span>完整的操作审计日志</span>
           </div>
         </div>
@@ -115,7 +115,7 @@ async function handleLogin() {
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-2">用户名</label>
             <div class="relative">
-              <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">person</span>
+              <UserOutlined class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 v-model="formState.username"
                 type="text"
@@ -129,7 +129,7 @@ async function handleLogin() {
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-2">密码</label>
             <div class="relative">
-              <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">lock</span>
+              <LockOutlined class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 v-model="formState.password"
                 :type="showPassword ? 'text' : 'password'"
@@ -141,7 +141,7 @@ async function handleLogin() {
                 @click="togglePasswordVisibility"
                 class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
-                <span class="material-symbols-outlined">{{ showPassword ? 'visibility_off' : 'visibility' }}</span>
+                <component :is="showPassword ? EyeInvisibleOutlined : EyeOutlined" />
               </button>
             </div>
           </div>
@@ -165,9 +165,7 @@ async function handleLogin() {
             :disabled="loading"
             class="btn-primary w-full py-3.5 flex items-center justify-center gap-2"
           >
-            <span v-if="loading" class="animate-spin">
-              <span class="material-symbols-outlined text-xl">sync</span>
-            </span>
+            <LoadingOutlined v-if="loading" spin class="text-xl" />
             <span v-else>立即登录</span>
           </button>
         </form>
@@ -182,3 +180,7 @@ async function handleLogin() {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* Additional styles if needed */
+</style>

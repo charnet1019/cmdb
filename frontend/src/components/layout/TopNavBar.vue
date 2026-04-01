@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth'
 import { ref, onUnmounted } from 'vue'
+import { MenuOutlined, SearchOutlined, BellOutlined, DownOutlined, SettingOutlined, LogoutOutlined } from '@ant-design/icons-vue'
 
 const authStore = useAuthStore()
 
@@ -51,7 +52,7 @@ onUnmounted(() => {
         @click="handleToggleSidebar"
         style="padding: 8px; border-radius: 8px; border: none; background: transparent; cursor: pointer; color: #475569;"
       >
-        <span class="material-symbols-outlined">menu</span>
+        <MenuOutlined />
       </button>
 
       <router-link to="/" style="display: flex; align-items: center; gap: 8px; text-decoration: none;">
@@ -64,7 +65,7 @@ onUnmounted(() => {
 
     <!-- Center section - Search -->
     <div style="flex: 1; max-width: 28rem; margin: 0 32px; position: relative;">
-      <span class="material-symbols-outlined" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8;">search</span>
+      <SearchOutlined style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8;" />
       <input
         v-model="searchQuery"
         type="text"
@@ -77,7 +78,7 @@ onUnmounted(() => {
     <div style="display: flex; align-items: center; gap: 12px;">
       <!-- Notifications -->
       <button style="padding: 8px; border-radius: 8px; border: none; background: transparent; cursor: pointer; color: #475569; position: relative;">
-        <span class="material-symbols-outlined">notifications</span>
+        <BellOutlined />
         <span style="position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; background-color: #B3261E; border-radius: 50%;"></span>
       </button>
 
@@ -95,7 +96,7 @@ onUnmounted(() => {
         <!-- Dropdown -->
         <div style="position: relative;" @mouseenter="showMenu" @mouseleave="hideMenu">
           <button style="padding: 4px; border-radius: 4px; border: none; background: transparent; cursor: pointer; color: #94a3b8;">
-            <span class="material-symbols-outlined">expand_more</span>
+            <DownOutlined />
           </button>
 
           <div
@@ -103,11 +104,11 @@ onUnmounted(() => {
             style="position: absolute; right: 0; top: 100%; margin-top: 4px; width: 192px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border: 1px solid #f1f5f9; padding: 4px 0;"
           >
             <router-link to="/settings" style="display: block; padding: 8px 16px; font-size: 14px; color: #334155; text-decoration: none;">
-              <span class="material-symbols-outlined" style="font-size: 16px; margin-right: 8px; vertical-align: middle;">settings</span>
+              <SettingOutlined style="font-size: 16px; margin-right: 8px; vertical-align: middle;" />
               系统设置
             </router-link>
             <button @click="handleLogout" style="width: 100%; text-align: left; padding: 8px 16px; font-size: 14px; color: #334155; border: none; background: none; cursor: pointer;">
-              <span class="material-symbols-outlined" style="font-size: 16px; margin-right: 8px; vertical-align: middle;">logout</span>
+              <LogoutOutlined style="font-size: 16px; margin-right: 8px; vertical-align: middle;" />
               退出登录
             </button>
           </div>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
+import { SettingOutlined, LockOutlined, SafetyCertificateOutlined, LoadingOutlined, SaveOutlined, InfoCircleOutlined } from '@ant-design/icons-vue'
 import { getSettings, updateSettings } from '@/api/settings'
 
 // Loading states
@@ -119,7 +120,7 @@ onMounted(() => {
             :class="activeTab === 'system' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'"
             class="px-6 py-4 text-sm font-medium border-b-2 -mb-px transition-colors"
           >
-            <span class="material-symbols-outlined text-lg align-middle mr-1">settings</span>
+            <SettingOutlined class="text-lg align-middle mr-1" />
             系统设置
           </button>
           <button
@@ -127,7 +128,7 @@ onMounted(() => {
             :class="activeTab === 'password' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'"
             class="px-6 py-4 text-sm font-medium border-b-2 -mb-px transition-colors"
           >
-            <span class="material-symbols-outlined text-lg align-middle mr-1">password</span>
+            <LockOutlined class="text-lg align-middle mr-1" />
             密码策略
           </button>
           <button
@@ -135,7 +136,7 @@ onMounted(() => {
             :class="activeTab === 'security' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'"
             class="px-6 py-4 text-sm font-medium border-b-2 -mb-px transition-colors"
           >
-            <span class="material-symbols-outlined text-lg align-middle mr-1">shield</span>
+            <SafetyCertificateOutlined class="text-lg align-middle mr-1" />
             登录安全
           </button>
         </nav>
@@ -143,7 +144,7 @@ onMounted(() => {
 
       <!-- Loading state -->
       <div v-if="loading" class="p-12 text-center text-slate-500">
-        <span class="material-symbols-outlined animate-spin text-4xl">progress_activity</span>
+        <LoadingOutlined class="animate-spin text-4xl" />
         <p class="mt-2">加载中...</p>
       </div>
 
@@ -184,8 +185,8 @@ onMounted(() => {
         <!-- Actions -->
         <div class="flex items-center gap-3 pt-4 border-t border-slate-100">
           <button @click="saveSettings" :disabled="saving" class="btn-primary flex items-center gap-2">
-            <span v-if="saving" class="material-symbols-outlined animate-spin text-lg">progress_activity</span>
-            <span v-else class="material-symbols-outlined text-lg">save</span>
+            <LoadingOutlined v-if="saving" class="animate-spin text-lg" />
+            <SaveOutlined v-else class="text-lg" />
             {{ saving ? '保存中...' : '保存设置' }}
           </button>
           <button @click="resetToDefaults" class="btn-secondary">恢复默认</button>
@@ -285,8 +286,8 @@ onMounted(() => {
         <!-- Actions -->
         <div class="flex items-center gap-3 pt-4 border-t border-slate-100">
           <button @click="saveSettings" :disabled="saving" class="btn-primary flex items-center gap-2">
-            <span v-if="saving" class="material-symbols-outlined animate-spin text-lg">progress_activity</span>
-            <span v-else class="material-symbols-outlined text-lg">save</span>
+            <LoadingOutlined v-if="saving" class="animate-spin text-lg" />
+            <SaveOutlined v-else class="text-lg" />
             {{ saving ? '保存中...' : '保存设置' }}
           </button>
           <button @click="resetToDefaults" class="btn-secondary">恢复默认</button>
@@ -315,7 +316,7 @@ onMounted(() => {
           <!-- Security Info -->
           <div class="p-4 bg-blue-50 rounded-lg">
             <div class="flex items-start gap-3">
-              <span class="material-symbols-outlined text-blue-600">info</span>
+              <InfoCircleOutlined class="text-blue-600" />
               <div class="text-sm text-blue-800">
                 <p class="font-medium">安全提示</p>
                 <ul class="mt-2 space-y-1 list-disc list-inside text-blue-700">
@@ -350,8 +351,8 @@ onMounted(() => {
         <!-- Actions -->
         <div class="flex items-center gap-3 pt-4 border-t border-slate-100">
           <button @click="saveSettings" :disabled="saving" class="btn-primary flex items-center gap-2">
-            <span v-if="saving" class="material-symbols-outlined animate-spin text-lg">progress_activity</span>
-            <span v-else class="material-symbols-outlined text-lg">save</span>
+            <LoadingOutlined v-if="saving" class="animate-spin text-lg" />
+            <SaveOutlined v-else class="text-lg" />
             {{ saving ? '保存中...' : '保存设置' }}
           </button>
           <button @click="resetToDefaults" class="btn-secondary">恢复默认</button>

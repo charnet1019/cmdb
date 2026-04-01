@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
+import { PlusOutlined, SearchOutlined, FolderOpenOutlined, FolderOutlined, FileTextOutlined, DownOutlined, KeyOutlined, EditOutlined, DeleteOutlined, CloseOutlined, PlusCircleOutlined, UserOutlined, EyeOutlined, CopyOutlined, AppstoreOutlined, ClusterOutlined, DatabaseOutlined, CloudServerOutlined, GlobalOutlined, RobotOutlined, MenuOutlined } from '@ant-design/icons-vue'
 import { getAssets, getOrganizations, createAsset, updateAsset, deleteAsset, getCredentials, createCredential, decryptCredential, deleteCredential } from '@/api/assets'
 import type { Asset, AssetCategory, Organization, Credential } from '@/types'
 
@@ -57,13 +58,13 @@ const form = ref({
 
 // Categories
 const categories = [
-  { key: 'all', label: '所有', icon: 'menu' },
-  { key: 'host', label: '主机', icon: 'dns' },
-  { key: 'network', label: '网络设备', icon: 'router' },
-  { key: 'database', label: '数据库', icon: 'database' },
-  { key: 'cloud', label: '云服务', icon: 'cloud' },
-  { key: 'web', label: 'Web', icon: 'public' },
-  { key: 'gpt', label: 'GPT', icon: 'psychology' }
+  { key: 'all', label: '全部', icon: MenuOutlined },
+  { key: 'host', label: '主机', icon: AppstoreOutlined },
+  { key: 'network', label: '网络设备', icon: ClusterOutlined },
+  { key: 'database', label: '数据库', icon: DatabaseOutlined },
+  { key: 'cloud', label: '云服务', icon: CloudServerOutlined },
+  { key: 'web', label: '网站服务', icon: GlobalOutlined },
+  { key: 'gpt', label: 'AI服务', icon: RobotOutlined }
 ]
 
 // Category options for form
@@ -137,9 +138,9 @@ function handlePageChange(newPage: number) {
 }
 
 // Get category icon
-function getCategoryIcon(category: string): string {
+function getCategoryIcon(category: string) {
   const cat = categories.find(c => c.key === category)
-  return cat?.icon || 'inventory_2'
+  return cat?.icon || MenuOutlined
 }
 
 // Toggle org expansion
@@ -393,7 +394,7 @@ onMounted(() => {
         <p class="text-slate-500 mt-1">管理和查看所有IT基础设施资产</p>
       </div>
       <button @click="openCreateModal" class="btn-primary flex items-center gap-2">
-        <span class="material-symbols-outlined">add</span>
+        <PlusOutlined />
         创建资产
       </button>
     </div>
@@ -412,7 +413,7 @@ onMounted(() => {
               : 'text-slate-500 hover:text-slate-700'
           "
         >
-          <span class="material-symbols-outlined text-lg">{{ cat.icon }}</span>
+          <component :is="cat.icon" class="text-lg" />
           {{ cat.label }}
         </button>
       </div>
@@ -440,7 +441,7 @@ onMounted(() => {
               :class="selectedOrgId === null ? 'bg-primary/10 text-primary' : 'text-slate-600'"
               @click="selectOrganization(null)"
             >
-              <span class="material-symbols-outlined text-sm mr-1">folder_open</span>
+              <FolderOpenOutlined class="text-sm mr-1" />
               全部资产
             </div>
             <template v-for="org in flattenedOrgs" :key="org.id">
@@ -450,17 +451,10 @@ onMounted(() => {
                 :style="{ paddingLeft: `${org.level * 16 + 8}px` }"
                 @click="selectOrganization(org.id)"
               >
-                <span
-                  v-if="org.hasChildren"
-                  class="material-symbols-outlined text-xs cursor-pointer hover:bg-slate-200 rounded"
-                  @click.stop="toggleOrg(org.id)"
-                >
-                  {{ isOrgExpanded(org.id) ? 'expand_more' : 'chevron_right' }}
-                </span>
+                <DownOutlined v-if="org.hasChildren" class="text-xs cursor-pointer hover:bg-slate-200 rounded" @click.stop="toggleOrg(org.id)" />
                 <span v-else class="w-4"></span>
-                <span class="material-symbols-outlined text-sm mr-1">
-                  {{ org.hasChildren ? 'folder' : 'description' }}
-                </span>
+                <FolderOutlined v-if="org.hasChildren" class="text-sm mr-1" />
+                <FileTextOutlined v-else class="text-sm mr-1" />
                 <span class="flex-1 truncate">{{ org.name }}</span>
                 <span class="text-xs text-slate-400">({{ org.count }})</span>
               </div>
@@ -475,7 +469,7 @@ onMounted(() => {
         <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
           <div class="flex items-center gap-4">
             <div class="relative flex-1 max-w-md">
-              <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+              <SearchOutlined class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 v-model="searchQuery"
                 type="text"
@@ -516,7 +510,7 @@ onMounted(() => {
               <tr v-for="asset in assets" :key="asset.id">
                 <td>
                   <div class="flex items-center gap-3">
-                    <span class="material-symbols-outlined text-primary">{{ getCategoryIcon(asset.category) }}</span>
+                    <component :is="getCategoryIcon(asset.category)" class="text-primary" />
                     <div>
                       <p class="font-medium text-slate-900">{{ asset.name }}</p>
                       <p v-if="asset.asset_code" class="text-xs text-slate-400">{{ asset.asset_code }}</p>
@@ -534,21 +528,21 @@ onMounted(() => {
                     @click="openCredentialModal(asset)"
                     class="flex items-center gap-1 text-primary hover:underline"
                   >
-                    <span class="material-symbols-outlined text-sm">key</span>
+                    <KeyOutlined class="text-sm" />
                     <span class="text-xs">{{ asset.credentials?.length || 0 }} 个凭证</span>
                   </button>
                 </td>
                 <td>
                   <div class="flex items-center gap-2">
                     <button @click="openEditModal(asset)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="编辑">
-                      <span class="material-symbols-outlined text-lg">edit</span>
+                      <EditOutlined class="text-lg" />
                     </button>
                     <button
                       @click="handleDelete(asset)"
                       class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600"
                       title="删除"
                     >
-                      <span class="material-symbols-outlined text-lg">delete</span>
+                      <DeleteOutlined class="text-lg" />
                     </button>
                   </div>
                 </td>
@@ -590,7 +584,7 @@ onMounted(() => {
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h2 class="text-xl font-bold text-slate-900">{{ modalTitle }}</h2>
           <button @click="showModal = false" class="p-2 hover:bg-slate-50 rounded-full">
-            <span class="material-symbols-outlined">close</span>
+            <CloseOutlined />
           </button>
         </div>
         <div class="p-6">
@@ -688,7 +682,7 @@ onMounted(() => {
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h2 class="text-xl font-bold text-slate-900">凭证管理 - {{ selectedAsset?.name }}</h2>
           <button @click="showCredentialModal = false" class="p-2 hover:bg-slate-50 rounded-full">
-            <span class="material-symbols-outlined">close</span>
+            <CloseOutlined />
           </button>
         </div>
         <div class="p-6">
@@ -709,7 +703,7 @@ onMounted(() => {
                 placeholder="密码"
               />
               <button @click="addCredential" class="btn-primary">
-                <span class="material-symbols-outlined text-sm mr-1">add</span>
+                <PlusCircleOutlined class="text-sm mr-1" />
                 添加
               </button>
             </div>
@@ -725,7 +719,7 @@ onMounted(() => {
               class="flex items-center justify-between bg-slate-50 rounded-lg p-3"
             >
               <div class="flex items-center gap-4">
-                <span class="material-symbols-outlined text-slate-400">person</span>
+                <UserOutlined class="text-slate-400" />
                 <div>
                   <p class="font-medium text-slate-900">{{ cred.username }}</p>
                   <p v-if="decryptedPasswords.has(cred.id)" class="text-sm text-slate-600 font-mono">
@@ -740,28 +734,28 @@ onMounted(() => {
                   class="p-1.5 hover:bg-white rounded text-slate-400 hover:text-slate-600"
                   title="复制用户名"
                 >
-                  <span class="material-symbols-outlined text-lg">content_copy</span>
+                  <CopyOutlined class="text-lg" />
                 </button>
                 <button
                   @click="viewPassword(cred)"
                   class="p-1.5 hover:bg-white rounded text-slate-400 hover:text-slate-600"
                   title="查看密码"
                 >
-                  <span class="material-symbols-outlined text-lg">visibility</span>
+                  <EyeOutlined class="text-lg" />
                 </button>
                 <button
                   @click="copyPassword(cred)"
                   class="p-1.5 hover:bg-white rounded text-slate-400 hover:text-slate-600"
                   title="复制密码"
                 >
-                  <span class="material-symbols-outlined text-lg">key</span>
+                  <KeyOutlined class="text-lg" />
                 </button>
                 <button
                   @click="handleDeleteCredential(cred)"
                   class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600"
                   title="删除"
                 >
-                  <span class="material-symbols-outlined text-lg">delete</span>
+                  <DeleteOutlined class="text-lg" />
                 </button>
               </div>
             </div>

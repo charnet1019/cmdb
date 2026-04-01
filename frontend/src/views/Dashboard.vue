@@ -3,6 +3,16 @@ import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { getDashboardStats, getDashboardAlerts } from '@/api/dashboard'
 import type { DashboardStats, DashboardAlerts } from '@/api/dashboard'
+import {
+  ClusterOutlined,
+  TeamOutlined,
+  WifiOutlined,
+  WarningOutlined,
+  PlusCircleOutlined,
+  UserAddOutlined,
+  KeyOutlined,
+  HistoryOutlined
+} from '@ant-design/icons-vue'
 
 const authStore = useAuthStore()
 
@@ -40,9 +50,15 @@ const assetLabels: Record<string, string> = {
   network: '网络设备',
   database: '数据库',
   cloud: '云服务',
-  web: 'Web',
-  gpt: 'GPT'
+  web: '网站服务',
+  gpt: 'AI服务'
 }
+
+// Stats labels
+const statsLabels = ['资产总数', '用户总数', '在线用户', '告警数量']
+
+// Stats icons mapping
+const statsIconComponents = [ClusterOutlined, TeamOutlined, WifiOutlined, WarningOutlined]
 
 // Fetch dashboard data
 async function fetchDashboardData() {
@@ -60,9 +76,6 @@ async function fetchDashboardData() {
     loading.value = false
   }
 }
-
-// Stats icons
-const statsIcons = ['inventory_2', 'group', 'wifi', 'warning']
 
 // Get asset distribution with colors
 function getAssetDistribution() {
@@ -90,11 +103,11 @@ onMounted(() => {
     <!-- Stats Cards -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
       <div
-        v-for="(stat, index) in [
-          { label: '资产总数', value: stats.total_assets },
-          { label: '用户总数', value: stats.total_users },
-          { label: '在线用户', value: stats.online_users },
-          { label: '告警数量', value: alerts.alerts }
+        v-for="stat in [
+          { label: statsLabels[0], value: stats.total_assets, icon: statsIconComponents[0] },
+          { label: statsLabels[1], value: stats.total_users, icon: statsIconComponents[1] },
+          { label: statsLabels[2], value: stats.online_users, icon: statsIconComponents[2] },
+          { label: statsLabels[3], value: alerts.alerts, icon: statsIconComponents[3] }
         ]"
         :key="stat.label"
         class="card"
@@ -105,7 +118,7 @@ onMounted(() => {
             <p class="text-3xl font-bold text-slate-900 mt-2 font-headline">{{ stat.value.toLocaleString() }}</p>
           </div>
           <div class="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-primary-container flex items-center justify-center">
-            <span class="material-symbols-outlined text-white">{{ statsIcons[index] }}</span>
+            <component :is="stat.icon" class="text-white" />
           </div>
         </div>
       </div>
@@ -172,16 +185,16 @@ onMounted(() => {
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <router-link
           v-for="action in [
-            { icon: 'add_circle', label: '添加资产', path: '/assets' },
-            { icon: 'person_add', label: '创建用户', path: '/users' },
-            { icon: 'key', label: '资产授权', path: '/permissions/authorizations' },
-            { icon: 'history', label: '操作日志', path: '/logs/operation' }
+            { icon: PlusCircleOutlined, label: '添加资产', path: '/assets' },
+            { icon: UserAddOutlined, label: '创建用户', path: '/users' },
+            { icon: KeyOutlined, label: '资产授权', path: '/permissions/authorizations' },
+            { icon: HistoryOutlined, label: '操作日志', path: '/logs/operation' }
           ]"
           :key="action.label"
           :to="action.path"
           class="flex flex-col items-center gap-2 p-4 bg-surface-container-low rounded-xl hover:bg-surface-container-high transition-colors"
         >
-          <span class="material-symbols-outlined text-2xl text-primary">{{ action.icon }}</span>
+          <component :is="action.icon" class="text-2xl text-primary" />
           <span class="text-sm text-slate-700">{{ action.label }}</span>
         </router-link>
       </div>

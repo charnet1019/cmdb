@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
+import { PlusOutlined, EditOutlined, BlockOutlined, CheckCircleOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-vue'
 import {
   getAuthorizations,
   createAuthorization,
@@ -291,7 +292,7 @@ onMounted(() => {
         <p class="text-slate-500 mt-1">管理和维护系统资产与用户/用户组之间的权限关系</p>
       </div>
       <button @click="openCreateModal" class="btn-primary flex items-center gap-2">
-        <span class="material-symbols-outlined">add</span>
+        <PlusOutlined />
         新增授权
       </button>
     </div>
@@ -379,13 +380,13 @@ onMounted(() => {
             <td>
               <div class="flex items-center gap-1">
                 <button @click="openEditModal(auth)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="编辑">
-                  <span class="material-symbols-outlined text-lg">edit</span>
+                  <EditOutlined :style="{ fontSize: '16px' }" />
                 </button>
                 <button @click="toggleStatus(auth)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" :title="auth.is_active ? '禁用' : '启用'">
-                  <span class="material-symbols-outlined text-lg">{{ auth.is_active ? 'block' : 'check_circle' }}</span>
+                  <component :is="auth.is_active ? BlockOutlined : CheckCircleOutlined" :style="{ fontSize: '16px' }" />
                 </button>
                 <button @click="handleDelete(auth)" class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600" title="删除">
-                  <span class="material-symbols-outlined text-lg">delete</span>
+                  <DeleteOutlined :style="{ fontSize: '16px' }" />
                 </button>
               </div>
             </td>
@@ -423,7 +424,7 @@ onMounted(() => {
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h2 class="text-xl font-bold text-slate-900">{{ isEditMode ? '编辑授权' : '新增授权' }}</h2>
           <button @click="showModal = false" class="p-2 hover:bg-slate-50 rounded-full">
-            <span class="material-symbols-outlined">close</span>
+            <CloseOutlined />
           </button>
         </div>
         <div class="p-6">
