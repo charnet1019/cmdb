@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { UsergroupAddOutlined, SearchOutlined, SafetyCertificateOutlined, GroupOutlined, EditOutlined, DeleteOutlined, CloseOutlined, UserAddOutlined, UserDeleteOutlined } from '@ant-design/icons-vue'
 import { getGroups, createGroup, deleteGroup, updateGroup, getGroupAuthorizations, getGroupMembers, addGroupMembers, removeGroupMember, getUsers } from '@/api/users'
 import type { Group, User } from '@/types'
 import type { GroupAuthorization, GroupMember } from '@/api/users'
+
+const router = useRouter()
+const route = useRoute()
 
 // Data
 const groups = ref<Group[]>([])
@@ -254,9 +258,22 @@ function isMember(userId: number): boolean {
 
 // Initial load
 onMounted(() => {
+  // Restore state from URL
+  const query = route.query
+  if (query.page) page.value = Number(query.page)
+  if (query.search) searchQuery.value = query.search as string
+
   fetchGroups()
   fetchUsers()
 })
+
+// Sync state to URL
+watch([page, searchQuery], () => {
+  const query: Record<string, string> = {}
+  if (page.value !== 1) query.page = String(page.value)
+  if (searchQuery.value) query.search = searchQuery.value
+  router.replace({ query })
+}, { deep: true })
 </script>
 
 <template>

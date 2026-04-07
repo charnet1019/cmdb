@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, SearchOutlined, FolderOpenOutlined, FolderOutlined, FileTextOutlined, DownOutlined, KeyOutlined, EditOutlined, DeleteOutlined, CloseOutlined, PlusCircleOutlined, UserOutlined, EyeOutlined, CopyOutlined, AppstoreOutlined, ClusterOutlined, DatabaseOutlined, CloudServerOutlined, GlobalOutlined, RobotOutlined, MenuOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, SearchOutlined, FolderOpenOutlined, FolderOutlined, FileTextOutlined, DownOutlined, UpOutlined, RightOutlined, KeyOutlined, EditOutlined, DeleteOutlined, CloseOutlined, PlusCircleOutlined, UserOutlined, EyeOutlined, CopyOutlined, AppstoreOutlined, ClusterOutlined, DatabaseOutlined, CloudServerOutlined, GlobalOutlined, RobotOutlined } from '@ant-design/icons-vue'
 import { getAssets, getOrganizations, createAsset, updateAsset, deleteAsset, getCredentials, createCredential, decryptCredential, deleteCredential } from '@/api/assets'
 import type { Asset, AssetCategory, Organization, Credential } from '@/types'
+
+const router = useRouter()
+const route = useRoute()
 
 // Data
 const assets = ref<Asset[]>([])
@@ -13,6 +17,9 @@ const total = ref(0)
 const page = ref(1)
 const limit = ref(20)
 
+// Bulk selection
+const allSelected = ref(false)
+
 // Filters
 const activeCategory = ref<AssetCategory | 'all'>('all')
 const searchQuery = ref('')
@@ -20,6 +27,15 @@ const selectedOrgId = ref<number | null>(null)
 
 // Asset tree expansion
 const expandedOrgIds = ref<Set<number>>(new Set())
+
+// Tree view mode: 'asset' for organization tree, 'type' for category tree
+const treeViewMode = ref<'asset' | 'type'>('asset')
+
+// Type tree expansion - use array for better Vue reactivity
+const expandedTypeIds = ref<string[]>(['all'])
+
+// Type tree selected node ID - for accurate active state tracking
+const selectedTypeNodeId = ref<string>('all')
 
 // Modal
 const showModal = ref(false)
@@ -58,7 +74,7 @@ const form = ref({
 
 // Categories
 const categories = [
-  { key: 'all', label: '全部', icon: MenuOutlined },
+  { key: 'all', label: '全部', icon: AppstoreOutlined },
   { key: 'host', label: '主机', icon: AppstoreOutlined },
   { key: 'network', label: '网络设备', icon: ClusterOutlined },
   { key: 'database', label: '数据库', icon: DatabaseOutlined },
@@ -72,10 +88,10 @@ const categoryOptions = categories.filter(c => c.key !== 'all')
 
 // Platform options by category
 const platformOptions: Record<string, string[]> = {
-  host: ['Linux', 'Windows', 'Unix', 'macOS'],
+  host: ['Linux', 'Windows', 'Unix', 'MacOS', 'NAS'],
   network: ['Cisco IOS', 'Huawei VRP', 'Juniper JunOS', 'Aruba OS'],
-  database: ['MySQL', 'PostgreSQL', 'MongoDB', 'Redis', 'Oracle'],
-  cloud: ['AWS', '阿里云', '腾讯云', 'Azure', 'GCP'],
+  database: ['MySQL', 'MongoDB', 'Redis', 'PostgreSQL', 'Oracle', 'SQL Server', 'InfluxDB', 'Elasticsearch', 'RabbitMQ', 'RocketMQ', 'Kafka', 'ClickHouse', 'EMQ', '达梦', 'TiDB', 'IoTDB', 'TDengine', 'Prometheus', 'Neo4j', 'Milvus', 'Weaviate', 'Qdrant'],
+  cloud: ['Kubernetes', 'KubeSphere', 'Rancher', 'Harvester', 'OpenStack', 'ZStack', 'CloudStack', 'VMware', 'oVirt', 'KVM', 'AWS', 'Azure', 'GCP', '阿里云', '腾讯云', '青云', 'UCloud', '火山云', '天翼云', '移动云', '华为云'],
   web: ['Nginx', 'Apache', 'IIS', 'Tomcat'],
   gpt: ['OpenAI', 'Claude', 'ChatGLM', '通义千问']
 }
@@ -85,6 +101,277 @@ const deviceTypeOptions = ['交换机', '路由器', '防火墙', '无线控制�
 
 // Modal title
 const modalTitle = computed(() => editingAsset.value ? '编辑资产' : '创建资产')
+
+// Type tree structure
+const typeTreeStructure = computed(() => {
+  const treeData = [];
+
+  // Add root node for all types
+  treeData.push({
+    id: 'all',
+    name: '所有类型',
+    count: total.value,
+    level: 0,
+    hasChildren: true,
+    isRoot: true
+  });
+
+  // Define static subcategories for each category according to prototype
+  const hostSubCategories = ['Linux', 'Unix', 'Windows', 'MacOS', 'NAS'];
+  const networkSubCategories = ['交换机', '路由器', '防火墙', '负载均衡', '无线控制器'];
+  const databaseSubCategories = ['MySQL', 'MongoDB', 'Redis', 'PostgreSQL', 'Oracle', 'SQL Server', 'InfluxDB', 'Elasticsearch', 'RabbitMQ', 'RocketMQ', 'Kafka', 'ClickHouse', 'EMQ', '达梦', 'TiDB', 'IoTDB', 'TDengine', 'Prometheus', 'Neo4j', 'Milvus', 'Weaviate', 'Qdrant'];
+  const cloudSubCategories = ['Kubernetes', 'KubeSphere', 'Rancher', 'Harvester', 'OpenStack', 'ZStack', 'CloudStack', 'VMware', 'oVirt', 'KVM', 'AWS', 'Azure', 'GCP', '阿里云', '腾讯云', '青云', 'UCloud', '火山云', '天翼云', '移动云', '华为云'];
+  const webSubCategories = ['网站'];
+  const gptSubCategories = ['OpenAI', 'Claude', 'ChatGLM', '通义千问'];
+
+  // Add category nodes
+  categories.forEach(cat => {
+    if (cat.key !== 'all') {
+      const categoryAssets = assets.value.filter(a => a.category === cat.key);
+
+      // Determine subcategories for this category
+      let subCategories = [];
+      if (cat.key === 'host') {
+        subCategories = hostSubCategories;
+      } else if (cat.key === 'network') {
+        subCategories = networkSubCategories;
+      } else if (cat.key === 'database') {
+        subCategories = databaseSubCategories;
+      } else if (cat.key === 'cloud') {
+        subCategories = cloudSubCategories;
+      } else if (cat.key === 'web') {
+        subCategories = webSubCategories;
+      } else if (cat.key === 'gpt') {
+        subCategories = gptSubCategories;
+      }
+
+      // Category always has children if subcategories are defined
+      const hasChildren = subCategories.length > 0;
+
+      treeData.push({
+        id: cat.key,
+        name: `${cat.label} (${categoryAssets.length})`,
+        count: categoryAssets.length,
+        level: 1,
+        hasChildren: hasChildren,
+        parentId: 'all',
+        category: cat.key
+      });
+
+      // Add all possible sub-types for each category (whether they have assets or not)
+      if (cat.key === 'host') {
+        hostSubCategories.forEach(subCat => {
+          const subCatAssets = categoryAssets.filter(a => a.platform === subCat);
+          treeData.push({
+            id: `host-${subCat.toLowerCase().replace(/\s+/g, '')}`,
+            name: `${subCat} (${subCatAssets.length})`,
+            count: subCatAssets.length,
+            level: 2,
+            hasChildren: false,
+            parentId: cat.key,
+            subCategory: subCat,
+            category: cat.key
+          });
+        });
+      } else if (cat.key === 'network') {
+        networkSubCategories.forEach(subCat => {
+          const subCatAssets = categoryAssets.filter(a => a.device_type === subCat);
+          treeData.push({
+            id: `network-${subCat.replace(/\s+/g, '')}`,
+            name: `${subCat} (${subCatAssets.length})`,
+            count: subCatAssets.length,
+            level: 2,
+            hasChildren: false,
+            parentId: cat.key,
+            subCategory: subCat,
+            category: cat.key
+          });
+        });
+      } else if (cat.key === 'database') {
+        databaseSubCategories.forEach(subCat => {
+          const subCatAssets = categoryAssets.filter(a => a.platform === subCat);
+          treeData.push({
+            id: `database-${subCat.toLowerCase().replace(/\s+/g, '')}`,
+            name: `${subCat} (${subCatAssets.length})`,
+            count: subCatAssets.length,
+            level: 2,
+            hasChildren: false,
+            parentId: cat.key,
+            subCategory: subCat,
+            category: cat.key
+          });
+        });
+      } else if (cat.key === 'cloud') {
+        cloudSubCategories.forEach(subCat => {
+          const subCatAssets = categoryAssets.filter(a => a.platform === subCat);
+          treeData.push({
+            id: `cloud-${subCat.replace(/\s+/g, '')}`,
+            name: `${subCat} (${subCatAssets.length})`,
+            count: subCatAssets.length,
+            level: 2,
+            hasChildren: false,
+            parentId: cat.key,
+            subCategory: subCat,
+            category: cat.key
+          });
+        });
+      } else if (cat.key === 'web') {
+        webSubCategories.forEach(subCat => {
+          const subCatAssets = categoryAssets.filter(a => a.platform === subCat);
+          treeData.push({
+            id: `web-${subCat.toLowerCase().replace(/\s+/g, '')}`,
+            name: `${subCat} (${subCatAssets.length})`,
+            count: subCatAssets.length,
+            level: 2,
+            hasChildren: false,
+            parentId: cat.key,
+            subCategory: subCat,
+            category: cat.key
+          });
+        });
+      } else if (cat.key === 'gpt') {
+        gptSubCategories.forEach(subCat => {
+          const subCatAssets = categoryAssets.filter(a => a.platform === subCat);
+          treeData.push({
+            id: `gpt-${subCat.toLowerCase().replace(/\s+/g, '')}`,
+            name: `${subCat} (${subCatAssets.length})`,
+            count: subCatAssets.length,
+            level: 2,
+            hasChildren: false,
+            parentId: cat.key,
+            subCategory: subCat,
+            category: cat.key
+          });
+        });
+      }
+    }
+  });
+
+  return treeData;
+});
+
+// Flatten type tree for display
+const flattenedTypeTree = computed(() => {
+  const result: any[] = [];
+
+  // Add root node
+  const root = typeTreeStructure.value.find((node: any) => node.isRoot);
+  if (root) {
+    result.push(root);
+
+    // Add level 1 children of root if root is expanded
+    if (expandedTypeIds.value.includes(root.id)) {
+      const level1Nodes = typeTreeStructure.value.filter((node: any) => node.parentId === root.id);
+      for (const level1Node of level1Nodes) {
+        result.push({
+          ...level1Node,
+          level: 1
+        });
+
+        // Add level 2 children if the level 1 node is expanded
+        if (expandedTypeIds.value.includes(level1Node.id)) {
+          const level2Nodes = typeTreeStructure.value.filter((node: any) => node.parentId === level1Node.id);
+          for (const level2Node of level2Nodes) {
+            result.push({
+              ...level2Node,
+              level: 2
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return result;
+});
+
+// Reset filters and tree selection
+function resetFilters() {
+  selectedOrgId.value = null;
+  treeViewMode.value = 'asset';
+  activeCategory.value = 'all';
+  selectedTypeNodeId.value = 'all';
+  fetchAssets();
+}
+
+// Switch between asset tree and type tree
+function switchTreeView(mode: 'asset' | 'type') {
+  treeViewMode.value = mode;
+  if (mode === 'asset') {
+    selectedOrgId.value = null;
+    activeCategory.value = 'all';
+  } else {
+    // Switch to type tree - reset to root selection
+    selectedTypeNodeId.value = 'all';
+    activeCategory.value = 'all';
+    selectedOrgId.value = null;
+    fetchAssets();
+  }
+}
+
+// Toggle type expansion - accordion effect: only one sibling can be expanded
+function toggleType(typeId: string) {
+  if (typeId === 'all') {
+    // Root node: toggle its expansion
+    const index = expandedTypeIds.value.indexOf('all');
+    if (index > -1) {
+      expandedTypeIds.value.splice(index, 1);
+      // When collapsing root, also collapse all level 1 nodes
+      expandedTypeIds.value = expandedTypeIds.value.filter(id => !categories.some(c => c.key === id));
+    } else {
+      expandedTypeIds.value.push('all');
+    }
+  } else {
+    // Level 1 node: accordion effect - collapse other siblings first
+    const index = expandedTypeIds.value.indexOf(typeId);
+    if (index > -1) {
+      // Collapse this node
+      expandedTypeIds.value.splice(index, 1);
+    } else {
+      // First collapse all other level 1 category nodes (accordion effect)
+      expandedTypeIds.value = expandedTypeIds.value.filter(id => id === 'all' || !categories.some(c => c.key === id));
+      // Then expand this node
+      expandedTypeIds.value.push(typeId);
+    }
+  }
+}
+
+// Check if a type node is currently selected
+function isSelectedTypeNode(node: any): boolean {
+  if (treeViewMode.value !== 'type') return false;
+
+  // Simply check if this node's ID matches the selected node ID
+  return selectedTypeNodeId.value === node.id;
+}
+
+// Select a type node (toggle expansion when clicking on nodes with children)
+function selectType(node: any) {
+  if (node.isRoot) {
+    // Clicked on "All Types" - toggle expansion only
+    toggleType('all');
+    // Set selection to root
+    selectedTypeNodeId.value = 'all';
+    activeCategory.value = 'all';
+    selectedOrgId.value = null;
+    fetchAssets();
+  } else if (node.hasChildren) {
+    // Clicked on a node with children - toggle expansion only
+    toggleType(node.id);
+    // Do not change selection when clicking parent nodes (accordion toggle)
+  } else if (node.subCategory && node.category) {
+    // Clicked on a leaf sub-category node (level 2) - apply filter
+    selectedTypeNodeId.value = node.id;
+    activeCategory.value = node.category as AssetCategory;
+    selectedOrgId.value = null;
+    fetchAssets();
+  } else if (node.category) {
+    // Clicked on a leaf category node (level 1 without children) - apply filter
+    selectedTypeNodeId.value = node.id;
+    activeCategory.value = node.category as AssetCategory;
+    selectedOrgId.value = null;
+    fetchAssets();
+  }
+}
 
 // Fetch assets
 async function fetchAssets() {
@@ -97,7 +384,12 @@ async function fetchAssets() {
       search: searchQuery.value || undefined,
       organization_id: selectedOrgId.value || undefined
     })
-    assets.value = result.items || []
+    // Initialize expandedNotes and selected properties for each asset
+    assets.value = (result.items || []).map(asset => ({
+      ...asset,
+      expandedNotes: false,
+      selected: false
+    }))
     total.value = result.total || 0
   } catch (error) {
     message.error('获取资产列表失败')
@@ -106,6 +398,12 @@ async function fetchAssets() {
   } finally {
     loading.value = false
   }
+}
+
+// Update expandedTypeIds after assets are loaded
+function updateExpandedTypeIds() {
+  // Only expand root by default, not level 1 categories (accordion effect)
+  expandedTypeIds.value = ['all'];
 }
 
 // Fetch organizations
@@ -121,6 +419,10 @@ async function fetchOrganizations() {
 // Change category
 function changeCategory(category: AssetCategory | 'all') {
   activeCategory.value = category
+  selectedTypeNodeId.value = category
+  // When clicking "全部" tab, switch to asset tree view
+  // When clicking other category tabs, switch to type tree view
+  treeViewMode.value = category === 'all' ? 'asset' : 'type'
   page.value = 1
   fetchAssets()
 }
@@ -140,7 +442,7 @@ function handlePageChange(newPage: number) {
 // Get category icon
 function getCategoryIcon(category: string) {
   const cat = categories.find(c => c.key === category)
-  return cat?.icon || MenuOutlined
+  return cat?.icon || AppstoreOutlined
 }
 
 // Toggle org expansion
@@ -226,11 +528,65 @@ function openEditModal(asset: Asset) {
   showModal.value = true
 }
 
+// Address validation function
+function validateAddress(address: string): { valid: boolean; message?: string } {
+  if (!address?.trim()) {
+    return { valid: false, message: '地址不能为空' }
+  }
+
+  const parts = address.split(':')
+  if (parts.length > 2) {
+    return { valid: false, message: '格式错误，端口只能有一个' }
+  }
+
+  const host = parts[0]
+  const port = parts[1]
+
+  // Validate IP or hostname
+  const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/
+  const hostnameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
+
+  if (!ipRegex.test(host) && !hostnameRegex.test(host)) {
+    return { valid: false, message: '无效的IP地址或主机名' }
+  }
+
+  // Validate port
+  if (port) {
+    const portNum = parseInt(port, 10)
+    if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+      return { valid: false, message: '端口号必须在 1-65535 之间' }
+    }
+  }
+
+  return { valid: true }
+}
+
 // Submit form
 async function handleSubmit() {
   if (!form.value.name) {
     message.error('请输入资产名称')
     return
+  }
+
+  // Validate address format for certain categories
+  if (form.value.category === 'host' || form.value.category === 'network' || form.value.category === 'database') {
+    if (form.value.address) {
+      const addressValidation = validateAddress(form.value.address)
+      if (!addressValidation.valid) {
+        message.error(addressValidation.message)
+        return
+      }
+    }
+  }
+
+  // For cloud, web, gpt categories, validate URL if provided
+  if ((form.value.category === 'cloud' || form.value.category === 'web' || form.value.category === 'gpt') && form.value.url) {
+    try {
+      new URL(form.value.url)
+    } catch {
+      message.error('请输入有效的URL地址')
+      return
+    }
   }
 
   modalLoading.value = true
@@ -378,8 +734,105 @@ async function handleDeleteCredential(credential: Credential) {
   }
 }
 
+// Bulk selection functions
+function selectAllChanged(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const checked = target.checked;
+  allSelected.value = checked;
+  assets.value.forEach(asset => {
+    asset.selected = checked;
+  });
+}
+
+function selectionChanged() {
+  allSelected.value = assets.value.every(asset => asset.selected);
+}
+
+// Edit credential function
+function editCredential(credential: Credential) {
+  message.info('请在凭证弹窗中编辑此凭证');
+  // In real implementation, this would open an edit modal for the credential
+}
+
+// Refresh assets
+function refreshAssets() {
+  fetchAssets();
+}
+
+// Sync state to URL query parameters
+function syncStateToUrl() {
+  const query: Record<string, string> = {}
+
+  if (treeViewMode.value !== 'asset') {
+    query.view = treeViewMode.value
+  }
+  if (activeCategory.value !== 'all') {
+    query.category = activeCategory.value
+  }
+  if (selectedTypeNodeId.value !== 'all') {
+    query.typeNode = selectedTypeNodeId.value
+  }
+  if (expandedTypeIds.value.length > 0 && expandedTypeIds.value.includes('all')) {
+    query.expanded = expandedTypeIds.value.join(',')
+  }
+  if (selectedOrgId.value !== null) {
+    query.org = String(selectedOrgId.value)
+  }
+  if (page.value !== 1) {
+    query.page = String(page.value)
+  }
+  if (searchQuery.value) {
+    query.search = searchQuery.value
+  }
+
+  router.replace({ query })
+}
+
+// Restore state from URL query parameters
+function restoreStateFromUrl() {
+  const query = route.query
+
+  if (query.view) {
+    treeViewMode.value = query.view as 'asset' | 'type'
+  }
+  if (query.category) {
+    activeCategory.value = query.category as AssetCategory | 'all'
+  }
+  if (query.typeNode) {
+    selectedTypeNodeId.value = query.typeNode as string
+  }
+  if (query.expanded) {
+    expandedTypeIds.value = (query.expanded as string).split(',')
+  }
+  if (query.org) {
+    selectedOrgId.value = Number(query.org)
+  }
+  if (query.page) {
+    page.value = Number(query.page)
+  }
+  if (query.search) {
+    searchQuery.value = query.search as string
+  }
+}
+
+// Watch state changes and sync to URL
+watch([treeViewMode, activeCategory, selectedTypeNodeId, expandedTypeIds, selectedOrgId, page, searchQuery], () => {
+  syncStateToUrl()
+}, { deep: true })
+
 // Initial load
 onMounted(() => {
+  // Restore state from URL first
+  restoreStateFromUrl()
+
+  // Set defaults if not restored from URL
+  if (!route.query.expanded) {
+    expandedTypeIds.value = ['all']
+  }
+  if (!route.query.typeNode) {
+    selectedTypeNodeId.value = 'all'
+  }
+
   fetchAssets()
   fetchOrganizations()
 })
@@ -421,43 +874,81 @@ onMounted(() => {
 
     <!-- Main Content -->
     <div class="flex gap-6">
-      <!-- Asset Tree (Left Panel) -->
+      <!-- Asset/Type Tree (Left Panel) -->
       <div class="hidden lg:block w-60 flex-shrink-0">
         <div class="card">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="font-semibold text-slate-900">资产树</h3>
+          <!-- Tab Controls -->
+          <div class="flex border-b border-slate-100 mb-4">
             <button
-              v-if="selectedOrgId"
-              @click="selectOrganization(null)"
-              class="text-xs text-primary hover:underline"
+              @click="switchTreeView('asset')"
+              class="flex-1 py-2 text-xs font-medium text-center"
+              :class="treeViewMode === 'asset' ? 'font-bold text-primary border-b-2 border-primary' : 'text-slate-400 hover:text-primary'"
             >
-              清除筛选
+              资产树
+            </button>
+            <button
+              @click="switchTreeView('type')"
+              class="flex-1 py-2 text-xs font-medium text-center"
+              :class="treeViewMode === 'type' ? 'font-bold text-primary border-b-2 border-primary' : 'text-slate-400 hover:text-primary'"
+            >
+              类型树
             </button>
           </div>
-          <!-- Tree -->
+
+          <!-- Tree Content -->
           <div class="text-sm">
-            <div
-              class="py-2 px-2 rounded cursor-pointer hover:bg-slate-50 mb-1"
-              :class="selectedOrgId === null ? 'bg-primary/10 text-primary' : 'text-slate-600'"
-              @click="selectOrganization(null)"
-            >
-              <FolderOpenOutlined class="text-sm mr-1" />
-              全部资产
-            </div>
-            <template v-for="org in flattenedOrgs" :key="org.id">
+            <template v-if="treeViewMode === 'asset'">
+              <!-- Asset Tree -->
               <div
-                class="py-1.5 px-2 rounded cursor-pointer hover:bg-slate-50 flex items-center gap-1"
-                :class="selectedOrgId === org.id ? 'bg-primary/10 text-primary' : 'text-slate-600'"
-                :style="{ paddingLeft: `${org.level * 16 + 8}px` }"
-                @click="selectOrganization(org.id)"
+                class="py-2 px-2 rounded cursor-pointer hover:bg-slate-50 mb-1"
+                :class="selectedOrgId === null ? 'bg-primary/10 text-primary' : 'text-slate-600'"
+                @click="selectOrganization(null)"
               >
-                <DownOutlined v-if="org.hasChildren" class="text-xs cursor-pointer hover:bg-slate-200 rounded" @click.stop="toggleOrg(org.id)" />
-                <span v-else class="w-4"></span>
-                <FolderOutlined v-if="org.hasChildren" class="text-sm mr-1" />
-                <FileTextOutlined v-else class="text-sm mr-1" />
-                <span class="flex-1 truncate">{{ org.name }}</span>
-                <span class="text-xs text-slate-400">({{ org.count }})</span>
+                <FolderOpenOutlined class="text-sm mr-1" />
+                Default
               </div>
+              <template v-for="org in flattenedOrgs" :key="org.id">
+                <div
+                  class="py-1.5 px-2 rounded cursor-pointer hover:bg-slate-50 flex items-center gap-1"
+                  :class="selectedOrgId === org.id ? 'bg-primary/10 text-primary' : 'text-slate-600'"
+                  :style="{ paddingLeft: `${org.level * 16 + 8}px` }"
+                  @click="selectOrganization(org.id)"
+                >
+                  <DownOutlined v-if="org.hasChildren" class="text-xs cursor-pointer hover:bg-slate-200 rounded" @click.stop="toggleOrg(org.id)" />
+                  <span v-else class="w-4"></span>
+                  <FolderOutlined v-if="org.hasChildren" class="text-sm mr-1" />
+                  <FileTextOutlined v-else class="text-sm mr-1" />
+                  <span class="flex-1 truncate">{{ org.name }}</span>
+                  <span class="text-xs text-slate-400">({{ org.count }})</span>
+                </div>
+              </template>
+            </template>
+
+            <template v-else-if="treeViewMode === 'type'">
+              <!-- Type Tree -->
+              <template v-for="node in flattenedTypeTree" :key="node.id">
+                <div
+                  class="py-1.5 px-2 rounded cursor-pointer hover:bg-slate-50 flex items-center gap-1"
+                  :class="isSelectedTypeNode(node) ? 'bg-primary/10 text-primary' : 'text-slate-600'"
+                  :style="{ paddingLeft: `${node.level * 16 + 8}px` }"
+                  @click="selectType(node)"
+                >
+                  <!-- Root node: up arrow when expanded, down arrow when collapsed -->
+                  <UpOutlined v-if="node.isRoot && expandedTypeIds.includes('all')" class="text-xs cursor-pointer hover:bg-slate-200 rounded" @click.stop="toggleType('all')" />
+                  <DownOutlined v-if="node.isRoot && !expandedTypeIds.includes('all')" class="text-xs cursor-pointer hover:bg-slate-200 rounded" @click.stop="toggleType('all')" />
+                  <!-- Level 1 nodes with children: up/down arrow based on expansion state -->
+                  <UpOutlined v-else-if="node.level === 1 && node.hasChildren && expandedTypeIds.includes(node.id)" class="text-xs cursor-pointer hover:bg-slate-200 rounded" @click.stop="toggleType(node.id)" />
+                  <DownOutlined v-else-if="node.level === 1 && node.hasChildren && !expandedTypeIds.includes(node.id)" class="text-xs cursor-pointer hover:bg-slate-200 rounded" @click.stop="toggleType(node.id)" />
+                  <!-- Level 2 nodes: small right arrow -->
+                  <RightOutlined v-else-if="node.level === 2" class="text-xs" />
+                  <!-- Leaf nodes at level 1: empty spacer -->
+                  <span v-else-if="node.level === 1 && !node.hasChildren" class="w-4"></span>
+                  <!-- Icon: root node uses account_tree style icon, others use category icon -->
+                  <AppstoreOutlined v-if="node.isRoot" class="text-sm mr-1" />
+                  <component v-else :is="getCategoryIcon(node.category)" class="text-sm mr-1" />
+                  <span class="flex-1 truncate">{{ node.name }}</span>
+                </div>
+              </template>
             </template>
           </div>
         </div>
@@ -465,22 +956,40 @@ onMounted(() => {
 
       <!-- Asset Table (Right Panel) -->
       <div class="flex-1">
-        <!-- Toolbar -->
-        <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
-          <div class="flex items-center gap-4">
-            <div class="relative flex-1 max-w-md">
-              <SearchOutlined class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                v-model="searchQuery"
-                type="text"
-                placeholder="搜索资产..."
-                class="input-field pl-10"
-                @keyup.enter="handleSearch"
-              />
+        <!-- Action Bar -->
+        <div class="bg-white rounded-xl shadow-sm p-3 mb-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <button @click="openCreateModal" class="btn-primary text-xs px-3 py-1.5">
+                创建
+              </button>
+              <button class="border border-gray-200 text-slate-600 px-3 py-1.5 rounded text-xs font-medium hover:bg-gray-50 flex items-center gap-1 transition-colors">
+                更多操作 <DownOutlined class="text-[14px]" />
+              </button>
             </div>
-            <button @click="handleSearch" class="btn-secondary">
-              搜索
-            </button>
+            <div class="flex items-center gap-2">
+              <button class="border border-gray-200 text-slate-600 px-3 py-1.5 rounded text-xs font-medium hover:bg-gray-50 flex items-center gap-1 transition-colors">
+                <span class="material-symbols-outlined text-[14px]">label</span> 标签
+              </button>
+              <div class="relative flex items-center border border-gray-200 rounded overflow-hidden bg-white w-72">
+                <div class="px-2 border-r border-gray-100 bg-gray-50 text-slate-400 flex items-center cursor-pointer">
+                  <DownOutlined class="text-[14px]" />
+                </div>
+                <input
+                  v-model="searchQuery"
+                  type="text"
+                  placeholder="搜索"
+                  class="w-full border-none py-1.5 px-3 text-xs focus:ring-0 placeholder:text-slate-400"
+                  @keyup.enter="handleSearch"
+                />
+                <SearchOutlined class="absolute right-2 text-slate-400 text-sm" />
+              </div>
+              <div class="flex items-center gap-2 text-slate-400">
+                <button @click="handleSearch" class="hover:text-primary transition-colors">
+                  <span class="material-symbols-outlined text-lg">refresh</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -489,25 +998,75 @@ onMounted(() => {
           <table class="data-table">
             <thead>
               <tr>
-                <th>名称</th>
-                <th>地址</th>
-                <th>平台</th>
-                <th>凭证</th>
-                <th>操作</th>
+                <th class="w-10">
+                  <input
+                    type="checkbox"
+                    class="rounded border-gray-300 text-primary focus:ring-primary w-3.5 h-3.5"
+                    @change="selectAllChanged($event)"
+                    :checked="allSelected"
+                  />
+                </th>
+                <template v-if="activeCategory === 'host' || activeCategory === 'all'">
+                  <th>名称 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>地址 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>系统平台 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>用户名密码 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                </template>
+                <template v-else-if="activeCategory === 'network'">
+                  <th>名称 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>IP地址 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>设备类型 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>厂商/型号 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>管理凭据</th>
+                </template>
+                <template v-else-if="activeCategory === 'database'">
+                  <th>名称 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>连接地址 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>数据库类型 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>访问凭证 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                </template>
+                <template v-else-if="activeCategory === 'cloud'">
+                  <th>名称 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>URL <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>系统平台 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>访问凭证 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                </template>
+                <template v-else-if="activeCategory === 'web'">
+                  <th>名称 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>URL <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>Web服务器 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>访问凭证 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                </template>
+                <template v-else-if="activeCategory === 'gpt'">
+                  <th>名称 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>URL <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>AI平台 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>访问凭证 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                </template>
+                <th>备注 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                <th class="text-right">操作</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="loading">
-                <td colspan="5" class="text-center py-8 text-slate-500">
+                <td :colspan="activeCategory === 'all' ? 9 : 8" class="text-center py-8 text-slate-500">
                   加载中...
                 </td>
               </tr>
               <tr v-else-if="assets.length === 0">
-                <td colspan="5" class="text-center py-8 text-slate-500">
+                <td :colspan="activeCategory === 'all' ? 9 : 8" class="text-center py-8 text-slate-500">
                   暂无数据
                 </td>
               </tr>
               <tr v-for="asset in assets" :key="asset.id">
+                <td>
+                  <input
+                    type="checkbox"
+                    class="rounded border-gray-300 text-primary focus:ring-primary w-3.5 h-3.5"
+                    v-model="asset.selected"
+                    @change="selectionChanged"
+                  />
+                </td>
                 <td>
                   <div class="flex items-center gap-3">
                     <component :is="getCategoryIcon(asset.category)" class="text-primary" />
@@ -517,32 +1076,196 @@ onMounted(() => {
                     </div>
                   </div>
                 </td>
-                <td>
-                  <span class="text-sm text-slate-600 font-mono">{{ asset.address || asset.url || '-' }}</span>
-                </td>
-                <td>
-                  <span class="text-sm text-slate-600">{{ asset.platform || '-' }}</span>
-                </td>
-                <td>
-                  <button
-                    @click="openCredentialModal(asset)"
-                    class="flex items-center gap-1 text-primary hover:underline"
-                  >
-                    <KeyOutlined class="text-sm" />
-                    <span class="text-xs">{{ asset.credentials?.length || 0 }} 个凭证</span>
-                  </button>
-                </td>
-                <td>
-                  <div class="flex items-center gap-2">
-                    <button @click="openEditModal(asset)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="编辑">
-                      <EditOutlined class="text-lg" />
-                    </button>
+
+                <!-- Host category specific columns -->
+                <template v-if="activeCategory === 'host' || activeCategory === 'all'">
+                  <td>
+                    <span class="text-sm text-slate-600 font-mono">{{ asset.address || '-' }}</span>
+                  </td>
+                  <td>
+                    <span class="text-sm text-slate-600">{{ asset.platform || '-' }}</span>
+                  </td>
+                  <td>
+                    <div class="flex flex-col gap-2 py-1">
+                      <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
+                        <span class="font-medium">{{ cred.username }}</span>
+                        <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" />
+                        <span class="text-slate-400 font-mono ml-1">********</span>
+                        <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword({ id: cred.id, username: cred.username })" />
+                        <EyeOutlined class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword({ id: cred.id, username: cred.username })" />
+                        <EditOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="editCredential(cred)" />
+                        <DeleteOutlined class="text-[14px] cursor-pointer hover:text-error" @click="handleDeleteCredential(cred)" />
+                      </div>
+                    </div>
+                  </td>
+                </template>
+
+                <!-- Network category specific columns -->
+                <template v-else-if="activeCategory === 'network'">
+                  <td>
+                    <span class="text-sm text-slate-600 font-mono">{{ asset.address || '-' }}</span>
+                  </td>
+                  <td>
+                    <span class="text-sm text-slate-600">{{ asset.device_type || '-' }}</span>
+                  </td>
+                  <td>
+                    <span class="text-sm text-slate-600">{{ asset.vendor && asset.model ? `${asset.vendor}/${asset.model}` : (asset.vendor || asset.model || '-') }}</span>
+                  </td>
+                  <td>
+                    <div class="flex flex-col gap-2 py-1">
+                      <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
+                        <span class="font-medium">{{ cred.username }}</span>
+                        <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" />
+                        <span class="text-slate-400 font-mono ml-1">********</span>
+                        <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword({ id: cred.id, username: cred.username })" />
+                        <EyeOutlined class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword({ id: cred.id, username: cred.username })" />
+                        <EditOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="editCredential(cred)" />
+                        <DeleteOutlined class="text-[14px] cursor-pointer hover:text-error" @click="handleDeleteCredential(cred)" />
+                      </div>
+                      <button
+                        v-if="!(asset.credentials && asset.credentials.length > 0)"
+                        @click="openCredentialModal(asset)"
+                        class="text-primary hover:underline text-xs"
+                      >
+                        {{ asset.credentials?.length || 0 }} 个凭证
+                      </button>
+                    </div>
+                  </td>
+                </template>
+
+                <!-- Database category specific columns -->
+                <template v-else-if="activeCategory === 'database'">
+                  <td>
+                    <span class="text-sm text-slate-600 font-mono">{{ asset.address || '-' }}</span>
+                  </td>
+                  <td>
+                    <span class="text-sm text-slate-600">{{ asset.platform || '-' }}</span>
+                  </td>
+                  <td>
                     <button
-                      @click="handleDelete(asset)"
-                      class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600"
-                      title="删除"
+                      @click="openCredentialModal(asset)"
+                      class="flex items-center gap-1 text-primary hover:underline"
                     >
-                      <DeleteOutlined class="text-lg" />
+                      <KeyOutlined class="text-sm" />
+                      <span class="text-xs">{{ asset.credentials?.length || 0 }} 个凭证</span>
+                    </button>
+                  </td>
+                </template>
+
+                <!-- Cloud category specific columns -->
+                <template v-else-if="activeCategory === 'cloud'">
+                  <td>
+                    <span class="text-sm text-slate-600 font-mono">{{ asset.url || asset.address || '-' }}</span>
+                  </td>
+                  <td>
+                    <span class="text-sm text-slate-600">{{ asset.platform || '-' }}</span>
+                  </td>
+                  <td>
+                    <button
+                      @click="openCredentialModal(asset)"
+                      class="flex items-center gap-1 text-primary hover:underline"
+                    >
+                      <KeyOutlined class="text-sm" />
+                      <span class="text-xs">{{ asset.credentials?.length || 0 }} 个凭证</span>
+                    </button>
+                  </td>
+                </template>
+
+                <!-- Web category specific columns -->
+                <template v-else-if="activeCategory === 'web'">
+                  <td>
+                    <span class="text-sm text-slate-600 font-mono">{{ asset.url || asset.address || '-' }}</span>
+                  </td>
+                  <td>
+                    <span class="text-sm text-slate-600">{{ asset.platform || '-' }}</span>
+                  </td>
+                  <td>
+                    <button
+                      @click="openCredentialModal(asset)"
+                      class="flex items-center gap-1 text-primary hover:underline"
+                    >
+                      <KeyOutlined class="text-sm" />
+                      <span class="text-xs">{{ asset.credentials?.length || 0 }} 个凭证</span>
+                    </button>
+                  </td>
+                </template>
+
+                <!-- GPT category specific columns -->
+                <template v-else-if="activeCategory === 'gpt'">
+                  <td>
+                    <span class="text-sm text-slate-600 font-mono">{{ asset.url || asset.address || '-' }}</span>
+                  </td>
+                  <td>
+                    <span class="text-sm text-slate-600">{{ asset.platform || '-' }}</span>
+                  </td>
+                  <td>
+                    <div class="flex flex-col gap-1.5">
+                      <div
+                        v-for="cred in asset.credentials || []"
+                        :key="cred.id"
+                        class="flex items-center gap-2 bg-slate-100/80 px-2 py-1 rounded text-xs"
+                      >
+                        <span class="font-semibold text-slate-700 uppercase">{{ cred.credential_type || 'API' }}</span>
+                        <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" />
+                        <div class="h-3 w-px bg-slate-300"></div>
+                        <span class="font-mono text-slate-500">{{
+                          decryptedPasswords.has(cred.id) ?
+                            decryptedPasswords.get(cred.id) :
+                            '********'
+                        }}</span>
+                        <div class="flex items-center gap-1 ml-auto">
+                          <EyeOutlined
+                            class="text-[14px] cursor-pointer hover:text-primary"
+                            @click="viewPassword(cred)"
+                          />
+                          <EditOutlined
+                            class="text-[14px] cursor-pointer hover:text-primary"
+                            @click="editCredential(cred)"
+                          />
+                        </div>
+                      </div>
+                      <button
+                        v-if="!(asset.credentials && asset.credentials.length > 0)"
+                        @click="openCredentialModal(asset)"
+                        class="text-primary hover:underline text-xs"
+                      >
+                        {{ asset.credentials?.length || 0 }} 个凭证
+                      </button>
+                    </div>
+                  </td>
+                </template>
+
+                <!-- Common notes column -->
+                <td>
+                  <div v-if="asset.notes" class="relative">
+                    <div
+                      class="text-sm text-slate-600 max-h-12 overflow-hidden cursor-pointer"
+                      :class="{'line-clamp-2': !asset.expandedNotes}"
+                      @click="asset.expandedNotes = !asset.expandedNotes"
+                    >
+                      {{ asset.notes }}
+                    </div>
+                    <div
+                      v-if="asset.notes.length > 100"
+                      class="mt-1 text-xs text-primary cursor-pointer"
+                      @click="asset.expandedNotes = !asset.expandedNotes"
+                    >
+                      {{ asset.expandedNotes ? '收起' : '展开' }}
+                    </div>
+                  </div>
+                  <div v-else class="-">
+                    <span class="text-sm text-slate-400">-</span>
+                  </div>
+                </td>
+
+                <!-- Action column -->
+                <td class="text-right">
+                  <div class="flex items-center justify-end gap-1">
+                    <button @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded hover:bg-blue-600 transition-colors text-xs">
+                      更新
+                    </button>
+                    <button class="border border-primary/30 text-primary px-2 py-0.5 rounded hover:bg-blue-50 flex items-center gap-0.5 transition-colors text-xs">
+                      更多 <DownOutlined class="text-[10px]" />
                     </button>
                   </div>
                 </td>
@@ -621,9 +1344,9 @@ onMounted(() => {
             <div class="grid grid-cols-2 gap-4">
               <div v-if="form.category !== 'cloud' && form.category !== 'gpt' && form.category !== 'web'">
                 <label class="block text-sm font-medium text-slate-700 mb-1">地址</label>
-                <input v-model="form.address" type="text" class="input-field" placeholder="IP 或 主机名:端口" />
+                <input v-model="form.address" type="text" class="input-field" placeholder="支持格式: IP、IP:端口、主机名、主机名:端口" />
               </div>
-              <div v-if="form.category === 'web' || form.category === 'gpt'">
+              <div v-if="form.category === 'cloud' || form.category === 'web' || form.category === 'gpt'">
                 <label class="block text-sm font-medium text-slate-700 mb-1">URL</label>
                 <input v-model="form.url" type="text" class="input-field" placeholder="https://" />
               </div>

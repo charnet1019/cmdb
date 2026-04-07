@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { UserAddOutlined, SearchOutlined, SafetyCertificateOutlined, EditOutlined, LockOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-vue'
 import { getUsers, createUser, updateUser, deleteUser, resetUserPassword, getUserAuthorizations } from '@/api/users'
 import { getGroups } from '@/api/users'
 import type { User, Group } from '@/types'
 import type { UserAuthorization } from '@/api/users'
+
+const router = useRouter()
+const route = useRoute()
 
 // Data
 const users = ref<User[]>([])
@@ -299,9 +303,25 @@ async function openAuthorizationsModal(user: User) {
 
 // Initial load
 onMounted(() => {
+  // Restore state from URL
+  const query = route.query
+  if (query.page) page.value = Number(query.page)
+  if (query.search) searchQuery.value = query.search as string
+  if (query.status === 'true') statusFilter.value = true
+  else if (query.status === 'false') statusFilter.value = false
+
   fetchUsers()
   fetchGroups()
 })
+
+// Sync state to URL
+watch([page, searchQuery, statusFilter], () => {
+  const query: Record<string, string> = {}
+  if (page.value !== 1) query.page = String(page.value)
+  if (searchQuery.value) query.search = searchQuery.value
+  if (statusFilter.value !== null) query.status = String(statusFilter.value)
+  router.replace({ query })
+}, { deep: true })
 </script>
 
 <template>

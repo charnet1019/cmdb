@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { PlusOutlined, EditOutlined, BlockOutlined, CheckCircleOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-vue'
 import {
@@ -13,6 +14,9 @@ import {
   getOrganizationsForAuth
 } from '@/api/authorizations'
 import type { AuthorizationCreate } from '@/api/authorizations'
+
+const router = useRouter()
+const route = useRoute()
 
 // Data
 const authorizations = ref<any[]>([])
@@ -278,9 +282,25 @@ function getPermissionLabel(key: string): string {
 
 // Initial load
 onMounted(() => {
+  // Restore state from URL
+  const query = route.query
+  if (query.page) page.value = Number(query.page)
+  if (query.entity) entityTypeFilter.value = query.entity as string
+  if (query.active === 'true') isActiveFilter.value = true
+  else if (query.active === 'false') isActiveFilter.value = false
+
   fetchAuthorizations()
   fetchSelectionOptions()
 })
+
+// Sync state to URL
+watch([page, entityTypeFilter, isActiveFilter], () => {
+  const query: Record<string, string> = {}
+  if (page.value !== 1) query.page = String(page.value)
+  if (entityTypeFilter.value) query.entity = entityTypeFilter.value
+  if (isActiveFilter.value !== null) query.active = String(isActiveFilter.value)
+  router.replace({ query })
+}, { deep: true })
 </script>
 
 <template>
