@@ -951,14 +951,8 @@ onMounted(() => {
               <button @click="openCreateModal" class="btn-primary text-xs px-3 py-1.5">
                 创建
               </button>
-              <button class="border border-gray-200 text-slate-600 px-3 py-1.5 rounded text-xs font-medium hover:bg-gray-50 flex items-center gap-1 transition-colors">
-                更多操作 <DownOutlined class="text-[14px]" />
-              </button>
             </div>
             <div class="flex items-center gap-2">
-              <button class="border border-gray-200 text-slate-600 px-3 py-1.5 rounded text-xs font-medium hover:bg-gray-50 flex items-center gap-1 transition-colors">
-                <span class="material-symbols-outlined text-[14px]">label</span> 标签
-              </button>
               <div class="relative flex items-center border border-gray-200 rounded overflow-hidden bg-white w-72">
                 <div class="px-2 border-r border-gray-100 bg-gray-50 text-slate-400 flex items-center cursor-pointer">
                   <DownOutlined class="text-[14px]" />
@@ -1251,9 +1245,6 @@ onMounted(() => {
                   <div class="flex items-center justify-end gap-1">
                     <button @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded hover:bg-blue-600 transition-colors text-xs">
                       更新
-                    </button>
-                    <button class="border border-primary/30 text-primary px-2 py-0.5 rounded hover:bg-blue-50 flex items-center gap-0.5 transition-colors text-xs">
-                      更多 <DownOutlined class="text-[10px]" />
                     </button>
                   </div>
                 </td>
