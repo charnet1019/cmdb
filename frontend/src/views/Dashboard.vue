@@ -93,13 +93,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <!-- Page Header -->
-    <div>
-      <h1 class="text-2xl font-bold text-slate-900">仪表盘</h1>
-      <p class="text-slate-500 mt-1">欢迎回来，{{ authStore.user?.full_name || authStore.user?.username }}</p>
-    </div>
-
+  <div class="space-y-4">
     <!-- Stats Cards -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
       <div

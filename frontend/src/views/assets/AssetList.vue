@@ -839,19 +839,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <!-- Page Header -->
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold text-slate-900">资产列表</h1>
-        <p class="text-slate-500 mt-1">管理和查看所有IT基础设施资产</p>
-      </div>
-      <button @click="openCreateModal" class="btn-primary flex items-center gap-2">
-        <PlusOutlined />
-        创建资产
-      </button>
-    </div>
-
+  <div class="space-y-4">
     <!-- Category Tabs -->
     <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
       <div class="flex border-b border-slate-100">

@@ -304,22 +304,14 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <!-- Page Header -->
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold text-slate-900">资产授权</h1>
-        <p class="text-slate-500 mt-1">管理和维护系统资产与用户/用户组之间的权限关系</p>
-      </div>
-      <button @click="openCreateModal" class="btn-primary flex items-center gap-2">
-        <PlusOutlined />
-        新增授权
-      </button>
-    </div>
-
+  <div class="space-y-4">
     <!-- Filters -->
     <div class="bg-white rounded-xl shadow-sm p-4">
       <div class="flex items-center gap-4 flex-wrap">
+        <button @click="openCreateModal" class="btn-primary flex items-center gap-2">
+          <PlusOutlined />
+          新增授权
+        </button>
         <select v-model="entityTypeFilter" @change="handleSearch" class="input-field w-32">
           <option value="">全部对象</option>
           <option value="user">用户</option>

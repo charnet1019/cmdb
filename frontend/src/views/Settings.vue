@@ -104,13 +104,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <!-- Page Header -->
-    <div>
-      <h1 class="text-2xl font-bold text-slate-900">系统设置</h1>
-      <p class="text-slate-500 mt-1">配置系统参数、密码策略和安全选项</p>
-    </div>
-
+  <div class="space-y-4">
     <!-- Tabs -->
     <div class="bg-white rounded-xl shadow-sm overflow-hidden">
       <div class="border-b border-slate-100">

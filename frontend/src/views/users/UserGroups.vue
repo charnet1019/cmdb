@@ -277,22 +277,14 @@ watch([page, searchQuery], () => {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <!-- Page Header -->
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold text-slate-900">用户组</h1>
-        <p class="text-slate-500 mt-1">管理用户组及其所属权限</p>
-      </div>
-      <button @click="openCreateModal" class="btn-primary flex items-center gap-2">
-        <UsergroupAddOutlined />
-        创建用户组
-      </button>
-    </div>
-
+  <div class="space-y-4">
     <!-- Filters -->
     <div class="bg-white rounded-xl shadow-sm p-4">
       <div class="flex items-center gap-4">
+        <button @click="openCreateModal" class="btn-primary flex items-center gap-2">
+          <UsergroupAddOutlined />
+          创建用户组
+        </button>
         <div class="relative flex-1 max-w-md">
           <SearchOutlined class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
