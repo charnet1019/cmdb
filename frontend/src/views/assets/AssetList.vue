@@ -2,7 +2,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, SearchOutlined, FolderOpenOutlined, FolderOutlined, FileTextOutlined, DownOutlined, UpOutlined, RightOutlined, KeyOutlined, EditOutlined, DeleteOutlined, CloseOutlined, PlusCircleOutlined, UserOutlined, EyeOutlined, CopyOutlined, AppstoreOutlined, ClusterOutlined, DatabaseOutlined, CloudServerOutlined, GlobalOutlined, RobotOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, SearchOutlined, FolderOpenOutlined, FolderOutlined, FileTextOutlined, DownOutlined, UpOutlined, RightOutlined, KeyOutlined, EditOutlined, DeleteOutlined, CloseOutlined, PlusCircleOutlined, UserOutlined, EyeOutlined, EyeInvisibleOutlined, CopyOutlined, AppstoreOutlined, ClusterOutlined, DatabaseOutlined, CloudServerOutlined, GlobalOutlined, RobotOutlined } from '@ant-design/icons-vue'
 import { getAssets, getOrganizations, createAsset, updateAsset, deleteAsset, getCredentials, createCredential, decryptCredential, deleteCredential } from '@/api/assets'
 import type { Asset, AssetCategory, Organization, Credential } from '@/types'
 
@@ -40,6 +40,7 @@ const selectedTypeNodeId = ref<string>('all')
 // Modal
 const showModal = ref(false)
 const showCredentialModal = ref(false)
+const showPassword = ref(false)
 const modalLoading = ref(false)
 const editingAsset = ref<Asset | null>(null)
 const selectedAsset = ref<Asset | null>(null)
@@ -63,7 +64,8 @@ const form = ref({
   category: 'host' as AssetCategory,
   address: '',
   platform: '',
-  organization_id: null as number | null,
+  username: '',
+  password: '',
   device_type: '',
   vendor: '',
   model: '',
@@ -497,7 +499,8 @@ function openCreateModal() {
     category: 'host',
     address: '',
     platform: '',
-    organization_id: selectedOrgId.value,
+    username: '',
+    password: '',
     device_type: '',
     vendor: '',
     model: '',
@@ -505,6 +508,7 @@ function openCreateModal() {
     url: '',
     notes: ''
   }
+  showPassword.value = false
   showModal.value = true
 }
 
@@ -517,7 +521,8 @@ function openEditModal(asset: Asset) {
     category: asset.category,
     address: asset.address || '',
     platform: asset.platform || '',
-    organization_id: asset.organization_id,
+    username: asset.credentials?.[0]?.username || '',
+    password: '',
     device_type: asset.device_type || '',
     vendor: asset.vendor || '',
     model: asset.model || '',
@@ -525,6 +530,7 @@ function openEditModal(asset: Asset) {
     url: asset.url || '',
     notes: asset.notes || ''
   }
+  showPassword.value = false
   showModal.value = true
 }
 
@@ -597,7 +603,6 @@ async function handleSubmit() {
       category: form.value.category,
       address: form.value.address || undefined,
       platform: form.value.platform || undefined,
-      organization_id: form.value.organization_id || undefined,
       device_type: form.value.device_type || undefined,
       vendor: form.value.vendor || undefined,
       model: form.value.model || undefined,
@@ -610,7 +615,15 @@ async function handleSubmit() {
       await updateAsset(editingAsset.value.id, data)
       message.success('资产更新成功')
     } else {
-      await createAsset(data)
+      const newAsset = await createAsset(data)
+      // If username and password are provided, create credential
+      if (form.value.username && form.value.password && newAsset.id) {
+        await createCredential(newAsset.id, {
+          username: form.value.username,
+          password: form.value.password,
+          credential_type: 'password'
+        })
+      }
       message.success('资产创建成功')
     }
     showModal.value = false
@@ -1310,13 +1323,26 @@ onMounted(() => {
                   <option v-for="cat in categoryOptions" :key="cat.key" :value="cat.key">{{ cat.label }}</option>
                 </select>
               </div>
+              <!-- Username -->
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">所属组织</label>
-                <select v-model="form.organization_id" class="input-field">
-                  <option :value="null">无</option>
-                  <option v-for="org in organizations" :key="org.id" :value="org.id">{{ org.name }}</option>
-                </select>
+                <label class="block text-sm font-medium text-slate-700 mb-1">用户名</label>
+                <input v-model="form.username" type="text" class="input-field" placeholder="登录用户名" />
               </div>
+            </div>
+
+            <!-- Username/Password Row -->
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">密码</label>
+                <div class="relative">
+                  <input v-model="form.password" :type="showPassword ? 'text' : 'password'" class="input-field pr-10" placeholder="登录密码" />
+                  <button type="button" @click="showPassword = !showPassword" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    <EyeOutlined v-if="!showPassword" />
+                    <EyeInvisibleOutlined v-else />
+                  </button>
+                </div>
+              </div>
+              <div></div>
             </div>
 
             <!-- Address/URL based on category -->
