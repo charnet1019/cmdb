@@ -96,7 +96,7 @@ async def list_assets(
             "serial_number": asset.serial_number,
             "url": asset.url,
             "notes": asset.notes,
-            "metadata": asset.metadata,
+            "metadata": asset.extra_data,
             "is_active": asset.is_active,
             "created_at": asset.created_at,
             "credentials": credentials,
@@ -141,7 +141,7 @@ async def create_asset(
         serial_number=data.serial_number,
         url=data.url,
         notes=data.notes,
-        metadata=data.metadata,
+        extra_data=data.metadata,
     )
 
     db.add(asset)
@@ -162,7 +162,7 @@ async def create_asset(
         serial_number=asset.serial_number,
         url=asset.url,
         notes=asset.notes,
-        metadata=asset.metadata,
+        metadata=asset.extra_data,
         is_active=asset.is_active,
         created_at=asset.created_at,
         credentials=[],
@@ -212,7 +212,7 @@ async def get_asset(
         serial_number=asset.serial_number,
         url=asset.url,
         notes=asset.notes,
-        metadata=asset.metadata,
+        metadata=asset.extra_data,
         is_active=asset.is_active,
         created_at=asset.created_at,
         credentials=credentials,
@@ -241,7 +241,11 @@ async def update_asset(
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
-        setattr(asset, field, value)
+        # Map schema 'metadata' to model 'extra_data'
+        if field == "metadata":
+            setattr(asset, "extra_data", value)
+        else:
+            setattr(asset, field, value)
 
     await db.commit()
     await db.refresh(asset)
@@ -266,7 +270,7 @@ async def update_asset(
         serial_number=asset.serial_number,
         url=asset.url,
         notes=asset.notes,
-        metadata=asset.metadata,
+        metadata=asset.extra_data,
         is_active=asset.is_active,
         created_at=asset.created_at,
         credentials=[
@@ -444,7 +448,7 @@ async def create_credential(
         username=data.username,
         password_encrypted=encrypt_value(data.password),
         credential_type=data.credential_type,
-        metadata=data.metadata,
+        extra_data=data.metadata,
     )
 
     db.add(credential)
