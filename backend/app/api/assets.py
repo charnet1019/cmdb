@@ -24,6 +24,54 @@ from app.core.encryption import encrypt_value, decrypt_value
 router = APIRouter(prefix="/assets", tags=["资产管理"])
 
 
+# ============== Asset Statistics API ==============
+@router.get("/stats")
+async def get_asset_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get asset statistics by category and subcategory"""
+    # Get total count
+    total_result = await db.execute(select(func.count()).select_from(Asset))
+    total = total_result.scalar() or 0
+
+    # Get count by category
+    category_result = await db.execute(
+        select(Asset.category, func.count().label('count'))
+        .group_by(Asset.category)
+    )
+    category_counts = {row.category: row.count for row in category_result}
+
+    # Get count by platform (for host, database, cloud, web, gpt)
+    platform_result = await db.execute(
+        select(Asset.category, Asset.platform, func.count().label('count'))
+        .where(Asset.platform.isnot(None))
+        .group_by(Asset.category, Asset.platform)
+    )
+    platform_counts = {}
+    for row in platform_result:
+        key = f"{row.category}:{row.platform}"
+        platform_counts[key] = row.count
+
+    # Get count by device_type (for network)
+    device_type_result = await db.execute(
+        select(Asset.device_type, func.count().label('count'))
+        .where(Asset.device_type.isnot(None))
+        .group_by(Asset.device_type)
+    )
+    device_type_counts = {row.device_type: row.count for row in device_type_result}
+
+    return {
+        "code": 0,
+        "data": {
+            "total": total,
+            "by_category": category_counts,
+            "by_platform": platform_counts,
+            "by_device_type": device_type_counts
+        }
+    }
+
+
 # ============== Asset APIs ==============
 @router.get("", response_model=AssetListResponse)
 async def list_assets(
@@ -494,6 +542,45 @@ async def decrypt_credential(
         id=credential.id,
         username=credential.username,
         password=decrypted_password,
+    )
+
+
+@cred_router.put("/{credential_id}", response_model=CredentialResponse)
+async def update_credential(
+    credential_id: int,
+    data: CredentialUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update a credential"""
+    result = await db.execute(
+        select(Credential).where(Credential.id == credential_id)
+    )
+    credential = result.scalar_one_or_none()
+
+    if not credential:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="凭证不存在"
+        )
+
+    # Update fields
+    if data.username is not None:
+        credential.username = data.username
+    if data.password is not None:
+        credential.password_encrypted = encrypt_value(data.password)
+    if data.metadata is not None:
+        credential.extra_data = data.metadata
+
+    await db.commit()
+    await db.refresh(credential)
+
+    return CredentialResponse(
+        id=credential.id,
+        asset_id=credential.asset_id,
+        username=credential.username,
+        credential_type=credential.credential_type,
+        created_at=credential.created_at,
     )
 
 
