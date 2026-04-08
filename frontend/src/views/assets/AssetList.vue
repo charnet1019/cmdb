@@ -397,9 +397,16 @@ function selectType(node: any) {
     selectedOrgId.value = null;
     fetchAssets();
   } else if (node.hasChildren) {
-    // Clicked on a node with children - toggle expansion only
+    // Clicked on a node with children - toggle expansion AND select this category
     toggleType(node.id);
-    // Do not change selection when clicking parent nodes (accordion toggle)
+    // Set selection to this node
+    selectedTypeNodeId.value = node.id;
+    // Set active category to filter assets
+    if (node.category) {
+      activeCategory.value = node.category as AssetCategory;
+    }
+    selectedOrgId.value = null;
+    fetchAssets();
   } else if (node.subCategory && node.category) {
     // Clicked on a leaf sub-category node (level 2) - apply filter
     selectedTypeNodeId.value = node.id;
