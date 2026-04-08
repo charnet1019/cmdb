@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { message, Modal } from 'ant-design-vue'
-import { SearchOutlined, FolderOpenOutlined, FolderOutlined, FileTextOutlined, DownOutlined, UpOutlined, RightOutlined, KeyOutlined, EditOutlined, DeleteOutlined, CloseOutlined, PlusCircleOutlined, UserOutlined, EyeOutlined, EyeInvisibleOutlined, CopyOutlined, AppstoreOutlined, ClusterOutlined, DatabaseOutlined, CloudServerOutlined, GlobalOutlined, RobotOutlined } from '@ant-design/icons-vue'
-import { getAssets, getOrganizations, createAsset, updateAsset, deleteAsset, getCredentials, createCredential, updateCredential, decryptCredential, deleteCredential, getAssetStats } from '@/api/assets'
+import { message, Modal, Dropdown } from 'ant-design-vue'
+import { SearchOutlined, FolderOpenOutlined, FolderOutlined, FileTextOutlined, DownOutlined, UpOutlined, RightOutlined, KeyOutlined, DeleteOutlined, CloseOutlined, PlusCircleOutlined, UserOutlined, EyeOutlined, EyeInvisibleOutlined, CopyOutlined, AppstoreOutlined, ClusterOutlined, DatabaseOutlined, CloudServerOutlined, GlobalOutlined, RobotOutlined, StopOutlined, CheckCircleOutlined } from '@ant-design/icons-vue'
+import { getAssets, getOrganizations, createAsset, updateAsset, deleteAsset, getCredentials, createCredential, updateCredential, decryptCredential, deleteCredential, getAssetStats, bulkUpdateAssets, bulkDeleteAssets } from '@/api/assets'
 import type { Asset, AssetCategory, Organization, Credential } from '@/types'
 
 // Extended asset type with runtime properties for UI state
@@ -325,16 +325,7 @@ const flattenedTypeTree = computed(() => {
   }
 
   return result;
-});
-
-// Reset filters and tree selection
-function resetFilters() {
-  selectedOrgId.value = null;
-  treeViewMode.value = 'asset';
-  activeCategory.value = 'all';
-  selectedTypeNodeId.value = 'all';
-  fetchAssets();
-}
+})
 
 // Switch between asset tree and type tree
 function switchTreeView(mode: 'asset' | 'type') {
@@ -447,12 +438,6 @@ async function fetchAssets() {
   } finally {
     loading.value = false
   }
-}
-
-// Update expandedTypeIds after assets are loaded
-function updateExpandedTypeIds() {
-  // Only expand root by default, not level 1 categories (accordion effect)
-  expandedTypeIds.value = ['all'];
 }
 
 // Fetch asset statistics
@@ -856,23 +841,6 @@ async function handleDelete(asset: Asset) {
   })
 }
 
-// Open credential modal
-async function openCredentialModal(asset: Asset) {
-  selectedAsset.value = asset
-  credentials.value = []
-  credentialLoading.value = true
-  showCredentialModal.value = true
-  decryptedPasswords.value.clear()
-
-  try {
-    credentials.value = await getCredentials(asset.id)
-  } catch (error) {
-    message.error('获取凭证失败')
-  } finally {
-    credentialLoading.value = false
-  }
-}
-
 // Copy to clipboard with fallback
 async function copyToClipboard(text: string) {
   try {
@@ -965,9 +933,93 @@ function selectionChanged() {
   allSelected.value = assets.value.every(asset => asset.selected);
 }
 
-// Refresh assets
-function refreshAssets() {
-  fetchAssets();
+// Get selected asset IDs
+function getSelectedAssetIds(): number[] {
+  return assets.value.filter(asset => asset.selected).map(asset => asset.id);
+}
+
+// Get selected assets count
+const selectedCount = computed(() => assets.value.filter(asset => asset.selected).length);
+
+// Bulk disable assets
+async function bulkDisable() {
+  const ids = getSelectedAssetIds();
+  if (ids.length === 0) {
+    message.warning('请先选择要禁用的资产');
+    return;
+  }
+
+  Modal.confirm({
+    title: '确认禁用',
+    content: `确定要禁用选中的 ${ids.length} 个资产吗？`,
+    okText: '确定',
+    okType: 'danger',
+    cancelText: '取消',
+    centered: true,
+    async onOk() {
+      try {
+        await bulkUpdateAssets(ids, { is_active: false });
+        message.success(`已禁用 ${ids.length} 个资产`);
+        fetchAssets();
+      } catch (error: any) {
+        message.error(error.response?.data?.detail || '批量禁用失败');
+      }
+    }
+  });
+}
+
+// Bulk activate assets
+async function bulkActivate() {
+  const ids = getSelectedAssetIds();
+  if (ids.length === 0) {
+    message.warning('请先选择要激活的资产');
+    return;
+  }
+
+  Modal.confirm({
+    title: '确认激活',
+    content: `确定要激活选中的 ${ids.length} 个资产吗？`,
+    okText: '确定',
+    cancelText: '取消',
+    centered: true,
+    async onOk() {
+      try {
+        await bulkUpdateAssets(ids, { is_active: true });
+        message.success(`已激活 ${ids.length} 个资产`);
+        fetchAssets();
+      } catch (error: any) {
+        message.error(error.response?.data?.detail || '批量激活失败');
+      }
+    }
+  });
+}
+
+// Bulk delete assets
+async function bulkDelete() {
+  const ids = getSelectedAssetIds();
+  if (ids.length === 0) {
+    message.warning('请先选择要删除的资产');
+    return;
+  }
+
+  Modal.confirm({
+    title: '确认删除',
+    content: `确定要删除选中的 ${ids.length} 个资产吗？删除后无法恢复。`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    centered: true,
+    async onOk() {
+      try {
+        await bulkDeleteAssets(ids);
+        message.success(`已删除 ${ids.length} 个资产`);
+        allSelected.value = false;
+        fetchAssets();
+      } catch (error: any) {
+        message.error(error.response?.data?.detail || '批量删除失败');
+      }
+    }
+  });
 }
 
 // Sync state to URL query parameters
@@ -1163,6 +1215,44 @@ onMounted(() => {
               <button @click="openCreateModal" class="btn-primary text-xs px-3 py-1.5">
                 创建
               </button>
+              <Dropdown :trigger="['click']">
+                <button class="border border-slate-300 text-slate-600 text-xs px-3 py-1.5 rounded hover:bg-slate-50 transition-colors flex items-center gap-1">
+                  更多操作
+                  <DownOutlined class="text-[10px]" />
+                </button>
+                <template #overlay>
+                  <div class="bg-white rounded-lg shadow-lg border border-slate-200 py-1 min-w-[120px]">
+                    <div
+                      @click="bulkDisable"
+                      class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2"
+                      :class="selectedCount === 0 ? 'opacity-50 cursor-not-allowed' : ''"
+                    >
+                      <StopOutlined class="text-sm" />
+                      批量禁用
+                      <span v-if="selectedCount > 0" class="text-xs text-slate-400 ml-auto">({{ selectedCount }})</span>
+                    </div>
+                    <div
+                      @click="bulkActivate"
+                      class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2"
+                      :class="selectedCount === 0 ? 'opacity-50 cursor-not-allowed' : ''"
+                    >
+                      <CheckCircleOutlined class="text-sm" />
+                      批量激活
+                      <span v-if="selectedCount > 0" class="text-xs text-slate-400 ml-auto">({{ selectedCount }})</span>
+                    </div>
+                    <div class="border-t border-slate-100 my-1"></div>
+                    <div
+                      @click="bulkDelete"
+                      class="px-4 py-2 text-sm text-red-500 hover:bg-red-50 cursor-pointer flex items-center gap-2"
+                      :class="selectedCount === 0 ? 'opacity-50 cursor-not-allowed' : ''"
+                    >
+                      <DeleteOutlined class="text-sm" />
+                      批量删除
+                      <span v-if="selectedCount > 0" class="text-xs text-slate-400 ml-auto">({{ selectedCount }})</span>
+                    </div>
+                  </div>
+                </template>
+              </Dropdown>
             </div>
             <div class="flex items-center gap-2">
               <div class="relative flex items-center border border-gray-200 rounded overflow-hidden bg-white w-72">

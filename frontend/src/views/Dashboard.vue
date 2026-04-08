@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useAuthStore } from '@/stores/auth'
 import { getDashboardStats, getDashboardAlerts } from '@/api/dashboard'
 import type { DashboardStats, DashboardAlerts } from '@/api/dashboard'
 import {
@@ -13,8 +12,6 @@ import {
   KeyOutlined,
   HistoryOutlined
 } from '@ant-design/icons-vue'
-
-const authStore = useAuthStore()
 
 // Stats
 const stats = ref<DashboardStats>({

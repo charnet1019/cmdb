@@ -48,6 +48,15 @@ export async function deleteAsset(id: number): Promise<void> {
   await api.delete(`/assets/${id}`)
 }
 
+// Bulk operations
+export async function bulkUpdateAssets(ids: number[], data: Partial<Asset>): Promise<void> {
+  await api.put('/assets/bulk', { ids, data })
+}
+
+export async function bulkDeleteAssets(ids: number[]): Promise<void> {
+  await api.delete('/assets/bulk', { data: { ids } })
+}
+
 // Organization APIs
 export async function getOrganizations(): Promise<Organization[]> {
   const response = await api.get('/organizations')
