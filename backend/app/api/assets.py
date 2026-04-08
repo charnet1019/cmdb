@@ -217,6 +217,74 @@ async def create_asset(
     )
 
 
+# ============== Bulk Operations APIs ==============
+@router.put("/bulk", response_model=ResponseBase)
+async def bulk_update_assets(
+    request: BulkUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Bulk update assets (activate/deactivate)"""
+    if not request.ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="请选择要操作的资产"
+        )
+
+    result = await db.execute(
+        select(Asset).where(Asset.id.in_(request.ids))
+    )
+    assets = result.scalars().all()
+
+    if not assets:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="未找到任何资产"
+        )
+
+    # Update each asset
+    for asset in assets:
+        if "is_active" in request.data:
+            asset.is_active = request.data["is_active"]
+
+    await db.commit()
+
+    return ResponseBase(message=f"已更新 {len(assets)} 个资产")
+
+
+@router.delete("/bulk", response_model=ResponseBase)
+async def bulk_delete_assets(
+    request: BulkDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Bulk delete assets"""
+    if not request.ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="请选择要删除的资产"
+        )
+
+    result = await db.execute(
+        select(Asset).where(Asset.id.in_(request.ids))
+    )
+    assets = result.scalars().all()
+
+    if not assets:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="未找到任何资产"
+        )
+
+    # Delete each asset
+    for asset in assets:
+        await db.delete(asset)
+
+    await db.commit()
+
+    return ResponseBase(message=f"已删除 {len(assets)} 个资产")
+
+
 @router.get("/{asset_id}", response_model=AssetResponse)
 async def get_asset(
     asset_id: int,
@@ -350,74 +418,6 @@ async def delete_asset(
     await db.commit()
 
     return ResponseBase(message="资产已删除")
-
-
-# ============== Bulk Operations APIs ==============
-@router.put("/bulk", response_model=ResponseBase)
-async def bulk_update_assets(
-    request: BulkUpdateRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Bulk update assets (activate/deactivate)"""
-    if not request.ids:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="请选择要操作的资产"
-        )
-
-    result = await db.execute(
-        select(Asset).where(Asset.id.in_(request.ids))
-    )
-    assets = result.scalars().all()
-
-    if not assets:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="未找到任何资产"
-        )
-
-    # Update each asset
-    for asset in assets:
-        if "is_active" in request.data:
-            asset.is_active = request.data["is_active"]
-
-    await db.commit()
-
-    return ResponseBase(message=f"已更新 {len(assets)} 个资产")
-
-
-@router.delete("/bulk", response_model=ResponseBase)
-async def bulk_delete_assets(
-    request: BulkDeleteRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Bulk delete assets"""
-    if not request.ids:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="请选择要删除的资产"
-        )
-
-    result = await db.execute(
-        select(Asset).where(Asset.id.in_(request.ids))
-    )
-    assets = result.scalars().all()
-
-    if not assets:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="未找到任何资产"
-        )
-
-    # Delete each asset
-    for asset in assets:
-        await db.delete(asset)
-
-    await db.commit()
-
-    return ResponseBase(message=f"已删除 {len(assets)} 个资产")
 
 
 # ============== Organization/Asset Tree APIs ==============
