@@ -102,7 +102,6 @@ const form = ref({
   address: '',
   platform: '',
   device_type: '',
-  vendor: '',
   model: '',
   serial_number: '',
   url: '',
@@ -126,10 +125,10 @@ const categoryOptions = categories.filter(c => c.key !== 'all')
 // Platform options by category
 const platformOptions: Record<string, string[]> = {
   host: ['Linux', 'Windows', 'Unix', 'MacOS', 'NAS'],
-  network: ['Cisco IOS', 'Huawei VRP', 'Juniper JunOS', 'Aruba OS'],
+  network: ['Cisco', 'Huawei', 'H3C', 'Ruijie', 'ZTE', 'TP-Link', 'Tenda', 'ASUS', 'MERCURY', 'Netgear', 'Juniper'],
   database: ['MySQL', 'MongoDB', 'Redis', 'PostgreSQL', 'Oracle', 'SQL Server', 'InfluxDB', 'Elasticsearch', 'RabbitMQ', 'RocketMQ', 'Kafka', 'ClickHouse', 'EMQ', '达梦', 'TiDB', 'IoTDB', 'TDengine', 'Prometheus', 'Neo4j', 'Milvus', 'Weaviate', 'Qdrant'],
   cloud: ['Kubernetes', 'KubeSphere', 'Rancher', 'Harvester', 'OpenStack', 'ZStack', 'CloudStack', 'VMware', 'oVirt', 'KVM', 'AWS', 'Azure', 'GCP', '阿里云', '腾讯云', '青云', 'UCloud', '火山云', '天翼云', '移动云', '华为云'],
-  web: ['Nginx', 'Apache', 'IIS', 'Tomcat'],
+  web: ['Nginx', 'Apache', 'IIS', 'Tomcat', 'Nginx Ingress', 'Higress', 'Traefik', 'APISIX', 'Loadbalancer', 'F5'],
   gpt: ['OpenAI', 'Claude', 'ChatGLM', '通义千问']
 }
 
@@ -550,7 +549,6 @@ function openCreateModal() {
     address: '',
     platform: '',
     device_type: '',
-    vendor: '',
     model: '',
     serial_number: '',
     url: '',
@@ -571,7 +569,6 @@ function openEditModal(asset: Asset) {
     address: asset.address || '',
     platform: asset.platform || '',
     device_type: asset.device_type || '',
-    vendor: asset.vendor || '',
     model: asset.model || '',
     serial_number: asset.serial_number || '',
     url: asset.url || '',
@@ -657,7 +654,6 @@ async function handleSubmit() {
       address: form.value.address || undefined,
       platform: form.value.platform || undefined,
       device_type: form.value.device_type || undefined,
-      vendor: form.value.vendor || undefined,
       model: form.value.model || undefined,
       serial_number: form.value.serial_number || undefined,
       url: form.value.url || undefined,
@@ -1205,32 +1201,32 @@ onMounted(() => {
                 </template>
                 <template v-else-if="activeCategory === 'network'">
                   <th>名称 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
-                  <th>IP地址 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>地址 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
                   <th>设备类型 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
                   <th>厂商/型号 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
                   <th>用户名密码 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
                 </template>
                 <template v-else-if="activeCategory === 'database'">
                   <th>名称 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
-                  <th>连接地址 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>地址 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
                   <th>数据库类型 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
                   <th>用户名密码 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
                 </template>
                 <template v-else-if="activeCategory === 'cloud'">
                   <th>名称 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
-                  <th>URL <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>地址 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
                   <th>系统平台 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
                   <th>用户名密码 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
                 </template>
                 <template v-else-if="activeCategory === 'web'">
                   <th>名称 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
-                  <th>URL <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>地址 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
                   <th>Web服务器 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
                   <th>用户名密码 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
                 </template>
                 <template v-else-if="activeCategory === 'gpt'">
                   <th>名称 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
-                  <th>URL <DownOutlined class="text-[12px] align-middle ml-1" /></th>
+                  <th>地址 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
                   <th>AI平台 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
                   <th>用户名密码 <DownOutlined class="text-[12px] align-middle ml-1" /></th>
                 </template>
@@ -1259,19 +1255,16 @@ onMounted(() => {
                   />
                 </td>
                 <td>
-                  <div class="flex items-center gap-3">
-                    <component :is="getCategoryIcon(asset.category)" class="text-primary" />
-                    <div>
-                      <p class="font-medium text-slate-900">{{ asset.name }}</p>
-                      <p v-if="asset.asset_code" class="text-xs text-slate-400">{{ asset.asset_code }}</p>
-                    </div>
+                  <div>
+                    <p class="font-medium text-slate-900">{{ asset.name }}</p>
+                    <p v-if="asset.asset_code" class="text-xs text-slate-400">{{ asset.asset_code }}</p>
                   </div>
                 </td>
 
-                <!-- Host category specific columns -->
+                <!-- Host category or All category (show host-style columns for all asset types) -->
                 <template v-if="activeCategory === 'host' || activeCategory === 'all'">
                   <td>
-                    <span class="text-sm text-slate-600 font-mono">{{ asset.address || '-' }}</span>
+                    <span class="text-sm text-slate-600 font-mono">{{ asset.url || asset.address || '-' }}</span>
                   </td>
                   <td>
                     <span class="text-sm text-slate-600">{{ asset.platform || '-' }}</span>
@@ -1300,7 +1293,7 @@ onMounted(() => {
                     <span class="text-sm text-slate-600">{{ asset.device_type || '-' }}</span>
                   </td>
                   <td>
-                    <span class="text-sm text-slate-600">{{ asset.vendor && asset.model ? `${asset.vendor}/${asset.model}` : (asset.vendor || asset.model || '-') }}</span>
+                    <span class="text-sm text-slate-600">{{ asset.platform && asset.model ? `${asset.platform}/${asset.model}` : (asset.platform || asset.model || '-') }}</span>
                   </td>
                   <td>
                     <div class="flex flex-col gap-2 py-1">
@@ -1498,43 +1491,92 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- Row 2: 资产类型、平台 -->
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1.5">资产类型 <span class="text-red-500">*</span></label>
-                <select v-model="form.category" class="input-field">
-                  <option v-for="cat in categoryOptions" :key="cat.key" :value="cat.key">{{ cat.label }}</option>
-                </select>
+            <!-- Network设备专用布局 -->
+            <template v-if="form.category === 'network'">
+              <!-- Row 2: 资产类型、设备类型 -->
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">资产类型 <span class="text-red-500">*</span></label>
+                  <select v-model="form.category" class="input-field">
+                    <option v-for="cat in categoryOptions" :key="cat.key" :value="cat.key">{{ cat.label }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">设备类型</label>
+                  <select v-model="form.device_type" class="input-field">
+                    <option value="">请选择</option>
+                    <option v-for="t in deviceTypeOptions" :key="t" :value="t">{{ t }}</option>
+                  </select>
+                </div>
               </div>
-              <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1.5">平台</label>
-                <select v-model="form.platform" class="input-field">
-                  <option value="">请选择</option>
-                  <option v-for="p in platformOptions[form.category]" :key="p" :value="p">{{ p }}</option>
-                </select>
-              </div>
-            </div>
 
-            <!-- Row 3: 地址 -->
-            <div>
-              <label class="block text-xs font-medium text-slate-600 mb-1.5">
-                {{ form.category === 'cloud' || form.category === 'web' || form.category === 'gpt' ? 'URL' : '地址' }}
-              </label>
-              <input
-                v-if="form.category !== 'cloud' && form.category !== 'gpt' && form.category !== 'web'"
-                v-model="form.address"
-                type="text"
-                class="input-field"
-                placeholder="支持格式: IP、IP:端口、主机名、主机名:端口"
-              />
-              <input
-                v-else
-                v-model="form.url"
-                type="text"
-                class="input-field"
-                placeholder="https://"
-              />
-            </div>
+              <!-- Row 3: 平台（厂商）、型号 -->
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">厂商</label>
+                  <select v-model="form.platform" class="input-field">
+                    <option value="">请选择</option>
+                    <option v-for="p in platformOptions[form.category]" :key="p" :value="p">{{ p }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">型号</label>
+                  <input v-model="form.model" type="text" class="input-field" placeholder="如: C9300-48P" />
+                </div>
+              </div>
+
+              <!-- Row 4: 地址 -->
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1.5">地址</label>
+                <input
+                  v-model="form.address"
+                  type="text"
+                  class="input-field"
+                  placeholder="支持格式: IP、IP:端口"
+                />
+              </div>
+            </template>
+
+            <!-- 其他类别布局 -->
+            <template v-else>
+              <!-- Row 2: 资产类型、平台 -->
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">资产类型 <span class="text-red-500">*</span></label>
+                  <select v-model="form.category" class="input-field">
+                    <option v-for="cat in categoryOptions" :key="cat.key" :value="cat.key">{{ cat.label }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">平台</label>
+                  <select v-model="form.platform" class="input-field">
+                    <option value="">请选择</option>
+                    <option v-for="p in platformOptions[form.category]" :key="p" :value="p">{{ p }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Row 3: 地址 -->
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1.5">
+                  {{ form.category === 'cloud' || form.category === 'web' || form.category === 'gpt' ? 'URL' : '地址' }}
+                </label>
+                <input
+                  v-if="form.category !== 'cloud' && form.category !== 'gpt' && form.category !== 'web'"
+                  v-model="form.address"
+                  type="text"
+                  class="input-field"
+                  placeholder="支持格式: IP、IP:端口、主机名、主机名:端口"
+                />
+                <input
+                  v-else
+                  v-model="form.url"
+                  type="text"
+                  class="input-field"
+                  placeholder="https://"
+                />
+              </div>
+            </template>
 
             <!-- Row 4: 用户名密码 -->
             <div class="border border-slate-200 rounded-lg overflow-hidden">
@@ -1656,30 +1698,9 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- Network specific fields -->
-            <template v-if="form.category === 'network'">
-              <div class="grid grid-cols-3 gap-4">
-                <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">设备类型</label>
-                  <select v-model="form.device_type" class="input-field">
-                    <option value="">请选择</option>
-                    <option v-for="t in deviceTypeOptions" :key="t" :value="t">{{ t }}</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">厂商</label>
-                  <input v-model="form.vendor" type="text" class="input-field" placeholder="如: Cisco" />
-                </div>
-                <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">型号</label>
-                  <input v-model="form.model" type="text" class="input-field" placeholder="如: C9300-48P" />
-                </div>
-              </div>
-            </template>
-
             <!-- Notes -->
             <div>
-              <label class="block text-xs font-medium text-slate-600 mb-1.5">备注</label>
+              <label class="block text-xs font-medium text-slate-600 mb-1.5">描述</label>
               <textarea v-model="form.notes" class="input-field h-20 resize-none" placeholder="资产描述或备注"></textarea>
             </div>
 
