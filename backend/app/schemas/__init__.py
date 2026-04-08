@@ -346,6 +346,17 @@ class AssetListResponse(ResponseBase):
     meta: PaginationMeta
 
 
+class BulkUpdateRequest(BaseModel):
+    """Bulk update request schema"""
+    ids: List[int]
+    data: dict
+
+
+class BulkDeleteRequest(BaseModel):
+    """Bulk delete request schema"""
+    ids: List[int]
+
+
 class AuthorizationListResponse(ResponseBase):
     """Authorization list response"""
     data: List[AuthorizationResponse]

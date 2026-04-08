@@ -4,7 +4,7 @@ CRUD operations for assets, credentials, and organizations
 """
 from typing import Optional, List
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
@@ -15,7 +15,7 @@ from app.schemas import (
     AssetCreate, AssetUpdate, AssetResponse, AssetSimple,
     AssetListResponse, PaginationMeta,
     CredentialCreate, CredentialUpdate, CredentialResponse, CredentialDecryptResponse,
-    ResponseBase
+    ResponseBase, BulkUpdateRequest, BulkDeleteRequest
 )
 from app.api.deps import get_current_user, PermissionChecker
 from app.core.encryption import encrypt_value, decrypt_value
@@ -355,20 +355,19 @@ async def delete_asset(
 # ============== Bulk Operations APIs ==============
 @router.put("/bulk", response_model=ResponseBase)
 async def bulk_update_assets(
-    ids: List[int] = Body(...),
-    data: dict = Body(...),
+    request: BulkUpdateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Bulk update assets (activate/deactivate)"""
-    if not ids:
+    if not request.ids:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="请选择要操作的资产"
         )
 
     result = await db.execute(
-        select(Asset).where(Asset.id.in_(ids))
+        select(Asset).where(Asset.id.in_(request.ids))
     )
     assets = result.scalars().all()
 
@@ -380,8 +379,8 @@ async def bulk_update_assets(
 
     # Update each asset
     for asset in assets:
-        if "is_active" in data:
-            asset.is_active = data["is_active"]
+        if "is_active" in request.data:
+            asset.is_active = request.data["is_active"]
 
     await db.commit()
 
@@ -390,19 +389,19 @@ async def bulk_update_assets(
 
 @router.delete("/bulk", response_model=ResponseBase)
 async def bulk_delete_assets(
-    ids: List[int] = Body(...),
+    request: BulkDeleteRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Bulk delete assets"""
-    if not ids:
+    if not request.ids:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="请选择要删除的资产"
         )
 
     result = await db.execute(
-        select(Asset).where(Asset.id.in_(ids))
+        select(Asset).where(Asset.id.in_(request.ids))
     )
     assets = result.scalars().all()
 
