@@ -941,26 +941,40 @@ function getSelectedAssetIds(): number[] {
 // Get selected assets count
 const selectedCount = computed(() => assets.value.filter(asset => asset.selected).length);
 
+// Get count of selected active assets
+const selectedActiveCount = computed(() => assets.value.filter(asset => asset.selected && asset.is_active).length);
+
+// Get count of selected inactive assets
+const selectedInactiveCount = computed(() => assets.value.filter(asset => asset.selected && !asset.is_active).length);
+
+// Check if can disable (has active assets selected)
+const canDisable = computed(() => selectedActiveCount.value > 0);
+
+// Check if can activate (has inactive assets selected)
+const canActivate = computed(() => selectedInactiveCount.value > 0);
+
 // Bulk disable assets
 async function bulkDisable() {
-  const ids = getSelectedAssetIds();
-  if (ids.length === 0) {
-    message.warning('请先选择要禁用的资产');
+  // Only disable active assets
+  const activeIds = assets.value.filter(asset => asset.selected && asset.is_active).map(asset => asset.id);
+  if (activeIds.length === 0) {
+    message.warning('选中的资产中没有可禁用的资产');
     return;
   }
 
   Modal.confirm({
     title: '确认禁用',
-    content: `确定要禁用选中的 ${ids.length} 个资产吗？`,
+    content: `确定要禁用选中的 ${activeIds.length} 个资产吗？`,
     okText: '确定',
     okType: 'danger',
     cancelText: '取消',
     centered: true,
     async onOk() {
       try {
-        await bulkUpdateAssets(ids, { is_active: false });
-        message.success(`已禁用 ${ids.length} 个资产`);
+        await bulkUpdateAssets(activeIds, { is_active: false });
+        message.success(`已禁用 ${activeIds.length} 个资产`);
         fetchAssets();
+        fetchAssetStats();
       } catch (error: any) {
         message.error(error.response?.data?.detail || '批量禁用失败');
       }
@@ -970,23 +984,25 @@ async function bulkDisable() {
 
 // Bulk activate assets
 async function bulkActivate() {
-  const ids = getSelectedAssetIds();
-  if (ids.length === 0) {
-    message.warning('请先选择要激活的资产');
+  // Only activate inactive assets
+  const inactiveIds = assets.value.filter(asset => asset.selected && !asset.is_active).map(asset => asset.id);
+  if (inactiveIds.length === 0) {
+    message.warning('选中的资产中没有可激活的资产');
     return;
   }
 
   Modal.confirm({
     title: '确认激活',
-    content: `确定要激活选中的 ${ids.length} 个资产吗？`,
+    content: `确定要激活选中的 ${inactiveIds.length} 个资产吗？`,
     okText: '确定',
     cancelText: '取消',
     centered: true,
     async onOk() {
       try {
-        await bulkUpdateAssets(ids, { is_active: true });
-        message.success(`已激活 ${ids.length} 个资产`);
+        await bulkUpdateAssets(inactiveIds, { is_active: true });
+        message.success(`已激活 ${inactiveIds.length} 个资产`);
         fetchAssets();
+        fetchAssetStats();
       } catch (error: any) {
         message.error(error.response?.data?.detail || '批量激活失败');
       }
@@ -1221,30 +1237,30 @@ onMounted(() => {
                   <DownOutlined class="text-[10px]" />
                 </button>
                 <template #overlay>
-                  <div class="bg-white rounded-lg shadow-lg border border-slate-200 py-1 min-w-[120px]">
+                  <div class="bg-white rounded-lg shadow-lg border border-slate-200 py-1 min-w-[140px]">
                     <div
-                      @click="bulkDisable"
+                      @click="canDisable && bulkDisable()"
                       class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2"
-                      :class="selectedCount === 0 ? 'opacity-50 cursor-not-allowed' : ''"
+                      :class="!canDisable ? 'opacity-50 cursor-not-allowed hover:bg-transparent' : ''"
                     >
                       <StopOutlined class="text-sm" />
                       批量禁用
-                      <span v-if="selectedCount > 0" class="text-xs text-slate-400 ml-auto">({{ selectedCount }})</span>
+                      <span v-if="selectedActiveCount > 0" class="text-xs text-slate-400 ml-auto">({{ selectedActiveCount }})</span>
                     </div>
                     <div
-                      @click="bulkActivate"
+                      @click="canActivate && bulkActivate()"
                       class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2"
-                      :class="selectedCount === 0 ? 'opacity-50 cursor-not-allowed' : ''"
+                      :class="!canActivate ? 'opacity-50 cursor-not-allowed hover:bg-transparent' : ''"
                     >
                       <CheckCircleOutlined class="text-sm" />
                       批量激活
-                      <span v-if="selectedCount > 0" class="text-xs text-slate-400 ml-auto">({{ selectedCount }})</span>
+                      <span v-if="selectedInactiveCount > 0" class="text-xs text-slate-400 ml-auto">({{ selectedInactiveCount }})</span>
                     </div>
                     <div class="border-t border-slate-100 my-1"></div>
                     <div
-                      @click="bulkDelete"
+                      @click="selectedCount > 0 && bulkDelete()"
                       class="px-4 py-2 text-sm text-red-500 hover:bg-red-50 cursor-pointer flex items-center gap-2"
-                      :class="selectedCount === 0 ? 'opacity-50 cursor-not-allowed' : ''"
+                      :class="selectedCount === 0 ? 'opacity-50 cursor-not-allowed hover:bg-transparent' : ''"
                     >
                       <DeleteOutlined class="text-sm" />
                       批量删除
@@ -1342,7 +1358,7 @@ onMounted(() => {
                   暂无数据
                 </td>
               </tr>
-              <tr v-for="asset in assets" :key="asset.id">
+              <tr v-for="asset in assets" :key="asset.id" :class="{ 'opacity-50 bg-slate-50': !asset.is_active }">
                 <td>
                   <input
                     type="checkbox"
