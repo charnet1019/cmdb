@@ -1031,6 +1031,7 @@ async function bulkDelete() {
         message.success(`已删除 ${ids.length} 个资产`);
         allSelected.value = false;
         fetchAssets();
+        fetchAssetStats();
       } catch (error: any) {
         message.error(error.response?.data?.detail || '批量删除失败');
       }
