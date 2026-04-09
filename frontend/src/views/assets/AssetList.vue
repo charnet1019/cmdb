@@ -1413,12 +1413,17 @@ onMounted(() => {
                     <div class="flex flex-col gap-2 py-1">
                       <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
                         <span class="font-medium">{{ cred.username }}</span>
-                        <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" />
+                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" />
+                        <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed" />
                         <span v-if="decryptedPasswords.has(cred.id)" class="text-slate-700 font-mono ml-1">{{ decryptedPasswords.get(cred.id) }}</span>
                         <span v-else class="text-slate-400 font-mono ml-1">********</span>
-                        <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword(cred)" />
-                        <EyeOutlined v-if="!decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="查看密码" />
-                        <EyeInvisibleOutlined v-else class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="隐藏密码" />
+                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword(cred)" />
+                        <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed" />
+                        <template v-if="asset.is_active">
+                          <EyeOutlined v-if="!decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="查看密码" />
+                          <EyeInvisibleOutlined v-else class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="隐藏密码" />
+                        </template>
+                        <EyeOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed ml-1" />
                       </div>
                     </div>
                   </td>
@@ -1439,12 +1444,17 @@ onMounted(() => {
                     <div class="flex flex-col gap-2 py-1">
                       <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
                         <span class="font-medium">{{ cred.username }}</span>
-                        <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" />
+                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" />
+                        <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed" />
                         <span v-if="decryptedPasswords.has(cred.id)" class="text-slate-700 font-mono ml-1">{{ decryptedPasswords.get(cred.id) }}</span>
                         <span v-else class="text-slate-400 font-mono ml-1">********</span>
-                        <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword(cred)" />
-                        <EyeOutlined v-if="!decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="查看密码" />
-                        <EyeInvisibleOutlined v-else class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="隐藏密码" />
+                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword(cred)" />
+                        <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed" />
+                        <template v-if="asset.is_active">
+                          <EyeOutlined v-if="!decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="查看密码" />
+                          <EyeInvisibleOutlined v-else class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="隐藏密码" />
+                        </template>
+                        <EyeOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed ml-1" />
                       </div>
                     </div>
                   </td>
@@ -1462,12 +1472,17 @@ onMounted(() => {
                     <div class="flex flex-col gap-2 py-1">
                       <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
                         <span class="font-medium">{{ cred.username }}</span>
-                        <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" />
+                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" />
+                        <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed" />
                         <span v-if="decryptedPasswords.has(cred.id)" class="text-slate-700 font-mono ml-1">{{ decryptedPasswords.get(cred.id) }}</span>
                         <span v-else class="text-slate-400 font-mono ml-1">********</span>
-                        <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword(cred)" />
-                        <EyeOutlined v-if="!decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="查看密码" />
-                        <EyeInvisibleOutlined v-else class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="隐藏密码" />
+                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword(cred)" />
+                        <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed" />
+                        <template v-if="asset.is_active">
+                          <EyeOutlined v-if="!decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="查看密码" />
+                          <EyeInvisibleOutlined v-else class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="隐藏密码" />
+                        </template>
+                        <EyeOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed ml-1" />
                       </div>
                     </div>
                   </td>
@@ -1485,12 +1500,17 @@ onMounted(() => {
                     <div class="flex flex-col gap-2 py-1">
                       <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
                         <span class="font-medium">{{ cred.username }}</span>
-                        <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" />
+                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" />
+                        <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed" />
                         <span v-if="decryptedPasswords.has(cred.id)" class="text-slate-700 font-mono ml-1">{{ decryptedPasswords.get(cred.id) }}</span>
                         <span v-else class="text-slate-400 font-mono ml-1">********</span>
-                        <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword(cred)" />
-                        <EyeOutlined v-if="!decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="查看密码" />
-                        <EyeInvisibleOutlined v-else class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="隐藏密码" />
+                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword(cred)" />
+                        <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed" />
+                        <template v-if="asset.is_active">
+                          <EyeOutlined v-if="!decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="查看密码" />
+                          <EyeInvisibleOutlined v-else class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="隐藏密码" />
+                        </template>
+                        <EyeOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed ml-1" />
                       </div>
                     </div>
                   </td>
@@ -1508,12 +1528,17 @@ onMounted(() => {
                     <div class="flex flex-col gap-2 py-1">
                       <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
                         <span class="font-medium">{{ cred.username }}</span>
-                        <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" />
+                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" />
+                        <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed" />
                         <span v-if="decryptedPasswords.has(cred.id)" class="text-slate-700 font-mono ml-1">{{ decryptedPasswords.get(cred.id) }}</span>
                         <span v-else class="text-slate-400 font-mono ml-1">********</span>
-                        <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword(cred)" />
-                        <EyeOutlined v-if="!decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="查看密码" />
-                        <EyeInvisibleOutlined v-else class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="隐藏密码" />
+                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword(cred)" />
+                        <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed" />
+                        <template v-if="asset.is_active">
+                          <EyeOutlined v-if="!decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="查看密码" />
+                          <EyeInvisibleOutlined v-else class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="隐藏密码" />
+                        </template>
+                        <EyeOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed ml-1" />
                       </div>
                     </div>
                   </td>
@@ -1531,12 +1556,17 @@ onMounted(() => {
                     <div class="flex flex-col gap-2 py-1">
                       <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
                         <span class="font-medium">{{ cred.username }}</span>
-                        <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" />
+                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" />
+                        <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed" />
                         <span v-if="decryptedPasswords.has(cred.id)" class="text-slate-700 font-mono ml-1">{{ decryptedPasswords.get(cred.id) }}</span>
                         <span v-else class="text-slate-400 font-mono ml-1">********</span>
-                        <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword(cred)" />
-                        <EyeOutlined v-if="!decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="查看密码" />
-                        <EyeInvisibleOutlined v-else class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="隐藏密码" />
+                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword(cred)" />
+                        <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed" />
+                        <template v-if="asset.is_active">
+                          <EyeOutlined v-if="!decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="查看密码" />
+                          <EyeInvisibleOutlined v-else class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" title="隐藏密码" />
+                        </template>
+                        <EyeOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed ml-1" />
                       </div>
                     </div>
                   </td>
@@ -1568,10 +1598,32 @@ onMounted(() => {
                 <!-- Action column -->
                 <td class="text-right">
                   <div class="flex items-center justify-end gap-1">
-                    <button @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded hover:bg-blue-600 transition-colors text-xs">
+                    <button
+                      v-if="asset.is_active"
+                      @click="openEditModal(asset)"
+                      class="bg-primary text-white px-2 py-0.5 rounded hover:bg-blue-600 transition-colors text-xs"
+                    >
                       更新
                     </button>
-                    <button @click="handleDelete(asset)" class="border border-red-400 text-red-500 px-2 py-0.5 rounded hover:bg-red-50 transition-colors text-xs">
+                    <button
+                      v-else
+                      disabled
+                      class="bg-slate-200 text-slate-400 px-2 py-0.5 rounded cursor-not-allowed text-xs"
+                    >
+                      更新
+                    </button>
+                    <button
+                      v-if="asset.is_active"
+                      @click="handleDelete(asset)"
+                      class="border border-red-400 text-red-500 px-2 py-0.5 rounded hover:bg-red-50 transition-colors text-xs"
+                    >
+                      删除
+                    </button>
+                    <button
+                      v-else
+                      disabled
+                      class="border border-slate-200 text-slate-300 px-2 py-0.5 rounded cursor-not-allowed text-xs"
+                    >
                       删除
                     </button>
                   </div>
