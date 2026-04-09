@@ -531,6 +531,14 @@ const flattenedOrgs = computed(() => {
   return result
 })
 
+// Get currently selected type tree node
+const selectedTypeNode = computed(() => {
+  if (treeViewMode.value !== 'type' || selectedTypeNodeId.value === 'all') {
+    return null;
+  }
+  return flattenedTypeTree.value.find((node: any) => node.id === selectedTypeNodeId.value) || null;
+})
+
 // Open create modal
 function openCreateModal() {
   editingAsset.value = null
@@ -546,6 +554,24 @@ function openCreateModal() {
     url: '',
     notes: ''
   }
+
+  // Auto-fill based on selected type tree node
+  if (selectedTypeNode.value && selectedTypeNode.value.category) {
+    const node = selectedTypeNode.value;
+    form.value.category = node.category as AssetCategory;
+
+    // Fill platform or device_type based on category and subCategory
+    if (node.subCategory) {
+      if (node.category === 'network') {
+        // Network: subCategory is device_type
+        form.value.device_type = node.subCategory;
+      } else {
+        // Other categories: subCategory is platform
+        form.value.platform = node.subCategory;
+      }
+    }
+  }
+
   formCredentials.value = []
   newCredentialForm.value = { username: '', password: '', credential_type: 'password' }
   showModal.value = true
