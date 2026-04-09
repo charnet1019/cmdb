@@ -66,7 +66,8 @@ export interface Organization {
   parent_id: number | null
   path: string | null
   level: number
-  count: number
+  count: number  // Direct asset count
+  total_count?: number  // Total count including children
   children: Organization[]
 }
 

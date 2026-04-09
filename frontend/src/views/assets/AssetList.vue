@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message, Modal, Dropdown } from 'ant-design-vue'
-import { SearchOutlined, FolderOpenOutlined, FolderOutlined, FileTextOutlined, DownOutlined, UpOutlined, RightOutlined, KeyOutlined, DeleteOutlined, CloseOutlined, PlusCircleOutlined, UserOutlined, EyeOutlined, EyeInvisibleOutlined, CopyOutlined, AppstoreOutlined, ClusterOutlined, DatabaseOutlined, CloudServerOutlined, GlobalOutlined, RobotOutlined, StopOutlined, CheckCircleOutlined } from '@ant-design/icons-vue'
-import { getAssets, getOrganizations, createAsset, updateAsset, deleteAsset, getCredentials, createCredential, updateCredential, decryptCredential, deleteCredential, getAssetStats, bulkUpdateAssets, bulkDeleteAssets } from '@/api/assets'
+import { SearchOutlined, FolderOpenOutlined, FolderOutlined, FileTextOutlined, DownOutlined, UpOutlined, RightOutlined, KeyOutlined, DeleteOutlined, CloseOutlined, PlusCircleOutlined, UserOutlined, EyeOutlined, EyeInvisibleOutlined, CopyOutlined, AppstoreOutlined, ClusterOutlined, DatabaseOutlined, CloudServerOutlined, GlobalOutlined, RobotOutlined, StopOutlined, CheckCircleOutlined, EditOutlined, FolderAddOutlined } from '@ant-design/icons-vue'
+import { getAssets, getOrganizationsWithStats, createAsset, updateAsset, deleteAsset, getCredentials, createCredential, updateCredential, decryptCredential, deleteCredential, getAssetStats, bulkUpdateAssets, bulkDeleteAssets, createOrganization, updateOrganization, deleteOrganization, reorderOrganizations } from '@/api/assets'
 import type { Asset, AssetCategory, Organization, Credential } from '@/types'
 
 // Extended asset type with runtime properties for UI state
@@ -31,6 +31,10 @@ const total = ref(0)
 const page = ref(1)
 const limit = ref(20)
 
+// Organization tree statistics
+const rootAssetCount = ref(0)  // Assets directly under root (no organization)
+const totalAssetCount = ref(0)  // Total assets in the system
+
 // Asset statistics
 const assetStats = ref<AssetStats>({
   total: 0,
@@ -49,6 +53,9 @@ const selectedOrgId = ref<number | null>(null)
 
 // Asset tree expansion
 const expandedOrgIds = ref<Set<number>>(new Set())
+
+// Root node expansion state (for "Default" root)
+const isRootExpanded = ref(true)
 
 // Tree view mode: 'asset' for organization tree, 'type' for category tree
 const treeViewMode = ref<'asset' | 'type'>('asset')
@@ -93,6 +100,24 @@ const editingCredentialField = ref<{ index: number; field: 'username' | 'passwor
 
 // Refs for input elements
 const credentialInputRefs = ref<Map<string, HTMLInputElement>>(new Map())
+
+// Organization context menu state
+const showOrgContextMenu = ref(false)
+const orgContextMenuPosition = ref({ x: 0, y: 0 })
+const orgContextMenuTarget = ref<{ id: number | null; name: string; isRoot: boolean } | null>(null)
+
+// Organization modal state
+const showOrgModal = ref(false)
+const orgModalMode = ref<'create' | 'rename'>('create')
+const orgModalLoading = ref(false)
+const orgForm = ref({
+  name: '',
+  parentId: null as number | null
+})
+
+// Drag and drop state for organization tree
+const draggedOrgId = ref<number | null>(null)
+const dragOverOrgId = ref<number | null>(null)
 
 // Form
 const form = ref({
@@ -452,10 +477,15 @@ async function fetchAssetStats() {
 // Fetch organizations
 async function fetchOrganizations() {
   try {
-    organizations.value = await getOrganizations() || []
+    const result = await getOrganizationsWithStats()
+    organizations.value = result.organizations || []
+    rootAssetCount.value = result.root_asset_count || 0
+    totalAssetCount.value = result.total_assets || 0
   } catch (error) {
     console.error('Failed to fetch organizations')
     organizations.value = []
+    rootAssetCount.value = 0
+    totalAssetCount.value = 0
   }
 }
 
@@ -502,10 +532,44 @@ function isOrgExpanded(orgId: number): boolean {
   return expandedOrgIds.value.has(orgId)
 }
 
-// Select organization
+// Select organization - optimized for instant UI feedback
 function selectOrganization(orgId: number | null) {
+  // Always update selection immediately for instant visual feedback
   selectedOrgId.value = orgId
-  handleSearch()
+
+  // Defer search to next tick to ensure UI updates first
+  nextTick(() => {
+    page.value = 1
+    fetchAssets()
+  })
+}
+
+// Toggle root node expansion
+function toggleRootExpansion() {
+  isRootExpanded.value = !isRootExpanded.value
+}
+
+// Handle root node click - toggle expansion
+function handleRootClick() {
+  toggleRootExpansion()
+}
+
+// Handle organization node click - toggle expansion if has children, otherwise select
+function handleOrgClick(org: { id: number; name: string; hasChildren: boolean }) {
+  if (org.hasChildren) {
+    // Toggle expansion for nodes with children
+    toggleOrg(org.id)
+  } else {
+    // Select and load data for leaf nodes
+    selectOrganization(org.id)
+  }
+}
+
+// Global click handler to close context menu
+function handleGlobalClick() {
+  if (showOrgContextMenu.value) {
+    closeOrgContextMenu()
+  }
 }
 
 // Get flattened org tree for display
@@ -517,7 +581,7 @@ const flattenedOrgs = computed(() => {
       result.push({
         id: org.id,
         name: org.name,
-        count: org.count || 0,
+        count: org.total_count || org.count || 0,  // Use total_count if available
         level,
         hasChildren: (org.children?.length || 0) > 0
       })
@@ -530,6 +594,46 @@ const flattenedOrgs = computed(() => {
   flatten(organizations.value)
   return result
 })
+
+// Get organization path by id (e.g., "Default / 节点1 / 节点2")
+function getOrgPath(orgId: number | null): string {
+  if (orgId === null) {
+    return 'Default'
+  }
+
+  // Build a map of id -> organization with parent info
+  const orgMap = new Map<number, { name: string; parentId: number | null }>()
+
+  function buildMap(orgs: Organization[], parentId: number | null = null) {
+    for (const org of orgs) {
+      orgMap.set(org.id, { name: org.name, parentId })
+      if (org.children && org.children.length > 0) {
+        buildMap(org.children, org.id)
+      }
+    }
+  }
+
+  buildMap(organizations.value)
+
+  // Build path from leaf to root
+  const pathParts: string[] = []
+  let currentId: number | null = orgId
+
+  while (currentId !== null) {
+    const orgInfo = orgMap.get(currentId)
+    if (orgInfo) {
+      pathParts.unshift(orgInfo.name)
+      currentId = orgInfo.parentId
+    } else {
+      break
+    }
+  }
+
+  // Add "Default" as root
+  pathParts.unshift('Default')
+
+  return pathParts.join(' / ')
+}
 
 // Get currently selected type tree node
 const selectedTypeNode = computed(() => {
@@ -675,7 +779,8 @@ async function handleSubmit() {
       model: form.value.model || undefined,
       serial_number: form.value.serial_number || undefined,
       url: form.value.url || undefined,
-      notes: form.value.notes || undefined
+      notes: form.value.notes || undefined,
+      organization_id: selectedOrgId.value || undefined
     }
 
     if (editingAsset.value) {
@@ -1065,6 +1170,180 @@ async function bulkDelete() {
   });
 }
 
+// Organization context menu handler
+function handleOrgContextMenu(event: MouseEvent, org: { id: number | null; name: string; isRoot: boolean }) {
+  event.preventDefault();
+  event.stopPropagation();
+  orgContextMenuTarget.value = org;
+  orgContextMenuPosition.value = { x: event.clientX, y: event.clientY };
+  showOrgContextMenu.value = true;
+}
+
+// Close context menu
+function closeOrgContextMenu() {
+  showOrgContextMenu.value = false;
+  orgContextMenuTarget.value = null;
+}
+
+// Open create organization modal
+function openCreateOrgModal(parentId: number | null) {
+  orgModalMode.value = 'create';
+  orgForm.value = {
+    name: '',
+    parentId: parentId
+  };
+  showOrgModal.value = true;
+  closeOrgContextMenu();
+}
+
+// Open rename organization modal
+function openRenameOrgModal(org: { id: number | null; name: string; isRoot: boolean } | null) {
+  if (!org || org.isRoot || org.id === null) return;
+  orgModalMode.value = 'rename';
+  orgForm.value = {
+    name: org.name,
+    parentId: null
+  };
+  // Store the org id in the target for rename operation
+  orgContextMenuTarget.value = { id: org.id, name: org.name, isRoot: false };
+  showOrgModal.value = true;
+  // Close context menu but keep the target for rename operation
+  showOrgContextMenu.value = false;
+}
+
+// Handle organization modal submit
+async function handleOrgModalSubmit() {
+  if (!orgForm.value.name.trim()) {
+    message.warning('请输入节点名称');
+    return;
+  }
+
+  orgModalLoading.value = true;
+  try {
+    if (orgModalMode.value === 'create') {
+      await createOrganization(orgForm.value.name, orgForm.value.parentId ?? undefined);
+      message.success('节点创建成功');
+    } else if (orgModalMode.value === 'rename' && orgContextMenuTarget.value?.id) {
+      await updateOrganization(orgContextMenuTarget.value.id, orgForm.value.name);
+      message.success('节点重命名成功');
+    }
+    showOrgModal.value = false;
+    fetchOrganizations();
+  } catch (error: any) {
+    message.error(error.response?.data?.detail || '操作失败');
+  } finally {
+    orgModalLoading.value = false;
+  }
+}
+
+// Handle delete organization
+function handleDeleteOrg(org: { id: number | null; name: string; isRoot: boolean } | null) {
+  closeOrgContextMenu();
+  if (!org || org.isRoot || org.id === null) return;
+
+  Modal.confirm({
+    title: '确认删除',
+    content: `确定要删除节点 "${org.name}" 吗？删除后该节点下的所有子节点也会被删除。`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    centered: true,
+    async onOk() {
+      try {
+        await deleteOrganization(org.id!);
+        message.success('节点已删除');
+        // Clear selection if deleted org was selected
+        if (selectedOrgId.value === org.id) {
+          selectedOrgId.value = null;
+        }
+        fetchOrganizations();
+        fetchAssets();
+      } catch (error: any) {
+        message.error(error.response?.data?.detail || '删除失败');
+      }
+    }
+  });
+}
+
+// Drag and drop handlers for organization sorting
+function handleOrgDragStart(event: DragEvent, orgId: number) {
+  draggedOrgId.value = orgId;
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', String(orgId));
+  }
+}
+
+function handleOrgDragOver(event: DragEvent, orgId: number | null) {
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move';
+  }
+  dragOverOrgId.value = orgId;
+}
+
+function handleOrgDragLeave() {
+  dragOverOrgId.value = null;
+}
+
+async function handleOrgDrop(event: DragEvent, targetOrgId: number | null) {
+  event.preventDefault();
+  dragOverOrgId.value = null;
+
+  if (draggedOrgId.value === null || draggedOrgId.value === targetOrgId) {
+    draggedOrgId.value = null;
+    return;
+  }
+
+  // Find the parent and get all children IDs in order
+  const parentId = targetOrgId || null;
+
+  // Find siblings at the same level
+  let siblings: Organization[];
+  if (parentId === null) {
+    siblings = organizations.value;
+  } else {
+    const parent = organizations.value.find(o => o.id === parentId);
+    siblings = parent?.children || [];
+  }
+
+  // Reorder: move dragged item to the position after target
+  const draggedIndex = siblings.findIndex(o => o.id === draggedOrgId.value);
+  if (draggedIndex === -1) {
+    // Dragged org might not be in the same level, try to move it
+    // For simplicity, we'll just add it to the end of the target level
+    siblings = [...siblings, organizations.value.find(o => o.id === draggedOrgId.value)!];
+  }
+
+  // Create new ordered IDs
+  const orderedIds = siblings
+    .filter(o => o.id !== draggedOrgId.value)
+    .map(o => o.id);
+
+  // Insert dragged org at appropriate position
+  if (targetOrgId !== null) {
+    const targetIndex = orderedIds.indexOf(targetOrgId);
+    orderedIds.splice(targetIndex + 1, 0, draggedOrgId.value);
+  } else {
+    orderedIds.push(draggedOrgId.value);
+  }
+
+  try {
+    await reorderOrganizations(parentId, orderedIds);
+    message.success('排序已更新');
+    fetchOrganizations();
+  } catch (error: any) {
+    message.error(error.response?.data?.detail || '排序失败');
+  }
+
+  draggedOrgId.value = null;
+}
+
+function handleOrgDragEnd() {
+  draggedOrgId.value = null;
+  dragOverOrgId.value = null;
+}
+
 // Sync state to URL query parameters
 function syncStateToUrl() {
   const query: Record<string, string> = {}
@@ -1124,7 +1403,7 @@ function restoreStateFromUrl() {
 // Watch state changes and sync to URL
 watch([treeViewMode, activeCategory, selectedTypeNodeId, expandedTypeIds, selectedOrgId, page, searchQuery], () => {
   syncStateToUrl()
-}, { deep: true })
+})
 
 // Initial load
 onMounted(() => {
@@ -1142,6 +1421,14 @@ onMounted(() => {
   fetchAssets()
   fetchOrganizations()
   fetchAssetStats()
+
+  // Add global click handler to close context menu
+  document.addEventListener('click', handleGlobalClick)
+})
+
+// Cleanup
+onUnmounted(() => {
+  document.removeEventListener('click', handleGlobalClick)
 })
 </script>
 
@@ -1193,30 +1480,100 @@ onMounted(() => {
           <!-- Tree Content -->
           <div class="text-sm">
             <template v-if="treeViewMode === 'asset'">
-              <!-- Asset Tree -->
+              <!-- Asset Tree - Root Node -->
               <div
-                class="py-2 px-2 rounded cursor-pointer hover:bg-slate-50 mb-1"
-                :class="selectedOrgId === null ? 'bg-primary/10 text-primary' : 'text-slate-600'"
-                @click="selectOrganization(null)"
+                class="py-2 px-2 rounded cursor-pointer hover:bg-slate-50 mb-1 font-medium"
+                :class="[
+                  selectedOrgId === null && isRootExpanded ? 'bg-primary/10 text-primary' : 'text-slate-700',
+                  dragOverOrgId === null && draggedOrgId !== null ? 'bg-blue-50' : ''
+                ]"
+                @click="handleRootClick"
+                @contextmenu.prevent.stop="handleOrgContextMenu($event, { id: null, name: 'Default', isRoot: true })"
+                @dragover.prevent="handleOrgDragOver($event, null)"
+                @dragleave="handleOrgDragLeave"
+                @drop.prevent="handleOrgDrop($event, null)"
               >
-                <FolderOpenOutlined class="text-sm mr-1" />
-                Default
+                <div class="flex items-center gap-1">
+                  <DownOutlined
+                    v-if="isRootExpanded"
+                    class="text-xs cursor-pointer hover:bg-slate-200 rounded p-0.5"
+                  />
+                  <RightOutlined
+                    v-else
+                    class="text-xs cursor-pointer hover:bg-slate-200 rounded p-0.5"
+                  />
+                  <FolderOpenOutlined v-if="isRootExpanded" class="text-sm" />
+                  <FolderOutlined v-else class="text-sm" />
+                  <span class="flex-1">Default</span>
+                  <span class="text-xs text-slate-400">({{ totalAssetCount }})</span>
+                </div>
               </div>
-              <template v-for="org in flattenedOrgs" :key="org.id">
+
+              <!-- Child Nodes (only show when root is expanded) -->
+              <template v-if="isRootExpanded">
                 <div
+                  v-for="org in flattenedOrgs"
+                  :key="org.id"
                   class="py-1.5 px-2 rounded cursor-pointer hover:bg-slate-50 flex items-center gap-1"
-                  :class="selectedOrgId === org.id ? 'bg-primary/10 text-primary' : 'text-slate-600'"
-                  :style="{ paddingLeft: `${org.level * 16 + 8}px` }"
-                  @click="selectOrganization(org.id)"
+                  :class="{
+                    'bg-primary/10 text-primary': selectedOrgId === org.id,
+                    'text-slate-600': selectedOrgId !== org.id,
+                    'opacity-50': draggedOrgId === org.id,
+                    'bg-blue-50 border-t-2 border-primary': dragOverOrgId === org.id
+                  }"
+                  :style="{ paddingLeft: `${(org.level + 1) * 20 + 8}px` }"
+                  @click.stop="handleOrgClick(org)"
+                  @contextmenu.prevent.stop="handleOrgContextMenu($event, { id: org.id, name: org.name, isRoot: false })"
+                  draggable="true"
+                  @dragstart="handleOrgDragStart($event, org.id)"
+                  @dragover.prevent="handleOrgDragOver($event, org.id)"
+                  @dragleave="handleOrgDragLeave"
+                  @drop.prevent="handleOrgDrop($event, org.id)"
+                  @dragend="handleOrgDragEnd"
                 >
-                  <DownOutlined v-if="org.hasChildren" class="text-xs cursor-pointer hover:bg-slate-200 rounded" @click.stop="toggleOrg(org.id)" />
-                  <span v-else class="w-4"></span>
-                  <FolderOutlined v-if="org.hasChildren" class="text-sm mr-1" />
-                  <FileTextOutlined v-else class="text-sm mr-1" />
+                  <DownOutlined v-if="org.hasChildren && isOrgExpanded(org.id)" class="text-xs cursor-pointer hover:bg-slate-200 rounded" />
+                  <RightOutlined v-else-if="org.hasChildren && !isOrgExpanded(org.id)" class="text-xs cursor-pointer hover:bg-slate-200 rounded" />
+                  <span v-else class="w-3"></span>
+                  <FolderOutlined v-if="org.hasChildren && !isOrgExpanded(org.id)" class="text-sm" />
+                  <FolderOpenOutlined v-else-if="org.hasChildren && isOrgExpanded(org.id)" class="text-sm" />
+                  <FileTextOutlined v-else class="text-sm text-slate-400" />
                   <span class="flex-1 truncate">{{ org.name }}</span>
                   <span class="text-xs text-slate-400">({{ org.count }})</span>
                 </div>
               </template>
+
+              <!-- Organization Context Menu -->
+              <div
+                v-if="showOrgContextMenu"
+                class="fixed z-50 bg-white rounded-lg shadow-lg border border-slate-200 py-1 min-w-[140px]"
+                :style="{ left: `${orgContextMenuPosition.x}px`, top: `${orgContextMenuPosition.y}px` }"
+                @click.stop
+              >
+                <div
+                  @click.stop="openCreateOrgModal(orgContextMenuTarget?.id || null)"
+                  class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2"
+                >
+                  <FolderAddOutlined class="text-sm" />
+                  创建节点
+                </div>
+                <template v-if="orgContextMenuTarget && !orgContextMenuTarget.isRoot">
+                  <div
+                    @click.stop="openRenameOrgModal(orgContextMenuTarget)"
+                    class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2"
+                  >
+                    <EditOutlined class="text-sm" />
+                    重命名节点
+                  </div>
+                  <div class="border-t border-slate-100 my-1"></div>
+                  <div
+                    @click.stop="handleDeleteOrg(orgContextMenuTarget)"
+                    class="px-4 py-2 text-sm text-red-500 hover:bg-red-50 cursor-pointer flex items-center gap-2"
+                  >
+                    <DeleteOutlined class="text-sm" />
+                    删除节点
+                  </div>
+                </template>
+              </div>
             </template>
 
             <template v-else-if="treeViewMode === 'type'">
@@ -1683,6 +2040,15 @@ onMounted(() => {
               </div>
             </div>
 
+            <!-- Row 2: 节点路径 -->
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1.5">节点</label>
+              <div class="input-field bg-slate-50 text-slate-600 cursor-not-allowed flex items-center gap-2">
+                <FolderOutlined class="text-sm text-slate-400" />
+                <span class="truncate">{{ getOrgPath(selectedOrgId) }}</span>
+              </div>
+            </div>
+
             <!-- Network设备专用布局 -->
             <template v-if="form.category === 'network'">
               <!-- Row 2: 资产类型、设备类型 -->
@@ -2000,6 +2366,51 @@ onMounted(() => {
           <div class="flex justify-end mt-4">
             <button @click="showCredentialModal = false" class="btn-secondary">关闭</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Organization Node Modal (Create/Rename) -->
+    <div v-if="showOrgModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showOrgModal = false"></div>
+      <div class="relative bg-white w-full max-w-md rounded-xl shadow-2xl">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="text-lg font-bold text-slate-900">
+            {{ orgModalMode === 'create' ? '创建节点' : '重命名节点' }}
+          </h2>
+          <button @click="showOrgModal = false" class="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
+            <CloseOutlined class="text-slate-400" />
+          </button>
+        </div>
+        <div class="p-6">
+          <form @submit.prevent="handleOrgModalSubmit" class="space-y-4">
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1.5">节点名称 <span class="text-red-500">*</span></label>
+              <input
+                v-model="orgForm.name"
+                type="text"
+                class="input-field"
+                placeholder="请输入节点名称"
+                autofocus
+              />
+            </div>
+            <div class="flex justify-end gap-3 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                @click="showOrgModal = false"
+                class="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                :disabled="orgModalLoading"
+                class="btn-primary"
+              >
+                {{ orgModalLoading ? '处理中...' : '确定' }}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </div>

@@ -58,9 +58,24 @@ export async function bulkDeleteAssets(ids: number[]): Promise<void> {
 }
 
 // Organization APIs
+export interface OrganizationResponse {
+  organizations: Organization[]
+  root_asset_count: number
+  total_assets: number
+}
+
 export async function getOrganizations(): Promise<Organization[]> {
   const response = await api.get('/organizations')
   return response.data.data
+}
+
+export async function getOrganizationsWithStats(): Promise<OrganizationResponse> {
+  const response = await api.get('/organizations')
+  return {
+    organizations: response.data.data,
+    root_asset_count: response.data.root_asset_count || 0,
+    total_assets: response.data.total_assets || 0
+  }
 }
 
 export async function createOrganization(name: string, parentId?: number): Promise<Organization> {
@@ -68,6 +83,24 @@ export async function createOrganization(name: string, parentId?: number): Promi
     params: { name, parent_id: parentId }
   })
   return response.data.data
+}
+
+export async function updateOrganization(orgId: number, name: string): Promise<Organization> {
+  const response = await api.put(`/organizations/${orgId}`, null, {
+    params: { name }
+  })
+  return response.data.data
+}
+
+export async function deleteOrganization(orgId: number): Promise<void> {
+  await api.delete(`/organizations/${orgId}`)
+}
+
+export async function reorderOrganizations(parentId: number | null, orderedIds: number[]): Promise<void> {
+  await api.post('/organizations/reorder', {
+    parent_id: parentId,
+    ordered_ids: orderedIds
+  })
 }
 
 // Credential APIs
