@@ -304,22 +304,36 @@ onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
           </div>
         </div>
         <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-          <table class="data-table">
-            <thead><tr><th class="w-10"><input type="checkbox" class="rounded border-gray-300 w-3.5 h-3.5" @change="selectAllChanged($event)" :checked="allSelected" /></th><th>名称</th><th>地址</th><th>设备类型</th><th>厂商/型号</th><th>用户名密码</th><th class="text-right">操作</th></tr></thead>
-            <tbody>
-              <tr v-if="loading"><td colspan="7" class="text-center py-8 text-slate-500">加载中...</td></tr>
-              <tr v-else-if="assets.length === 0"><td colspan="7" class="text-center py-8 text-slate-500">暂无数据</td></tr>
-              <tr v-for="asset in assets" :key="asset.id" :class="{ 'opacity-50': !asset.is_active }">
-                <td><input type="checkbox" class="rounded border-gray-300 w-3.5 h-3.5" v-model="asset.selected" @change="selectionChanged" /></td>
-                <td><p class="font-medium text-slate-900">{{ asset.name }}</p><p v-if="asset.asset_code" class="text-xs text-slate-400">{{ asset.asset_code }}</p></td>
-                <td><span class="text-sm text-slate-600 font-mono">{{ asset.address || '-' }}</span></td>
-                <td><span class="text-sm text-slate-600">{{ asset.device_type || '-' }}</span></td>
-                <td><span class="text-sm text-slate-600">{{ asset.platform && asset.model ? `${asset.platform}/${asset.model}` : (asset.platform || asset.model || '-') }}</span></td>
-                <td><div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1"><span class="font-medium">{{ cred.username }}</span><CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" /><span v-if="decryptedPasswords.has(cred.id)" class="text-slate-700 font-mono ml-1">{{ decryptedPasswords.get(cred.id) }}</span><span v-else class="text-slate-400 font-mono ml-1">********</span><CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword(cred)" /><EyeOutlined v-if="asset.is_active && !decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" /><EyeInvisibleOutlined v-if="asset.is_active && decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" /></div></td>
-                <td class="text-right"><button v-if="asset.is_active" @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded text-xs">更新</button><button v-if="asset.is_active" @click="handleDelete(asset, fetchData)" class="border border-red-400 text-red-500 px-2 py-0.5 rounded text-xs ml-1">删除</button></td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="overflow-x-auto">
+            <table class="data-table min-w-[800px]">
+              <thead><tr><th class="w-10"><input type="checkbox" class="rounded border-gray-300 w-3.5 h-3.5" @change="selectAllChanged($event)" :checked="allSelected" /></th><th>名称</th><th>地址</th><th>设备类型</th><th>厂商/型号</th><th>用户名密码</th><th class="text-right">操作</th></tr></thead>
+              <tbody class="relative">
+                <template v-if="loading">
+                  <tr v-for="i in 5" :key="'skeleton-' + i">
+                    <td><div class="w-3.5 h-3.5 bg-slate-200 rounded animate-pulse"></div></td>
+                    <td><div class="h-4 bg-slate-200 rounded animate-pulse w-32"></div></td>
+                    <td><div class="h-4 bg-slate-200 rounded animate-pulse w-24"></div></td>
+                    <td><div class="h-4 bg-slate-200 rounded animate-pulse w-16"></div></td>
+                    <td><div class="h-4 bg-slate-200 rounded animate-pulse w-20"></div></td>
+                    <td><div class="h-4 bg-slate-200 rounded animate-pulse w-20"></div></td>
+                    <td class="text-right"><div class="h-5 bg-slate-200 rounded animate-pulse w-16 ml-auto"></div></td>
+                  </tr>
+                </template>
+                <tr v-else-if="assets.length === 0"><td colspan="7" class="text-center py-16 text-slate-400">暂无数据</td></tr>
+                <template v-else>
+                  <tr v-for="asset in assets" :key="asset.id" :class="{ 'opacity-50': !asset.is_active }">
+                    <td><input type="checkbox" class="rounded border-gray-300 w-3.5 h-3.5" v-model="asset.selected" @change="selectionChanged" /></td>
+                    <td><p class="font-medium text-slate-900">{{ asset.name }}</p><p v-if="asset.asset_code" class="text-xs text-slate-400">{{ asset.asset_code }}</p></td>
+                    <td><span class="text-sm text-slate-600 font-mono">{{ asset.address || '-' }}</span></td>
+                    <td><span class="text-sm text-slate-600">{{ asset.device_type || '-' }}</span></td>
+                    <td><span class="text-sm text-slate-600">{{ asset.platform && asset.model ? `${asset.platform}/${asset.model}` : (asset.platform || asset.model || '-') }}</span></td>
+                    <td><div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1"><span class="font-medium">{{ cred.username }}</span><CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" /><span v-if="decryptedPasswords.has(cred.id)" class="text-slate-700 font-mono ml-1">{{ decryptedPasswords.get(cred.id) }}</span><span v-else class="text-slate-400 font-mono ml-1">********</span><CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword(cred)" /><EyeOutlined v-if="asset.is_active && !decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" /><EyeInvisibleOutlined v-if="asset.is_active && decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" /></div></td>
+                    <td class="text-right"><button v-if="asset.is_active" @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded text-xs">更新</button><button v-if="asset.is_active" @click="handleDelete(asset, fetchData)" class="border border-red-400 text-red-500 px-2 py-0.5 rounded text-xs ml-1">删除</button></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
           <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-between"><span class="text-sm text-slate-500">共 {{ total }} 条记录</span><div class="flex items-center gap-2"><button @click="handlePageChange(page - 1, fetchData)" :disabled="page === 1" class="px-3 py-1.5 text-sm border border-slate-200 rounded disabled:opacity-50">上一页</button><span class="text-sm text-slate-600">{{ page }} / {{ Math.ceil(total / limit) || 1 }}</span><button @click="handlePageChange(page + 1, fetchData)" :disabled="page >= Math.ceil(total / limit)" class="px-3 py-1.5 text-sm border border-slate-200 rounded disabled:opacity-50">下一页</button></div></div>
         </div>
       </div>
