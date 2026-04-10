@@ -557,8 +557,9 @@ onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
                     </td>
                     <td class="text-right">
                       <button v-if="asset.is_active" @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded text-xs">更新</button>
-                      <button v-else class="bg-slate-200 text-slate-400 px-2 py-0.5 rounded cursor-not-allowed text-xs">更新</button>
+                      <button v-else disabled class="bg-slate-200 text-slate-400 px-2 py-0.5 rounded cursor-not-allowed text-xs">更新</button>
                       <button v-if="asset.is_active" @click="handleDelete(asset, fetchData)" class="border border-red-400 text-red-500 px-2 py-0.5 rounded text-xs ml-1">删除</button>
+                      <button v-else disabled class="border border-slate-200 text-slate-300 px-2 py-0.5 rounded cursor-not-allowed text-xs ml-1">删除</button>
                     </td>
                   </tr>
                 </template>
