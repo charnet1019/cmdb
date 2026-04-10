@@ -701,11 +701,11 @@ onMounted(async () => {
                       <template v-else>
                         <div v-if="asset.external_address" class="text-sm text-slate-600 font-mono">
                           <span class="text-[10px] text-blue-500 font-medium mr-1">外</span>
-                          <span>{{ asset.external_address.replace(/\n/g, ', ') }}</span>
+                          <span>{{ asset.external_address }}</span>
                         </div>
                         <div v-if="asset.internal_address" class="text-sm text-slate-600 font-mono">
                           <span class="text-[10px] text-green-500 font-medium mr-1">内</span>
-                          <span>{{ asset.internal_address.replace(/\n/g, ', ') }}</span>
+                          <span>{{ asset.internal_address }}</span>
                         </div>
                         <span v-if="!asset.external_address && !asset.internal_address && asset.address" class="text-sm text-slate-600 font-mono">{{ asset.address }}</span>
                         <span v-if="!asset.external_address && !asset.internal_address && !asset.address" class="text-sm text-slate-400">-</span>
@@ -847,11 +847,11 @@ onMounted(async () => {
               <div v-if="['host', 'database'].includes(form.category)" class="grid grid-cols-2 gap-4">
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1.5">外网地址</label>
-                  <textarea v-model="form.external_address" class="input-field h-20 resize-none" placeholder="外网IP地址&#10;每行一个地址"></textarea>
+                  <input v-model="form.external_address" type="text" class="input-field" placeholder="外网IP地址" />
                 </div>
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1.5">内网地址</label>
-                  <textarea v-model="form.internal_address" class="input-field h-20 resize-none" placeholder="内网IP地址&#10;每行一个地址"></textarea>
+                  <input v-model="form.internal_address" type="text" class="input-field" placeholder="内网IP地址" />
                 </div>
               </div>
               <div v-else-if="['cloud', 'web', 'gpt'].includes(form.category)">
