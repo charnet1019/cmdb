@@ -31,6 +31,38 @@ class ReorderOrganizationsRequest(BaseModel):
 router = APIRouter(prefix="/assets", tags=["资产管理"])
 
 
+# Helper function to get all descendant organization IDs
+async def get_descendant_org_ids(db: AsyncSession, org_id: int) -> List[int]:
+    """Get all descendant organization IDs including the given org_id"""
+    # Get the organization's path
+    result = await db.execute(
+        select(Organization).where(Organization.id == org_id)
+    )
+    org = result.scalar_one_or_none()
+    if not org:
+        return [org_id]
+
+    # Find all descendants using path prefix match
+    # Path format: "1/2/3" where 3 is the leaf, 2 is parent, 1 is root
+    if org.path:
+        # Match organizations whose path starts with this org's path + "/" or is exactly this path
+        descendants = await db.execute(
+            select(Organization.id).where(
+                or_(
+                    Organization.path == org.path,
+                    Organization.path.like(f"{org.path}/%"),
+                    Organization.path.like(f"{org.path}%")
+                )
+            )
+        )
+        ids = [row[0] for row in descendants.all()]
+    else:
+        # If path is null, just return the org_id itself
+        ids = [org_id]
+
+    return ids if ids else [org_id]
+
+
 # ============== Asset Statistics API ==============
 @router.get("/stats")
 async def get_asset_stats(
@@ -99,7 +131,9 @@ async def list_assets(
         query = query.where(Asset.category == category)
 
     if organization_id:
-        query = query.where(Asset.organization_id == organization_id)
+        # Get all descendant organization IDs and filter by them
+        org_ids = await get_descendant_org_ids(db, organization_id)
+        query = query.where(Asset.organization_id.in_(org_ids))
 
     if search:
         query = query.where(
