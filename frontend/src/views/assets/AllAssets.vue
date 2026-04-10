@@ -32,6 +32,28 @@ import type { Asset, AssetCategory } from '@/types'
 const route = useRoute()
 const router = useRouter()
 
+// Update URL query parameters to persist state
+function updateUrlState(params: { tree?: 'asset' | 'type'; org?: number | null; type?: string }) {
+  const query: Record<string, string | undefined> = {}
+
+  // Keep tree mode
+  if (params.tree) {
+    query.tree = params.tree
+  }
+
+  // Keep org id (asset tree node)
+  if (params.org !== undefined && params.org !== null) {
+    query.org = String(params.org)
+  }
+
+  // Keep type node id (type tree node)
+  if (params.type !== undefined && params.type !== 'all') {
+    query.type = params.type
+  }
+
+  router.replace({ query })
+}
+
 // Use composables
 const {
   assets,
@@ -61,6 +83,8 @@ const {
   totalAssetCount,
   isRootExpanded,
   selectedOrgId,
+  expandedOrgIds,
+  organizations,
   flattenedOrgs,
   allOrgsForSelect,
   showOrgContextMenu,
@@ -76,7 +100,6 @@ const {
   toggleOrg,
   isOrgExpanded,
   toggleRootExpansion,
-  selectOrganization,
   handleOrgContextMenu,
   openCreateOrgModal,
   openRenameOrgModal,
@@ -177,10 +200,12 @@ function switchTreeView(mode: 'asset' | 'type') {
   if (mode === 'asset') {
     selectedOrgId.value = null
     activeCategory.value = 'all'
+    updateUrlState({ tree: 'asset', org: null })
   } else {
     selectedTypeNodeId.value = 'all'
     activeCategory.value = 'all'
     selectedOrgId.value = null
+    updateUrlState({ tree: 'type', type: 'all' })
   }
   fetchData()
 }
@@ -191,29 +216,32 @@ function changeCategory(category: AssetCategory | 'all') {
   selectedTypeNodeId.value = category === 'all' ? 'all' : category
   if (category === 'all') {
     treeViewMode.value = 'asset'
+    updateUrlState({ tree: 'asset', org: null })
   } else {
     treeViewMode.value = 'type'
+    updateUrlState({ tree: 'type', type: category })
   }
   page.value = 1
-  // Update URL query parameter to persist tab state
-  router.replace({ query: { ...route.query, category: category === 'all' ? undefined : category } })
   fetchData()
 }
 
 // Handle root click - select root and refresh assets
 function handleRootClick() {
   selectedOrgId.value = null
+  activeCategory.value = 'all'
   page.value = 1
+  updateUrlState({ tree: 'asset', org: null })
   fetchData()
   toggleRootExpansion()
 }
 
 // Handle org click - always select and refresh, plus toggle if has children
 function handleOrgClick(org: { id: number; name: string; hasChildren: boolean }) {
-  selectOrganization(org.id, () => {
-    page.value = 1
-    fetchData()
-  })
+  selectedOrgId.value = org.id
+  activeCategory.value = 'all'
+  page.value = 1
+  updateUrlState({ tree: 'asset', org: org.id })
+  fetchData()
   if (org.hasChildren) {
     toggleOrg(org.id)
   }
@@ -225,6 +253,7 @@ function handleSelectType(node: any) {
     activeCategory.value = category
     selectedOrgId.value = null
     page.value = 1
+    updateUrlState({ tree: 'type', type: selectedTypeNodeId.value })
     fetchData()
   })
 }
@@ -369,16 +398,72 @@ async function handleSubmit() {
   }
 }
 
-onMounted(() => {
-  // Restore tab state from URL query parameter
-  const urlCategory = route.query.category as AssetCategory | undefined
-  if (urlCategory && categories.some(c => c.key === urlCategory)) {
-    activeCategory.value = urlCategory
-    selectedTypeNodeId.value = urlCategory
-    treeViewMode.value = 'type'
+onMounted(async () => {
+  // Restore state from URL query parameters
+  const urlTree = route.query.tree as 'asset' | 'type' | undefined
+  const urlOrg = route.query.org ? Number(route.query.org) : null
+  const urlType = route.query.type as string | undefined
+
+  // Helper function to expand parent chain for an org node
+  function expandParentChain(orgId: number, orgs: any[], parentPath: number[] = []) {
+    for (const org of orgs) {
+      if (org.id === orgId) {
+        // Expand all ancestors
+        for (const ancestorId of parentPath) {
+          expandedOrgIds.value.add(ancestorId)
+        }
+        return true
+      }
+      if (org.children && org.children.length > 0) {
+        if (expandParentChain(orgId, org.children, [...parentPath, org.id])) {
+          return true
+        }
+      }
+    }
+    return false
   }
+
+  // First load organizations to get tree data
+  await fetchOrganizations()
+
+  if (urlTree === 'asset' && urlOrg !== null) {
+    // Asset tree mode with specific org node
+    treeViewMode.value = 'asset'
+    selectedOrgId.value = urlOrg
+    activeCategory.value = 'all'
+    isRootExpanded.value = true
+    // Expand parent chain to show selected node
+    expandParentChain(urlOrg, organizations.value)
+  } else if (urlTree === 'type' && urlType) {
+    // Type tree mode with specific type node
+    treeViewMode.value = 'type'
+    selectedTypeNodeId.value = urlType
+    // Determine category from type node
+    if (urlType.includes('-')) {
+      // Sub-category like 'network-交换机'
+      activeCategory.value = urlType.split('-')[0] as AssetCategory
+    } else if (urlType !== 'all') {
+      // Main category like 'host'
+      activeCategory.value = urlType as AssetCategory
+    } else {
+      activeCategory.value = 'all'
+    }
+  } else if (urlOrg !== null) {
+    // Legacy: org parameter without tree mode
+    treeViewMode.value = 'asset'
+    selectedOrgId.value = urlOrg
+    activeCategory.value = 'all'
+    isRootExpanded.value = true
+    // Expand parent chain to show selected node
+    expandParentChain(urlOrg, organizations.value)
+  } else {
+    // Default state
+    treeViewMode.value = 'asset'
+    selectedOrgId.value = null
+    activeCategory.value = 'all'
+  }
+
   fetchData()
-  fetchOrganizations()
   fetchAssetStats()
 })
 </script>
