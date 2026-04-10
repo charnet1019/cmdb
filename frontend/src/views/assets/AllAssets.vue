@@ -141,6 +141,10 @@ const form = ref({
   device_type: '',
   model: '',
   serial_number: '',
+  cpu: '',
+  memory: '',
+  system_disk: '',
+  data_disk: '',
   url: '',
   notes: ''
 })
@@ -230,6 +234,10 @@ function openCreateModal() {
     device_type: '',
     model: '',
     serial_number: '',
+    cpu: '',
+    memory: '',
+    system_disk: '',
+    data_disk: '',
     url: '',
     notes: ''
   }
@@ -264,6 +272,10 @@ function openEditModal(asset: Asset) {
     device_type: asset.device_type || '',
     model: asset.model || '',
     serial_number: asset.serial_number || '',
+    cpu: asset.cpu || '',
+    memory: asset.memory || '',
+    system_disk: asset.system_disk || '',
+    data_disk: asset.data_disk || '',
     url: asset.url || '',
     notes: asset.notes || ''
   }
@@ -294,6 +306,10 @@ async function handleSubmit() {
       device_type: form.value.device_type || undefined,
       model: form.value.model || undefined,
       serial_number: form.value.serial_number || undefined,
+      cpu: form.value.cpu || undefined,
+      memory: form.value.memory || undefined,
+      system_disk: form.value.system_disk || undefined,
+      data_disk: form.value.data_disk || undefined,
       url: form.value.url || undefined,
       notes: form.value.notes || undefined,
       organization_id: formSelectedOrgId.value || undefined
@@ -710,16 +726,6 @@ onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
                 <label class="block text-xs font-medium text-slate-600 mb-1.5">URL</label>
                 <input v-model="form.url" type="text" class="input-field" placeholder="https://" />
               </div>
-              <div v-if="form.category === 'host'" class="grid grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">型号</label>
-                  <input v-model="form.model" type="text" class="input-field" placeholder="设备型号" />
-                </div>
-                <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">序列号</label>
-                  <input v-model="form.serial_number" type="text" class="input-field" placeholder="序列号" />
-                </div>
-              </div>
             </template>
 
             <!-- 用户名密码区域 -->
@@ -820,6 +826,40 @@ onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
                 </div>
               </div>
             </div>
+
+            <!-- 主机专属字段 -->
+            <template v-if="form.category === 'host'">
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">型号</label>
+                  <input v-model="form.model" type="text" class="input-field" placeholder="设备型号" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">序列号</label>
+                  <input v-model="form.serial_number" type="text" class="input-field" placeholder="序列号" />
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">CPU</label>
+                  <input v-model="form.cpu" type="text" class="input-field" placeholder="如: 8核" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">内存</label>
+                  <input v-model="form.memory" type="text" class="input-field" placeholder="如: 16GB" />
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">系统盘</label>
+                  <input v-model="form.system_disk" type="text" class="input-field" placeholder="如: 500GB SSD" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">数据盘</label>
+                  <input v-model="form.data_disk" type="text" class="input-field" placeholder="如: 2TB HDD" />
+                </div>
+              </div>
+            </template>
 
             <!-- 描述 -->
             <div>

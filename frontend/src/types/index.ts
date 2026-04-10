@@ -33,6 +33,10 @@ export interface Asset {
   vendor: string | null
   model: string | null
   serial_number: string | null
+  cpu: string | null
+  memory: string | null
+  system_disk: string | null
+  data_disk: string | null
   url: string | null
   notes: string | null
   metadata: Record<string, any> | null

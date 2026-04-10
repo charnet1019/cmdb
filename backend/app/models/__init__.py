@@ -133,6 +133,12 @@ class Asset(Base):
     model: Mapped[Optional[str]] = mapped_column(String(100))
     serial_number: Mapped[Optional[str]] = mapped_column(String(100))
 
+    # Host hardware spec fields
+    cpu: Mapped[Optional[str]] = mapped_column(String(100))  # 如: 8核
+    memory: Mapped[Optional[str]] = mapped_column(String(100))  # 如: 16GB
+    system_disk: Mapped[Optional[str]] = mapped_column(String(100))  # 如: 500GB SSD
+    data_disk: Mapped[Optional[str]] = mapped_column(String(100))  # 如: 2TB HDD
+
     # Cloud/Web specific fields
     url: Mapped[Optional[str]] = mapped_column(String(500))
 

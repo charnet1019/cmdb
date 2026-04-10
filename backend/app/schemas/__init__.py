@@ -124,6 +124,10 @@ class AssetCreate(AssetBase):
     vendor: Optional[str] = None
     model: Optional[str] = None
     serial_number: Optional[str] = None
+    cpu: Optional[str] = None
+    memory: Optional[str] = None
+    system_disk: Optional[str] = None
+    data_disk: Optional[str] = None
     url: Optional[str] = None
     metadata: Optional[dict] = None
 
@@ -138,6 +142,10 @@ class AssetUpdate(BaseModel):
     vendor: Optional[str] = None
     model: Optional[str] = None
     serial_number: Optional[str] = None
+    cpu: Optional[str] = None
+    memory: Optional[str] = None
+    system_disk: Optional[str] = None
+    data_disk: Optional[str] = None
     url: Optional[str] = None
     notes: Optional[str] = None
     metadata: Optional[dict] = None
@@ -152,6 +160,10 @@ class AssetResponse(AssetBase):
     vendor: Optional[str]
     model: Optional[str]
     serial_number: Optional[str]
+    cpu: Optional[str]
+    memory: Optional[str]
+    system_disk: Optional[str]
+    data_disk: Optional[str]
     url: Optional[str]
     metadata: Optional[dict]
     is_active: bool
