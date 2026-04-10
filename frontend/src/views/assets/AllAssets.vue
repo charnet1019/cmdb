@@ -18,8 +18,7 @@ import {
   AppstoreOutlined,
   EditOutlined,
   FolderAddOutlined,
-  PlusOutlined,
-  MinusCircleOutlined
+  PlusCircleOutlined
 } from '@ant-design/icons-vue'
 import { useAssets } from './composables/useAssets'
 import { useOrganizations } from './composables/useOrganizations'
@@ -86,10 +85,20 @@ const {
 
 const {
   decryptedPasswords,
+  decryptedFormPasswords,
+  visibleNewPasswords,
   formCredentials,
+  newCredentialForm,
+  credentialInputRefs,
   copyUsername,
   copyPassword,
   viewPassword,
+  viewFormCredentialPassword,
+  addCredentialToForm,
+  removeCredentialFromForm,
+  startFieldEdit,
+  stopFieldEdit,
+  isFieldEditing,
   resetFormCredentials
 } = useCredentials()
 
@@ -113,8 +122,12 @@ const searchQuery = ref('')
 
 // Modal
 const showModal = ref(false)
+const showPassword = ref(false)
 const modalLoading = ref(false)
 const editingAsset = ref<Asset | null>(null)
+
+// Device type options for network
+const deviceTypeOptions = ['交换机', '路由器', '防火墙', '负载均衡', '无线控制器']
 
 // Form
 const form = ref({
@@ -233,21 +246,7 @@ function openCreateModal() {
   }
 
   resetFormCredentials()
-  // Add at least one empty credential for relevant categories
-  if (['host', 'network', 'database', 'web'].includes(form.value.category)) {
-    formCredentials.value = [{ id: undefined, username: '', password: '' }]
-  }
   showModal.value = true
-}
-
-// Add credential
-function addCredential() {
-  formCredentials.value.push({ id: undefined, username: '', password: '' })
-}
-
-// Remove credential
-function removeCredential(index: number) {
-  formCredentials.value.splice(index, 1)
 }
 
 // Open edit modal
@@ -602,43 +601,223 @@ onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
       <div class="relative bg-white w-full max-w-2xl rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h2 class="text-lg font-bold text-slate-900">{{ modalTitle }}</h2>
-          <button @click="showModal = false" class="p-1.5 hover:bg-slate-100 rounded-lg"><CloseOutlined class="text-slate-400" /></button>
+          <button @click="showModal = false" class="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
+            <CloseOutlined class="text-slate-400" />
+          </button>
         </div>
         <div class="p-6">
           <form @submit.prevent="handleSubmit" class="space-y-5">
+            <!-- Row 1: 资产名称、资产编号 -->
             <div class="grid grid-cols-2 gap-4">
-              <div><label class="block text-xs font-medium text-slate-600 mb-1.5">资产名称 <span class="text-red-500">*</span></label><input v-model="form.name" type="text" class="input-field" /></div>
-              <div><label class="block text-xs font-medium text-slate-600 mb-1.5">资产编号</label><input v-model="form.asset_code" type="text" class="input-field" /></div>
-            </div>
-            <div><label class="block text-xs font-medium text-slate-600 mb-1.5">节点</label><div class="input-field bg-slate-50 text-slate-600 flex items-center gap-2"><FolderOutlined class="text-sm text-slate-400" /><span class="truncate">{{ getOrgPath(selectedOrgId) }}</span></div></div>
-            <div class="grid grid-cols-2 gap-4">
-              <div><label class="block text-xs font-medium text-slate-600 mb-1.5">资产类型</label><select v-model="form.category" class="input-field"><option v-for="cat in categoryOptions" :key="cat.key" :value="cat.key">{{ cat.label }}</option></select></div>
-              <div v-if="form.category === 'network'"><label class="block text-xs font-medium text-slate-600 mb-1.5">设备类型</label><select v-model="form.device_type" class="input-field"><option value="">请选择</option><option value="switch">交换机</option><option value="router">路由器</option><option value="firewall">防火墙</option><option value="wireless">无线控制器</option></select></div>
-              <div v-else><label class="block text-xs font-medium text-slate-600 mb-1.5">平台</label><select v-model="form.platform" class="input-field"><option value="">请选择</option><option v-for="p in platformOptions[form.category]" :key="p" :value="p">{{ p }}</option></select></div>
-            </div>
-            <div v-if="['host', 'database'].includes(form.category)"><label class="block text-xs font-medium text-slate-600 mb-1.5">地址</label><input v-model="form.address" type="text" class="input-field" placeholder="IP:端口" /></div>
-            <div v-else-if="form.category === 'network'"><label class="block text-xs font-medium text-slate-600 mb-1.5">地址</label><input v-model="form.address" type="text" class="input-field" placeholder="IP地址" /></div>
-            <div v-else-if="['cloud', 'web', 'gpt'].includes(form.category)"><label class="block text-xs font-medium text-slate-600 mb-1.5">URL</label><input v-model="form.url" type="text" class="input-field" placeholder="https://" /></div>
-            <div v-if="['host', 'network'].includes(form.category)" class="grid grid-cols-2 gap-4">
-              <div><label class="block text-xs font-medium text-slate-600 mb-1.5">型号</label><input v-model="form.model" type="text" class="input-field" placeholder="设备型号" /></div>
-              <div><label class="block text-xs font-medium text-slate-600 mb-1.5">序列号</label><input v-model="form.serial_number" type="text" class="input-field" placeholder="序列号" /></div>
-            </div>
-            <div><label class="block text-xs font-medium text-slate-600 mb-1.5">描述</label><textarea v-model="form.notes" class="input-field h-20 resize-none"></textarea></div>
-            <!-- Credentials Section -->
-            <div v-if="['host', 'network', 'database', 'web'].includes(form.category) && !editingAsset">
-              <label class="block text-xs font-medium text-slate-600 mb-2">凭证</label>
-              <div class="space-y-2">
-                <div v-for="(cred, index) in formCredentials" :key="index" class="flex items-center gap-2">
-                  <input v-model="cred.username" type="text" class="input-field flex-1" placeholder="用户名" />
-                  <input v-model="cred.password" type="password" class="input-field flex-1" placeholder="密码" />
-                  <MinusCircleOutlined v-if="formCredentials.length > 1" class="text-red-500 cursor-pointer text-lg" @click="removeCredential(index)" />
-                </div>
-                <button type="button" @click="addCredential" class="text-primary text-xs flex items-center gap-1 hover:underline"><PlusOutlined class="text-sm" />添加凭证</button>
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1.5">资产名称 <span class="text-red-500">*</span></label>
+                <input v-model="form.name" type="text" class="input-field" placeholder="请输入资产名称" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1.5">资产编号</label>
+                <input v-model="form.asset_code" type="text" class="input-field" placeholder="CI编号" />
               </div>
             </div>
+
+            <!-- Row 2: 节点路径 -->
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1.5">节点</label>
+              <div class="input-field bg-slate-50 text-slate-600 cursor-not-allowed flex items-center gap-2">
+                <FolderOutlined class="text-sm text-slate-400" />
+                <span class="truncate">{{ getOrgPath(selectedOrgId) }}</span>
+              </div>
+            </div>
+
+            <!-- Network设备专用布局 -->
+            <template v-if="form.category === 'network'">
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">资产类型 <span class="text-red-500">*</span></label>
+                  <select v-model="form.category" class="input-field">
+                    <option v-for="cat in categoryOptions" :key="cat.key" :value="cat.key">{{ cat.label }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">设备类型</label>
+                  <select v-model="form.device_type" class="input-field">
+                    <option value="">请选择</option>
+                    <option v-for="t in deviceTypeOptions" :key="t" :value="t">{{ t }}</option>
+                  </select>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">厂商</label>
+                  <select v-model="form.platform" class="input-field">
+                    <option value="">请选择</option>
+                    <option v-for="p in platformOptions[form.category]" :key="p" :value="p">{{ p }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">型号</label>
+                  <input v-model="form.model" type="text" class="input-field" placeholder="如: C9300-48P" />
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1.5">地址</label>
+                <input v-model="form.address" type="text" class="input-field" placeholder="支持格式: IP、IP:端口" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1.5">序列号</label>
+                <input v-model="form.serial_number" type="text" class="input-field" placeholder="设备序列号" />
+              </div>
+            </template>
+
+            <!-- 其他类别布局 -->
+            <template v-else>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">资产类型 <span class="text-red-500">*</span></label>
+                  <select v-model="form.category" class="input-field">
+                    <option v-for="cat in categoryOptions" :key="cat.key" :value="cat.key">{{ cat.label }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">平台</label>
+                  <select v-model="form.platform" class="input-field">
+                    <option value="">请选择</option>
+                    <option v-for="p in platformOptions[form.category]" :key="p" :value="p">{{ p }}</option>
+                  </select>
+                </div>
+              </div>
+              <div v-if="['host', 'database'].includes(form.category)">
+                <label class="block text-xs font-medium text-slate-600 mb-1.5">地址</label>
+                <input v-model="form.address" type="text" class="input-field" placeholder="支持格式: IP、IP:端口、主机名、主机名:端口" />
+              </div>
+              <div v-else-if="['cloud', 'web', 'gpt'].includes(form.category)">
+                <label class="block text-xs font-medium text-slate-600 mb-1.5">URL</label>
+                <input v-model="form.url" type="text" class="input-field" placeholder="https://" />
+              </div>
+              <div v-if="form.category === 'host'" class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">型号</label>
+                  <input v-model="form.model" type="text" class="input-field" placeholder="设备型号" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">序列号</label>
+                  <input v-model="form.serial_number" type="text" class="input-field" placeholder="序列号" />
+                </div>
+              </div>
+            </template>
+
+            <!-- 用户名密码区域 -->
+            <div v-if="['host', 'network', 'database', 'web'].includes(form.category)" class="border border-slate-200 rounded-lg overflow-hidden">
+              <div class="bg-slate-50 px-4 py-2.5 border-b border-slate-200">
+                <label class="text-xs font-medium text-slate-600">用户名密码</label>
+              </div>
+              <div class="p-4">
+                <!-- 已有凭证列表 -->
+                <div v-if="formCredentials.length > 0" class="space-y-2 mb-4">
+                  <div v-for="(cred, index) in formCredentials" :key="index" class="bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
+                    <div class="flex items-center gap-3">
+                      <!-- 用户名字段 -->
+                      <div class="flex items-center gap-2 flex-1">
+                        <span class="text-xs text-slate-500">用户名:</span>
+                        <input
+                          v-if="isFieldEditing(index, 'username')"
+                          :ref="(el: any) => { if (el) credentialInputRefs.set(`${index}-username`, el) }"
+                          v-model="cred.username"
+                          type="text"
+                          class="input-field text-sm flex-1"
+                          @blur="stopFieldEdit"
+                          @keyup.enter="stopFieldEdit"
+                        />
+                        <span
+                          v-else
+                          class="font-medium text-slate-700 cursor-pointer hover:bg-slate-200 px-1 rounded"
+                          @dblclick="startFieldEdit(index, 'username')"
+                          title="双击编辑"
+                        >{{ cred.username }}</span>
+                      </div>
+                      <!-- 密码字段 -->
+                      <div class="flex items-center gap-2 flex-1">
+                        <span class="text-xs text-slate-500">密码:</span>
+                        <input
+                          v-if="isFieldEditing(index, 'password')"
+                          :ref="(el: any) => { if (el) credentialInputRefs.set(`${index}-password`, el) }"
+                          v-model="cred.password"
+                          type="text"
+                          class="input-field text-sm flex-1"
+                          @blur="stopFieldEdit"
+                          @keyup.enter="stopFieldEdit"
+                          placeholder="输入新密码"
+                        />
+                        <span
+                          v-else-if="cred.id && decryptedFormPasswords.has(cred.id)"
+                          class="text-slate-700 font-mono cursor-pointer hover:bg-slate-200 px-1 rounded"
+                          @dblclick="startFieldEdit(index, 'password')"
+                          title="双击编辑"
+                        >{{ decryptedFormPasswords.get(cred.id) }}</span>
+                        <span
+                          v-else-if="!cred.id && visibleNewPasswords.has(index)"
+                          class="text-slate-700 font-mono cursor-pointer hover:bg-slate-200 px-1 rounded"
+                          @dblclick="startFieldEdit(index, 'password')"
+                          title="双击编辑"
+                        >{{ cred.password }}</span>
+                        <span
+                          v-else
+                          class="text-slate-400 font-mono cursor-pointer hover:bg-slate-200 px-1 rounded"
+                          @dblclick="startFieldEdit(index, 'password')"
+                          title="双击编辑"
+                        >********</span>
+                      </div>
+                      <!-- 操作按钮 -->
+                      <div class="flex items-center gap-0.5">
+                        <button v-if="cred.id" type="button" @click="viewFormCredentialPassword(cred)" class="p-1.5 text-slate-400 hover:text-primary hover:bg-slate-100 rounded" :title="decryptedFormPasswords.has(cred.id) ? '隐藏密码' : '查看密码'">
+                          <EyeOutlined v-if="!decryptedFormPasswords.has(cred.id)" class="text-sm" />
+                          <EyeInvisibleOutlined v-else class="text-sm" />
+                        </button>
+                        <button v-else type="button" @click="viewFormCredentialPassword(cred, index)" class="p-1.5 text-slate-400 hover:text-primary hover:bg-slate-100 rounded" :title="visibleNewPasswords.has(index) ? '隐藏密码' : '查看密码'">
+                          <EyeOutlined v-if="!visibleNewPasswords.has(index)" class="text-sm" />
+                          <EyeInvisibleOutlined v-else class="text-sm" />
+                        </button>
+                        <button type="button" @click="removeCredentialFromForm(index)" class="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded" title="删除">
+                          <DeleteOutlined class="text-sm" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <!-- 添加新凭证表单 -->
+                <div class="flex items-end gap-3">
+                  <div class="flex-1">
+                    <label class="block text-xs text-slate-500 mb-1">用户名</label>
+                    <input v-model="newCredentialForm.username" type="text" class="input-field text-sm" placeholder="输入用户名" />
+                  </div>
+                  <div class="flex-1 relative">
+                    <label class="block text-xs text-slate-500 mb-1">密码</label>
+                    <input v-model="newCredentialForm.password" :type="showPassword ? 'text' : 'password'" class="input-field text-sm w-full pr-8" placeholder="输入密码" />
+                    <button type="button" @click="showPassword = !showPassword" class="absolute right-2 top-[calc(50%+10px)] -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                      <EyeOutlined v-if="!showPassword" class="text-sm" />
+                      <EyeInvisibleOutlined v-else class="text-sm" />
+                    </button>
+                  </div>
+                  <button type="button" @click="addCredentialToForm" class="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-blue-600 transition-colors h-[38px]">
+                    <PlusCircleOutlined class="mr-1" /> 添加
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 描述 -->
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1.5">描述</label>
+              <textarea v-model="form.notes" class="input-field h-20 resize-none" placeholder="资产描述或备注"></textarea>
+            </div>
+
+            <!-- 操作按钮 -->
             <div class="flex justify-end gap-3 pt-2 border-t border-slate-100">
-              <button type="button" @click="showModal = false" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">取消</button>
-              <button type="submit" :disabled="modalLoading" class="btn-primary">{{ modalLoading ? '处理中...' : '保存' }}</button>
+              <button type="button" @click="showModal = false" class="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors">
+                取消
+              </button>
+              <button type="submit" :disabled="modalLoading" class="btn-primary">
+                {{ modalLoading ? '处理中...' : '保存' }}
+              </button>
             </div>
           </form>
         </div>
