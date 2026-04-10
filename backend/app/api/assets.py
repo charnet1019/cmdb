@@ -116,10 +116,10 @@ async def get_asset_stats(
 async def list_assets(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    category: Optional[str] = Query(None),
-    organization_id: Optional[int] = Query(None),
-    search: Optional[str] = Query(None),
-    is_active: Optional[bool] = Query(None),
+    category: Optional[str] = None,
+    organization_id: Optional[int] = None,
+    search: Optional[str] = None,
+    is_active: Optional[bool] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -130,7 +130,7 @@ async def list_assets(
     if category:
         query = query.where(Asset.category == category)
 
-    if organization_id:
+    if organization_id is not None:
         # Get all descendant organization IDs and filter by them
         org_ids = await get_descendant_org_ids(db, organization_id)
         query = query.where(Asset.organization_id.in_(org_ids))
@@ -183,9 +183,13 @@ async def list_assets(
             "vendor": asset.vendor,
             "model": asset.model,
             "serial_number": asset.serial_number,
+            "cpu": asset.cpu,
+            "memory": asset.memory,
+            "system_disk": asset.system_disk,
+            "data_disk": asset.data_disk,
             "url": asset.url,
             "notes": asset.notes,
-            "metadata": asset.extra_data,
+            "extra_data": asset.extra_data,
             "is_active": asset.is_active,
             "created_at": asset.created_at,
             "credentials": credentials,
@@ -367,9 +371,13 @@ async def get_asset(
         vendor=asset.vendor,
         model=asset.model,
         serial_number=asset.serial_number,
+        cpu=asset.cpu,
+        memory=asset.memory,
+        system_disk=asset.system_disk,
+        data_disk=asset.data_disk,
         url=asset.url,
         notes=asset.notes,
-        metadata=asset.extra_data,
+        extra_data=asset.extra_data,
         is_active=asset.is_active,
         created_at=asset.created_at,
         credentials=credentials,
