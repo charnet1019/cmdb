@@ -24,6 +24,7 @@ import { useAssets } from './composables/useAssets'
 import { useOrganizations } from './composables/useOrganizations'
 import { useCredentials } from './composables/useCredentials'
 import { useTypeTree, categories, platformOptions, categoryOptions } from './composables/useTypeTree'
+import { createAsset, updateAsset, createCredential, updateCredential } from '@/api/assets'
 import type { Asset, AssetCategory } from '@/types'
 
 // Use composables
@@ -56,6 +57,7 @@ const {
   isRootExpanded,
   selectedOrgId,
   flattenedOrgs,
+  allOrgsForSelect,
   showOrgContextMenu,
   orgContextMenuPosition,
   orgContextMenuTarget,
@@ -70,7 +72,6 @@ const {
   isOrgExpanded,
   toggleRootExpansion,
   selectOrganization,
-  getOrgPath,
   handleOrgContextMenu,
   openCreateOrgModal,
   openRenameOrgModal,
@@ -125,6 +126,7 @@ const showModal = ref(false)
 const showPassword = ref(false)
 const modalLoading = ref(false)
 const editingAsset = ref<Asset | null>(null)
+const formSelectedOrgId = ref<number | null>(null)
 
 // Device type options for network
 const deviceTypeOptions = ['交换机', '路由器', '防火墙', '负载均衡', '无线控制器']
@@ -231,6 +233,7 @@ function openCreateModal() {
     url: '',
     notes: ''
   }
+  formSelectedOrgId.value = selectedOrgId.value
 
   // Auto-fill based on selected type tree node
   if (selectedTypeNode.value && selectedTypeNode.value.category) {
@@ -264,6 +267,7 @@ function openEditModal(asset: Asset) {
     url: asset.url || '',
     notes: asset.notes || ''
   }
+  formSelectedOrgId.value = asset.organization_id || null
   formCredentials.value = (asset.credentials || []).map(c => ({
     id: c.id,
     username: c.username,
@@ -292,30 +296,38 @@ async function handleSubmit() {
       serial_number: form.value.serial_number || undefined,
       url: form.value.url || undefined,
       notes: form.value.notes || undefined,
-      organization_id: selectedOrgId.value || undefined
+      organization_id: formSelectedOrgId.value || undefined
     }
 
     if (editingAsset.value) {
-      await fetch(`/api/v1/assets/${editingAsset.value.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      }).then(r => r.json())
+      await updateAsset(editingAsset.value.id, data)
+      // Handle credentials: create new ones and update existing ones
+      for (const cred of formCredentials.value) {
+        if (cred.username) {
+          if (cred.id && cred.password) {
+            await updateCredential(cred.id, {
+              username: cred.username,
+              password: cred.password
+            })
+          } else if (!cred.id && cred.password) {
+            await createCredential(editingAsset.value.id, {
+              username: cred.username,
+              password: cred.password,
+              credential_type: 'password'
+            })
+          }
+        }
+      }
       message.success('资产更新成功')
     } else {
-      const newAsset = await fetch('/api/v1/assets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      }).then(r => r.json())
-
-      // Create credentials
+      const newAsset = await createAsset(data)
+      // Create all credentials that have both username and password
       for (const cred of formCredentials.value) {
         if (cred.username && cred.password && newAsset.id) {
-          await fetch(`/api/v1/assets/${newAsset.id}/credentials`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: cred.username, password: cred.password, credential_type: 'password' })
+          await createCredential(newAsset.id, {
+            username: cred.username,
+            password: cred.password,
+            credential_type: 'password'
           })
         }
       }
@@ -323,6 +335,10 @@ async function handleSubmit() {
     }
 
     showModal.value = false
+    // Reset category to 'all' to show all assets including newly created
+    activeCategory.value = 'all'
+    selectedOrgId.value = null
+    page.value = 1
     fetchData()
     fetchAssetStats()
     fetchOrganizations()
@@ -622,10 +638,11 @@ onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
             <!-- Row 2: 节点路径 -->
             <div>
               <label class="block text-xs font-medium text-slate-600 mb-1.5">节点</label>
-              <div class="input-field bg-slate-50 text-slate-600 cursor-not-allowed flex items-center gap-2">
-                <FolderOutlined class="text-sm text-slate-400" />
-                <span class="truncate">{{ getOrgPath(selectedOrgId) }}</span>
-              </div>
+              <select v-model="formSelectedOrgId" class="input-field">
+                <option v-for="org in allOrgsForSelect" :key="org.id ?? 'default'" :value="org.id">
+                  {{ org.path }}
+                </option>
+              </select>
             </div>
 
             <!-- Network设备专用布局 -->

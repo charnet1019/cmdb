@@ -103,6 +103,30 @@ export function useOrganizations() {
     return result
   })
 
+  // Get all organizations as flat list for dropdown selection (with full path)
+  const allOrgsForSelect = computed(() => {
+    const result: { id: number | null; name: string; path: string }[] = [
+      { id: null, name: 'Default', path: 'Default' }
+    ]
+
+    function flattenWithOrgPath(orgs: Organization[], parentPath: string = 'Default') {
+      for (const org of orgs) {
+        const path = parentPath === 'Default' ? `Default / ${org.name}` : `${parentPath} / ${org.name}`
+        result.push({
+          id: org.id,
+          name: org.name,
+          path
+        })
+        if (org.children && org.children.length > 0) {
+          flattenWithOrgPath(org.children, path)
+        }
+      }
+    }
+
+    flattenWithOrgPath(organizations.value)
+    return result
+  })
+
   // Get organization path by id
   function getOrgPath(orgId: number | null): string {
     if (orgId === null) {
@@ -323,6 +347,7 @@ export function useOrganizations() {
     isRootExpanded,
     selectedOrgId,
     flattenedOrgs,
+    allOrgsForSelect,
     showOrgContextMenu,
     orgContextMenuPosition,
     orgContextMenuTarget,
