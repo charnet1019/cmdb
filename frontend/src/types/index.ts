@@ -39,7 +39,7 @@ export interface Asset {
   data_disk: string | null
   url: string | null
   notes: string | null
-  metadata: Record<string, any> | null
+  extra_data: Record<string, any> | null
   is_active: boolean
   created_at: string
   credentials: CredentialSimple[]

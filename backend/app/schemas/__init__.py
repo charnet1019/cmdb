@@ -129,7 +129,7 @@ class AssetCreate(AssetBase):
     system_disk: Optional[str] = None
     data_disk: Optional[str] = None
     url: Optional[str] = None
-    metadata: Optional[dict] = None
+    extra_data: Optional[dict] = Field(None, serialization_alias="metadata")
 
 
 class AssetUpdate(BaseModel):
@@ -148,7 +148,7 @@ class AssetUpdate(BaseModel):
     data_disk: Optional[str] = None
     url: Optional[str] = None
     notes: Optional[str] = None
-    metadata: Optional[dict] = None
+    extra_data: Optional[dict] = Field(None, serialization_alias="metadata")
     is_active: Optional[bool] = None
 
 
@@ -165,12 +165,12 @@ class AssetResponse(AssetBase):
     system_disk: Optional[str]
     data_disk: Optional[str]
     url: Optional[str]
-    metadata: Optional[dict]
+    extra_data: Optional[dict] = Field(None, alias="metadata")
     is_active: bool
     created_at: datetime
     credentials: List["CredentialSimple"] = []
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class AssetSimple(BaseModel):
