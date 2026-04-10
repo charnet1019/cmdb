@@ -170,7 +170,30 @@ export function useAssets() {
     })
   }
 
-  async function bulkDelete(fetchFn: () => void) {
+  // Delete single asset
+  async function handleDelete(asset: Asset, fetchFn: () => void, onDeleted?: () => void) {
+    Modal.confirm({
+      title: '确认删除',
+      content: `确定要删除资产 "${asset.name}" 吗？删除后无法恢复。`,
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      centered: true,
+      async onOk() {
+        try {
+          await deleteAsset(asset.id)
+          message.success('资产已删除')
+          fetchFn()
+          fetchAssetStats()
+          onDeleted?.()
+        } catch (error) {
+          message.error('删除失败')
+        }
+      }
+    })
+  }
+
+  async function bulkDelete(fetchFn: () => void, onDeleted?: () => void) {
     const ids = getSelectedAssetIds()
     if (ids.length === 0) {
       message.warning('请先选择要删除的资产')
@@ -191,30 +214,9 @@ export function useAssets() {
           allSelected.value = false
           fetchFn()
           fetchAssetStats()
+          onDeleted?.()
         } catch (error: any) {
           message.error(error.response?.data?.detail || '批量删除失败')
-        }
-      }
-    })
-  }
-
-  // Delete single asset
-  async function handleDelete(asset: Asset, fetchFn: () => void) {
-    Modal.confirm({
-      title: '确认删除',
-      content: `确定要删除资产 "${asset.name}" 吗？删除后无法恢复。`,
-      okText: '删除',
-      okType: 'danger',
-      cancelText: '取消',
-      centered: true,
-      async onOk() {
-        try {
-          await deleteAsset(asset.id)
-          message.success('资产已删除')
-          fetchFn()
-          fetchAssetStats()
-        } catch (error) {
-          message.error('删除失败')
         }
       }
     })

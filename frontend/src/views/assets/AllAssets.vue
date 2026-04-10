@@ -659,7 +659,7 @@ onMounted(async () => {
                       <span v-if="selectedInactiveCount > 0" class="text-xs text-slate-400 ml-auto">({{ selectedInactiveCount }})</span>
                     </div>
                     <div class="border-t border-slate-100 my-1"></div>
-                    <div @click="selectedCount > 0 && bulkDelete(fetchData)" class="px-4 py-2 text-sm text-red-500 hover:bg-red-50 cursor-pointer flex items-center gap-2">
+                    <div @click="selectedCount > 0 && bulkDelete(fetchData, fetchOrganizations)" class="px-4 py-2 text-sm text-red-500 hover:bg-red-50 cursor-pointer flex items-center gap-2">
                       <DeleteOutlined class="text-sm" />批量删除
                       <span v-if="selectedCount > 0" class="text-xs text-slate-400 ml-auto">({{ selectedCount }})</span>
                     </div>
@@ -731,7 +731,7 @@ onMounted(async () => {
                     <td class="text-right">
                       <button v-if="asset.is_active" @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded text-xs">更新</button>
                       <button v-else disabled class="bg-slate-200 text-slate-400 px-2 py-0.5 rounded cursor-not-allowed text-xs">更新</button>
-                      <button v-if="asset.is_active" @click="handleDelete(asset, fetchData)" class="border border-red-400 text-red-500 px-2 py-0.5 rounded text-xs ml-1">删除</button>
+                      <button v-if="asset.is_active" @click="handleDelete(asset, fetchData, fetchOrganizations)" class="border border-red-400 text-red-500 px-2 py-0.5 rounded text-xs ml-1">删除</button>
                       <button v-else disabled class="border border-slate-200 text-slate-300 px-2 py-0.5 rounded cursor-not-allowed text-xs ml-1">删除</button>
                     </td>
                   </tr>
