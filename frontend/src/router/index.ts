@@ -26,8 +26,44 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'assets',
         name: 'Assets',
-        component: () => import('@/views/assets/AssetList.vue'),
+        component: () => import('@/views/assets/AllAssets.vue'),
         meta: { title: '资产列表', icon: 'inventory_2' }
+      },
+      {
+        path: 'assets/host',
+        name: 'HostAssets',
+        component: () => import('@/views/assets/host/HostList.vue'),
+        meta: { title: '主机资产', icon: 'computer' }
+      },
+      {
+        path: 'assets/network',
+        name: 'NetworkAssets',
+        component: () => import('@/views/assets/network/NetworkList.vue'),
+        meta: { title: '网络设备', icon: 'router' }
+      },
+      {
+        path: 'assets/database',
+        name: 'DatabaseAssets',
+        component: () => import('@/views/assets/database/DatabaseList.vue'),
+        meta: { title: '数据库', icon: 'storage' }
+      },
+      {
+        path: 'assets/cloud',
+        name: 'CloudAssets',
+        component: () => import('@/views/assets/cloud/CloudList.vue'),
+        meta: { title: '云服务', icon: 'cloud' }
+      },
+      {
+        path: 'assets/web',
+        name: 'WebAssets',
+        component: () => import('@/views/assets/web/WebList.vue'),
+        meta: { title: '网站服务', icon: 'language' }
+      },
+      {
+        path: 'assets/gpt',
+        name: 'GptAssets',
+        component: () => import('@/views/assets/gpt/GptList.vue'),
+        meta: { title: 'AI服务', icon: 'smart_toy' }
       },
       {
         path: 'users',
