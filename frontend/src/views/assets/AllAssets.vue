@@ -163,7 +163,9 @@ function switchTreeView(mode: 'asset' | 'type') {
 function changeCategory(category: AssetCategory | 'all') {
   activeCategory.value = category
   selectedTypeNodeId.value = category === 'all' ? 'all' : category
-  if (category !== 'all') {
+  if (category === 'all') {
+    treeViewMode.value = 'asset'
+  } else {
     treeViewMode.value = 'type'
   }
   page.value = 1
