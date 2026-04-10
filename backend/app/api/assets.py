@@ -232,9 +232,13 @@ async def create_asset(
         vendor=data.vendor,
         model=data.model,
         serial_number=data.serial_number,
+        cpu=data.cpu,
+        memory=data.memory,
+        system_disk=data.system_disk,
+        data_disk=data.data_disk,
         url=data.url,
         notes=data.notes,
-        extra_data=data.metadata,
+        extra_data=data.extra_data,
     )
 
     db.add(asset)
@@ -253,9 +257,13 @@ async def create_asset(
         vendor=asset.vendor,
         model=asset.model,
         serial_number=asset.serial_number,
+        cpu=asset.cpu,
+        memory=asset.memory,
+        system_disk=asset.system_disk,
+        data_disk=asset.data_disk,
         url=asset.url,
         notes=asset.notes,
-        metadata=asset.extra_data,
+        extra_data=asset.extra_data,
         is_active=asset.is_active,
         created_at=asset.created_at,
         credentials=[],
@@ -406,8 +414,8 @@ async def update_asset(
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
-        # Map schema 'metadata' to model 'extra_data'
-        if field == "metadata":
+        # Map schema 'extra_data' to model 'extra_data'
+        if field == "extra_data":
             setattr(asset, "extra_data", value)
         else:
             setattr(asset, field, value)
@@ -433,9 +441,13 @@ async def update_asset(
         vendor=asset.vendor,
         model=asset.model,
         serial_number=asset.serial_number,
+        cpu=asset.cpu,
+        memory=asset.memory,
+        system_disk=asset.system_disk,
+        data_disk=asset.data_disk,
         url=asset.url,
         notes=asset.notes,
-        metadata=asset.extra_data,
+        extra_data=asset.extra_data,
         is_active=asset.is_active,
         created_at=asset.created_at,
         credentials=[
