@@ -118,6 +118,7 @@ const form = ref({
   platform: '',
   device_type: '',
   model: '',
+  serial_number: '',
   url: '',
   notes: ''
 })
@@ -167,7 +168,7 @@ function handleSelectType(node: any) {
 
 function openCreateModal() {
   editingAsset.value = null
-  form.value = { name: '', asset_code: '', category: 'network', address: '', platform: '', device_type: '', model: '', url: '', notes: '' }
+  form.value = { name: '', asset_code: '', category: 'network', address: '', platform: '', device_type: '', model: '', serial_number: '', url: '', notes: '' }
   if (selectedTypeNode.value?.subCategory) {
     form.value.device_type = selectedTypeNode.value.subCategory
   }
@@ -185,6 +186,7 @@ function openEditModal(asset: Asset) {
     platform: asset.platform || '',
     device_type: asset.device_type || '',
     model: asset.model || '',
+    serial_number: asset.serial_number || '',
     url: asset.url || '',
     notes: asset.notes || ''
   }
@@ -338,6 +340,7 @@ onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
             <div><label class="block text-xs font-medium text-slate-600 mb-1.5">节点</label><div class="input-field bg-slate-50 text-slate-600 flex items-center gap-2"><FolderOutlined class="text-sm text-slate-400" /><span class="truncate">{{ getOrgPath(selectedOrgId) }}</span></div></div>
             <div class="grid grid-cols-2 gap-4"><div><label class="block text-xs font-medium text-slate-600 mb-1.5">资产类型</label><select v-model="form.category" class="input-field"><option v-for="cat in categoryOptions" :key="cat.key" :value="cat.key">{{ cat.label }}</option></select></div><div><label class="block text-xs font-medium text-slate-600 mb-1.5">设备类型</label><select v-model="form.device_type" class="input-field"><option value="">请选择</option><option v-for="t in deviceTypeOptions" :key="t" :value="t">{{ t }}</option></select></div></div>
             <div class="grid grid-cols-2 gap-4"><div><label class="block text-xs font-medium text-slate-600 mb-1.5">厂商</label><select v-model="form.platform" class="input-field"><option value="">请选择</option><option v-for="p in platformOptions[form.category]" :key="p" :value="p">{{ p }}</option></select></div><div><label class="block text-xs font-medium text-slate-600 mb-1.5">型号</label><input v-model="form.model" type="text" class="input-field" placeholder="如: C9300-48P" /></div></div>
+            <div><label class="block text-xs font-medium text-slate-600 mb-1.5">序列号</label><input v-model="form.serial_number" type="text" class="input-field" placeholder="序列号" /></div>
             <div><label class="block text-xs font-medium text-slate-600 mb-1.5">地址</label><input v-model="form.address" type="text" class="input-field" placeholder="IP地址" /></div>
             <div class="border border-slate-200 rounded-lg overflow-hidden">
               <div class="bg-slate-50 px-4 py-2.5 border-b border-slate-200"><label class="text-xs font-medium text-slate-600">用户名密码</label></div>
