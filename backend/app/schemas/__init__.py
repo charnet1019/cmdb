@@ -112,6 +112,8 @@ class AssetBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     category: str
     address: Optional[str] = Field(None, max_length=255)
+    internal_address: Optional[str] = None  # 内网地址
+    external_address: Optional[str] = None  # 外网地址
     platform: Optional[str] = Field(None, max_length=50)
     organization_id: Optional[int] = None
     notes: Optional[str] = None
@@ -136,6 +138,8 @@ class AssetUpdate(BaseModel):
     """Asset update schema"""
     name: Optional[str] = Field(None, max_length=100)
     address: Optional[str] = None
+    internal_address: Optional[str] = None
+    external_address: Optional[str] = None
     platform: Optional[str] = None
     organization_id: Optional[int] = None
     device_type: Optional[str] = None

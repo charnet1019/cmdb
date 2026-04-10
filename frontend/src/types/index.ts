@@ -27,6 +27,8 @@ export interface Asset {
   asset_code: string | null
   category: AssetCategory
   address: string | null
+  internal_address: string | null
+  external_address: string | null
   platform: string | null
   organization_id: number | null
   device_type: string | null
