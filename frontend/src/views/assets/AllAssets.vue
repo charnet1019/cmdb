@@ -214,6 +214,8 @@ function switchTreeView(mode: 'asset' | 'type') {
 function changeCategory(category: AssetCategory | 'all') {
   activeCategory.value = category
   selectedTypeNodeId.value = category === 'all' ? 'all' : category
+  // Clear org selection when switching to specific category to show all assets of that type
+  selectedOrgId.value = null
   if (category === 'all') {
     treeViewMode.value = 'asset'
     updateUrlState({ tree: 'asset', org: null })
