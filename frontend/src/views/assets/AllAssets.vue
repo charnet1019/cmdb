@@ -515,7 +515,7 @@ onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
         </div>
 
         <!-- Table -->
-        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden relative">
           <div class="overflow-x-auto">
             <table class="data-table min-w-[800px]">
               <thead>
@@ -528,21 +528,8 @@ onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
                   <th class="text-right">操作</th>
                 </tr>
               </thead>
-              <tbody class="relative">
-                <!-- Skeleton Loading -->
-                <template v-if="loading">
-                  <tr v-for="i in 5" :key="'skeleton-' + i">
-                    <td><div class="w-3.5 h-3.5 bg-slate-200 rounded animate-pulse"></div></td>
-                    <td><div class="h-4 bg-slate-200 rounded animate-pulse w-32"></div></td>
-                    <td><div class="h-4 bg-slate-200 rounded animate-pulse w-24"></div></td>
-                    <td><div class="h-4 bg-slate-200 rounded animate-pulse w-16"></div></td>
-                    <td><div class="h-4 bg-slate-200 rounded animate-pulse w-20"></div></td>
-                    <td class="text-right"><div class="h-5 bg-slate-200 rounded animate-pulse w-16 ml-auto"></div></td>
-                  </tr>
-                </template>
-                <!-- Empty State -->
-                <tr v-else-if="assets.length === 0"><td colspan="6" class="text-center py-16 text-slate-400">暂无数据</td></tr>
-                <!-- Data Rows -->
+              <tbody>
+                <tr v-if="assets.length === 0 && !loading"><td colspan="6" class="text-center py-16 text-slate-400">暂无数据</td></tr>
                 <template v-else>
                   <tr v-for="asset in assets" :key="asset.id" :class="{ 'opacity-50': !asset.is_active }">
                     <td><input type="checkbox" class="rounded border-gray-300 w-3.5 h-3.5" v-model="asset.selected" @change="selectionChanged" /></td>
@@ -572,6 +559,8 @@ onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
               </tbody>
             </table>
           </div>
+          <!-- Loading overlay -->
+          <div v-if="loading && assets.length > 0" class="absolute inset-0 bg-white/50 transition-opacity duration-200 pointer-events-none"></div>
           <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
             <span class="text-sm text-slate-500">共 {{ total }} 条记录</span>
             <div class="flex items-center gap-2">
