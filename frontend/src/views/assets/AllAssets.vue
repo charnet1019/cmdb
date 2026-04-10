@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { message, Dropdown } from 'ant-design-vue'
 import {
   DownOutlined,
@@ -26,6 +27,10 @@ import { useCredentials } from './composables/useCredentials'
 import { useTypeTree, categories, platformOptions, categoryOptions } from './composables/useTypeTree'
 import { createAsset, updateAsset, createCredential, updateCredential } from '@/api/assets'
 import type { Asset, AssetCategory } from '@/types'
+
+// Router for URL state persistence
+const route = useRoute()
+const router = useRouter()
 
 // Use composables
 const {
@@ -190,6 +195,8 @@ function changeCategory(category: AssetCategory | 'all') {
     treeViewMode.value = 'type'
   }
   page.value = 1
+  // Update URL query parameter to persist tab state
+  router.replace({ query: { ...route.query, category: category === 'all' ? undefined : category } })
   fetchData()
 }
 
@@ -351,9 +358,6 @@ async function handleSubmit() {
     }
 
     showModal.value = false
-    // Reset category to 'all' to show all assets including newly created
-    activeCategory.value = 'all'
-    selectedOrgId.value = null
     page.value = 1
     fetchData()
     fetchAssetStats()
@@ -365,7 +369,18 @@ async function handleSubmit() {
   }
 }
 
-onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
+onMounted(() => {
+  // Restore tab state from URL query parameter
+  const urlCategory = route.query.category as AssetCategory | undefined
+  if (urlCategory && categories.some(c => c.key === urlCategory)) {
+    activeCategory.value = urlCategory
+    selectedTypeNodeId.value = urlCategory
+    treeViewMode.value = 'type'
+  }
+  fetchData()
+  fetchOrganizations()
+  fetchAssetStats()
+})
 </script>
 
 <template>
