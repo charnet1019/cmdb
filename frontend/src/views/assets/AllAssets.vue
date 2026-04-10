@@ -725,9 +725,7 @@ onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
             <!-- 用户名密码区域 -->
             <div class="border border-slate-200 rounded-lg overflow-hidden">
               <div class="bg-slate-50 px-4 py-2.5 border-b border-slate-200">
-                <label class="text-xs font-medium text-slate-600">
-                  {{ form.category === 'cloud' ? '访问密钥' : form.category === 'gpt' ? 'API密钥' : '用户名密码' }}
-                </label>
+                <label class="text-xs font-medium text-slate-600">用户名密码</label>
               </div>
               <div class="p-4">
                 <!-- 已有凭证列表 -->
@@ -736,7 +734,7 @@ onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
                     <div class="flex items-center gap-3">
                       <!-- 用户名字段 -->
                       <div class="flex items-center gap-2 flex-1">
-                        <span class="text-xs text-slate-500">{{ form.category === 'cloud' ? 'AKID:' : form.category === 'gpt' ? '名称:' : '用户名:' }}</span>
+                        <span class="text-xs text-slate-500">用户名:</span>
                         <input
                           v-if="isFieldEditing(index, 'username')"
                           :ref="(el: any) => { if (el) credentialInputRefs.set(`${index}-username`, el) }"
@@ -755,7 +753,7 @@ onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
                       </div>
                       <!-- 密码字段 -->
                       <div class="flex items-center gap-2 flex-1">
-                        <span class="text-xs text-slate-500">{{ form.category === 'cloud' ? 'Secret:' : form.category === 'gpt' ? 'API Key:' : '密码:' }}</span>
+                        <span class="text-xs text-slate-500">密码:</span>
                         <input
                           v-if="isFieldEditing(index, 'password')"
                           :ref="(el: any) => { if (el) credentialInputRefs.set(`${index}-password`, el) }"
@@ -764,7 +762,7 @@ onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
                           class="input-field text-sm flex-1"
                           @blur="stopFieldEdit"
                           @keyup.enter="stopFieldEdit"
-                          :placeholder="form.category === 'cloud' ? '输入Secret' : form.category === 'gpt' ? '输入API Key' : '输入新密码'"
+                          placeholder="输入新密码"
                         />
                         <span
                           v-else-if="cred.id && decryptedFormPasswords.has(cred.id)"
@@ -787,11 +785,11 @@ onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
                       </div>
                       <!-- 操作按钮 -->
                       <div class="flex items-center gap-0.5">
-                        <button v-if="cred.id" type="button" @click="viewFormCredentialPassword(cred)" class="p-1.5 text-slate-400 hover:text-primary hover:bg-slate-100 rounded" :title="decryptedFormPasswords.has(cred.id) ? '隐藏' : '查看'">
+                        <button v-if="cred.id" type="button" @click="viewFormCredentialPassword(cred)" class="p-1.5 text-slate-400 hover:text-primary hover:bg-slate-100 rounded" :title="decryptedFormPasswords.has(cred.id) ? '隐藏密码' : '查看密码'">
                           <EyeOutlined v-if="!decryptedFormPasswords.has(cred.id)" class="text-sm" />
                           <EyeInvisibleOutlined v-else class="text-sm" />
                         </button>
-                        <button v-else type="button" @click="viewFormCredentialPassword(cred, index)" class="p-1.5 text-slate-400 hover:text-primary hover:bg-slate-100 rounded" :title="visibleNewPasswords.has(index) ? '隐藏' : '查看'">
+                        <button v-else type="button" @click="viewFormCredentialPassword(cred, index)" class="p-1.5 text-slate-400 hover:text-primary hover:bg-slate-100 rounded" :title="visibleNewPasswords.has(index) ? '隐藏密码' : '查看密码'">
                           <EyeOutlined v-if="!visibleNewPasswords.has(index)" class="text-sm" />
                           <EyeInvisibleOutlined v-else class="text-sm" />
                         </button>
@@ -805,12 +803,12 @@ onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
                 <!-- 添加新凭证表单 -->
                 <div class="flex items-end gap-3">
                   <div class="flex-1">
-                    <label class="block text-xs text-slate-500 mb-1">{{ form.category === 'cloud' ? 'AKID' : form.category === 'gpt' ? '名称' : '用户名' }}</label>
-                    <input v-model="newCredentialForm.username" type="text" class="input-field text-sm" :placeholder="form.category === 'cloud' ? '输入AKID' : form.category === 'gpt' ? '输入名称（可选）' : '输入用户名'" />
+                    <label class="block text-xs text-slate-500 mb-1">用户名</label>
+                    <input v-model="newCredentialForm.username" type="text" class="input-field text-sm" placeholder="输入用户名" />
                   </div>
                   <div class="flex-1 relative">
-                    <label class="block text-xs text-slate-500 mb-1">{{ form.category === 'cloud' ? 'Secret' : form.category === 'gpt' ? 'API Key' : '密码' }}</label>
-                    <input v-model="newCredentialForm.password" :type="showPassword ? 'text' : 'password'" class="input-field text-sm w-full pr-8" :placeholder="form.category === 'cloud' ? '输入Secret' : form.category === 'gpt' ? '输入API Key' : '输入密码'" />
+                    <label class="block text-xs text-slate-500 mb-1">密码</label>
+                    <input v-model="newCredentialForm.password" :type="showPassword ? 'text' : 'password'" class="input-field text-sm w-full pr-8" placeholder="输入密码" />
                     <button type="button" @click="showPassword = !showPassword" class="absolute right-2 top-[calc(50%+10px)] -translate-y-1/2 text-slate-400 hover:text-slate-600">
                       <EyeOutlined v-if="!showPassword" class="text-sm" />
                       <EyeInvisibleOutlined v-else class="text-sm" />
