@@ -32,6 +32,36 @@ import type { Asset, AssetCategory } from '@/types'
 const route = useRoute()
 const router = useRouter()
 
+// Check if IP is private/internal network
+function isPrivateIP(ip: string): boolean {
+  // Remove port if present
+  const ipOnly = ip.split(':')[0].split('/')[0].trim()
+
+  // IPv4 private ranges
+  const privateRanges = [
+    /^10\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/,           // 10.0.0.0/8
+    /^172\.(1[6-9]|2\d|3[01])\.(\d{1,3})\.(\d{1,3})$/, // 172.16.0.0/12
+    /^192\.168\.(\d{1,3})\.(\d{1,3})$/,                 // 192.168.0.0/16
+    /^127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/,           // 127.0.0.0/8 (localhost)
+    /^0\.0\.0\.0$/,                                      // 0.0.0.0
+    /^localhost$/i,                                      // localhost
+  ]
+
+  return privateRanges.some(regex => regex.test(ipOnly))
+}
+
+// Format address with internal/external label
+function formatAddressWithLabel(address: string): string[] {
+  if (!address) return []
+
+  const lines = address.split('\n').filter(line => line.trim())
+  return lines.map(line => {
+    const trimmedLine = line.trim()
+    const label = isPrivateIP(trimmedLine) ? '内' : '外'
+    return `${label} ${trimmedLine}`
+  })
+}
+
 // Update URL query parameters to persist state
 function updateUrlState(params: { tree?: 'asset' | 'type'; org?: number | null; type?: string }) {
   const query: Record<string, string | undefined> = {}
@@ -686,7 +716,20 @@ onMounted(async () => {
                       <p class="font-medium text-slate-900">{{ asset.name }}</p>
                       <p v-if="asset.asset_code" class="text-xs text-slate-400">{{ asset.asset_code }}</p>
                     </td>
-                    <td><span class="text-sm text-slate-600 font-mono">{{ asset.url || asset.address || '-' }}</span></td>
+                    <td>
+                      <template v-if="asset.url">
+                        <span class="text-sm text-slate-600 font-mono">{{ asset.url }}</span>
+                      </template>
+                      <template v-else-if="asset.address">
+                        <div v-for="(line, idx) in formatAddressWithLabel(asset.address)" :key="idx" class="text-sm text-slate-600 font-mono">
+                          <span :class="line.startsWith('内') ? 'text-green-600' : 'text-blue-600'" class="font-medium">{{ line.split(' ')[0] }}</span>
+                          <span class="ml-1">{{ line.split(' ').slice(1).join(' ') }}</span>
+                        </div>
+                      </template>
+                      <template v-else>
+                        <span class="text-sm text-slate-400">-</span>
+                      </template>
+                    </td>
                     <td><span class="text-sm text-slate-600">{{ asset.platform || asset.device_type || '-' }}</span></td>
                     <td>
                       <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
@@ -822,7 +865,7 @@ onMounted(async () => {
               </div>
               <div v-if="['host', 'database'].includes(form.category)">
                 <label class="block text-xs font-medium text-slate-600 mb-1.5">地址</label>
-                <input v-model="form.address" type="text" class="input-field" placeholder="支持格式: IP、IP:端口、主机名、主机名:端口" />
+                <textarea v-model="form.address" class="input-field h-24 resize-none" placeholder="支持多行输入，每行一个地址&#10;格式: IP、IP:端口、主机名、主机名:端口&#10;内网地址: 10.x, 172.16-31.x, 192.168.x&#10;外网地址: 其他IP地址"></textarea>
               </div>
               <div v-else-if="['cloud', 'web', 'gpt'].includes(form.category)">
                 <label class="block text-xs font-medium text-slate-600 mb-1.5">URL</label>
