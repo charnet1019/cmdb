@@ -144,15 +144,18 @@ function switchTreeView(mode: 'asset' | 'type') {
 }
 
 function handleRootClick() {
+  selectedOrgId.value = null
+  page.value = 1
+  fetchData()
   toggleRootExpansion()
 }
 
 function handleOrgClick(org: { id: number; name: string; hasChildren: boolean }) {
-  if (org.hasChildren) {
-    toggleOrg(org.id)
-  } else {
-    selectOrganization(org.id, fetchData)
-  }
+  selectOrganization(org.id, () => {
+    page.value = 1
+    fetchData()
+  })
+  if (org.hasChildren) toggleOrg(org.id)
 }
 
 function handleSelectType(node: any) {

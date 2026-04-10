@@ -31,8 +31,8 @@ const modalTitle = computed(() => editingAsset.value ? '编辑资产' : '创建�
 function fetchData() { fetchAssets({ category: currentCategory, search: searchQuery.value, organizationId: selectedOrgId.value }) }
 function handleSearch() { page.value = 1; fetchData() }
 function switchTreeView(mode: 'asset' | 'type') { treeViewMode.value = mode; if (mode === 'asset') selectedOrgId.value = null; fetchData() }
-function handleRootClick() { toggleRootExpansion() }
-function handleOrgClick(org: { id: number; name: string; hasChildren: boolean }) { if (org.hasChildren) toggleOrg(org.id); else selectOrganization(org.id, fetchData) }
+function handleRootClick() { selectedOrgId.value = null; page.value = 1; fetchData(); toggleRootExpansion() }
+function handleOrgClick(org: { id: number; name: string; hasChildren: boolean }) { selectOrganization(org.id, () => { page.value = 1; fetchData() }); if (org.hasChildren) toggleOrg(org.id) }
 function handleSelectType(node: any) { selectType(node, () => { selectedOrgId.value = null; page.value = 1; fetchData() }) }
 
 function openCreateModal() {

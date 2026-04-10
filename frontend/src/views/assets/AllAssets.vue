@@ -172,17 +172,22 @@ function changeCategory(category: AssetCategory | 'all') {
   fetchData()
 }
 
-// Handle root click
+// Handle root click - select root and refresh assets
 function handleRootClick() {
+  selectedOrgId.value = null
+  page.value = 1
+  fetchData()
   toggleRootExpansion()
 }
 
-// Handle org click
+// Handle org click - always select and refresh, plus toggle if has children
 function handleOrgClick(org: { id: number; name: string; hasChildren: boolean }) {
+  selectOrganization(org.id, () => {
+    page.value = 1
+    fetchData()
+  })
   if (org.hasChildren) {
     toggleOrg(org.id)
-  } else {
-    selectOrganization(org.id, fetchData)
   }
 }
 
