@@ -680,7 +680,7 @@ onMounted(async () => {
                   <th class="w-10"><input type="checkbox" class="rounded border-gray-300 w-3.5 h-3.5" @change="selectAllChanged($event)" :checked="allSelected" /></th>
                   <th>名称</th>
                   <th>地址</th>
-                  <th>类型/平台</th>
+                  <th>{{ activeCategory === 'network' ? '厂商/型号' : '平台' }}</th>
                   <th>用户名密码</th>
                   <th class="text-right">操作</th>
                 </tr>
@@ -711,7 +711,7 @@ onMounted(async () => {
                         <span v-if="!asset.external_address && !asset.internal_address && !asset.address" class="text-sm text-slate-400">-</span>
                       </template>
                     </td>
-                    <td><span class="text-sm text-slate-600">{{ asset.platform || asset.device_type || '-' }}</span></td>
+                    <td><span class="text-sm text-slate-600">{{ activeCategory === 'network' ? (asset.platform && asset.model ? `${asset.platform}/${asset.model}` : (asset.platform || asset.model || '-')) : (asset.platform || asset.device_type || '-') }}</span></td>
                     <td>
                       <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
                         <span class="font-medium">{{ cred.username }}</span>
