@@ -19,7 +19,10 @@ import {
   AppstoreOutlined,
   EditOutlined,
   FolderAddOutlined,
-  PlusCircleOutlined
+  PlusCircleOutlined,
+  SettingOutlined,
+  ExportOutlined,
+  ReloadOutlined
 } from '@ant-design/icons-vue'
 import { useAssets } from './composables/useAssets'
 import { useOrganizations } from './composables/useOrganizations'
@@ -667,7 +670,12 @@ onMounted(async () => {
                 </template>
               </Dropdown>
             </div>
-            <input v-model="searchQuery" type="text" placeholder="搜索" class="border border-gray-200 rounded py-1.5 px-3 text-xs w-72" @keyup.enter="handleSearch" />
+            <div class="flex items-center gap-2">
+              <input v-model="searchQuery" type="text" placeholder="搜索" class="border border-gray-200 rounded py-1.5 px-3 text-xs w-72" @keyup.enter="handleSearch" />
+              <button @click="handleSearch" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="刷新"><ReloadOutlined class="text-sm" /></button>
+              <button class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导出"><ExportOutlined class="text-sm" /></button>
+              <button class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="自定义列"><SettingOutlined class="text-sm" /></button>
+            </div>
           </div>
         </div>
 
