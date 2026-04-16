@@ -67,3 +67,7 @@ dist-ssr/
 # Backend build
 backend/build/
 backend/dist/
+
+# Backups
+frontend/src/views/assets/backup/
+
