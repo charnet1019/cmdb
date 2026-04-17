@@ -828,12 +828,12 @@ onMounted(async () => {
                 </div>
               </div>
               <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1.5">地址</label>
-                <input v-model="form.address" type="text" class="input-field" placeholder="支持格式: IP、IP:端口" />
-              </div>
-              <div>
                 <label class="block text-xs font-medium text-slate-600 mb-1.5">序列号</label>
                 <input v-model="form.serial_number" type="text" class="input-field" placeholder="设备序列号" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1.5">地址</label>
+                <input v-model="form.address" type="text" class="input-field" placeholder="支持格式: IP、IP:端口" />
               </div>
             </template>
 
