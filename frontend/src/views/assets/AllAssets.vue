@@ -180,6 +180,9 @@ const form = ref({
   system_disk: '',
   data_disk: '',
   url: '',
+  version: '',
+  namespace: '',
+  applicant: '',
   notes: ''
 })
 
@@ -285,6 +288,9 @@ function openCreateModal() {
     system_disk: '',
     data_disk: '',
     url: '',
+    version: '',
+    namespace: '',
+    applicant: '',
     notes: ''
   }
   formSelectedOrgId.value = selectedOrgId.value
@@ -325,6 +331,9 @@ function openEditModal(asset: Asset) {
     system_disk: asset.system_disk || '',
     data_disk: asset.data_disk || '',
     url: asset.url || '',
+    version: asset.extra_data?.version || '',
+    namespace: asset.extra_data?.namespace || '',
+    applicant: asset.extra_data?.applicant || '',
     notes: asset.notes || ''
   }
   formSelectedOrgId.value = asset.organization_id || null
@@ -345,6 +354,23 @@ async function handleSubmit() {
 
   modalLoading.value = true
   try {
+    // Prepare extra_data for host and database assets
+    let extraData: Record<string, any> | undefined
+    if (form.value.category === 'host' || form.value.category === 'database') {
+      const extraFields: Record<string, any> = {}
+      // Host applicant
+      if (form.value.category === 'host' && form.value.applicant) {
+        extraFields.applicant = form.value.applicant
+      }
+      // Database fields
+      if (form.value.category === 'database') {
+        if (form.value.version) extraFields.version = form.value.version
+        if (form.value.namespace) extraFields.namespace = form.value.namespace
+        if (form.value.applicant) extraFields.applicant = form.value.applicant
+      }
+      extraData = Object.keys(extraFields).length > 0 ? extraFields : undefined
+    }
+
     const data = {
       name: form.value.name,
       asset_code: form.value.asset_code || undefined,
@@ -361,6 +387,7 @@ async function handleSubmit() {
       system_disk: form.value.system_disk || undefined,
       data_disk: form.value.data_disk || undefined,
       url: form.value.url || undefined,
+      extra_data: extraData,
       notes: form.value.notes || undefined,
       organization_id: formSelectedOrgId.value || undefined
     }
@@ -691,12 +718,13 @@ onMounted(async () => {
                   <th>名称</th>
                   <th>地址</th>
                   <th>{{ activeCategory === 'network' ? '厂商/型号' : '平台' }}</th>
+                  <th v-if="activeCategory === 'host' || activeCategory === 'database'">申请人</th>
                   <th>用户名密码</th>
                   <th class="text-right">操作</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-if="assets.length === 0 && !loading"><td colspan="6" class="text-center py-16 text-slate-400">暂无数据</td></tr>
+                <tr v-if="assets.length === 0 && !loading"><td :colspan="activeCategory === 'host' || activeCategory === 'database' ? 7 : 6" class="text-center py-16 text-slate-400">暂无数据</td></tr>
                 <template v-else>
                   <tr v-for="asset in assets" :key="asset.id" :class="{ 'opacity-50 bg-slate-50': !asset.is_active }">
                     <td><input type="checkbox" class="rounded border-gray-300 w-3.5 h-3.5" v-model="asset.selected" @change="selectionChanged" /></td>
@@ -722,6 +750,7 @@ onMounted(async () => {
                       </template>
                     </td>
                     <td><span class="text-sm text-slate-600">{{ activeCategory === 'network' ? (asset.platform && asset.model ? `${asset.platform}/${asset.model}` : (asset.platform || asset.model || '-')) : (asset.platform || asset.device_type || '-') }}</span></td>
+                    <td v-if="activeCategory === 'host' || activeCategory === 'database'" class="text-sm text-slate-600">{{ asset.extra_data?.applicant || '-' }}</td>
                     <td>
                       <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
                         <span class="font-medium">{{ cred.username }}</span>
@@ -969,6 +998,24 @@ onMounted(async () => {
               </div>
             </div>
 
+            <!-- 数据库专属字段 -->
+            <template v-if="form.category === 'database'">
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">版本</label>
+                  <input v-model="form.version" type="text" class="input-field" placeholder="数据库版本" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">命名空间</label>
+                  <input v-model="form.namespace" type="text" class="input-field" placeholder="命名空间" />
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1.5">申请人</label>
+                <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />
+              </div>
+            </template>
+
             <!-- 主机专属字段 -->
             <template v-if="form.category === 'host'">
               <div class="grid grid-cols-2 gap-4">
@@ -1000,6 +1047,10 @@ onMounted(async () => {
                   <label class="block text-xs font-medium text-slate-600 mb-1.5">数据盘</label>
                   <input v-model="form.data_disk" type="text" class="input-field" placeholder="如: 2TB HDD" />
                 </div>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1.5">申请人</label>
+                <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />
               </div>
             </template>
 
