@@ -28,7 +28,7 @@ import {
 import { useAssets } from './composables/useAssets'
 import { useOrganizations } from './composables/useOrganizations'
 import { useCredentials } from './composables/useCredentials'
-import { useTypeTree, categories, platformOptions, categoryOptions } from './composables/useTypeTree'
+import { useTypeTree, categories, platformOptions, categoryOptions, deviceTypeOptions, dbTypeOptions } from './composables/useTypeTree'
 import { useColumnConfig } from './composables/useColumnConfig'
 import { createAsset, updateAsset, createCredential, updateCredential } from '@/api/assets'
 import ColumnCustomizer from './components/ColumnCustomizer.vue'
@@ -194,6 +194,7 @@ const form = ref({
   url: '',
   version: '',
   namespace: '',
+  db_type: activeCategory.value === 'database' ? 'MySQL' : '',
   applicant: '',
   notes: ''
 })
@@ -291,7 +292,7 @@ function openCreateModal() {
     address: '',
     internal_address: '',
     external_address: '',
-    platform: '',
+    platform: activeCategory.value === 'database' ? 'Kubernetes' : '',
     device_type: '',
     model: '',
     serial_number: '',
@@ -302,6 +303,7 @@ function openCreateModal() {
     url: '',
     version: '',
     namespace: '',
+    db_type: activeCategory.value === 'database' ? 'MySQL' : '',
     applicant: '',
     notes: ''
   }
@@ -345,6 +347,7 @@ function openEditModal(asset: Asset) {
     url: asset.url || '',
     version: asset.extra_data?.version || '',
     namespace: asset.extra_data?.namespace || '',
+    db_type: asset.extra_data?.db_type || '',
     applicant: asset.extra_data?.applicant || '',
     notes: asset.notes || ''
   }
@@ -376,6 +379,7 @@ async function handleSubmit() {
       }
       // Database fields
       if (form.value.category === 'database') {
+        if (form.value.db_type) extraFields.db_type = form.value.db_type
         if (form.value.version) extraFields.version = form.value.version
         if (form.value.namespace) extraFields.namespace = form.value.namespace
         if (form.value.applicant) extraFields.applicant = form.value.applicant
@@ -739,6 +743,7 @@ onMounted(async () => {
                   <th v-show="visibleColumnKeys['memory'] && activeCategory === 'host'">内存</th>
                   <th v-show="visibleColumnKeys['system_disk'] && activeCategory === 'host'">系统盘</th>
                   <th v-show="visibleColumnKeys['data_disk'] && activeCategory === 'host'">数据盘</th>
+                  <th v-show="visibleColumnKeys['db_type'] && activeCategory === 'database'">数据库类型</th>
                   <th v-show="visibleColumnKeys['version'] && activeCategory === 'database'">版本</th>
                   <th v-show="visibleColumnKeys['namespace'] && activeCategory === 'database'">命名空间</th>
                   <th v-show="visibleColumnKeys['organization']">节点</th>
@@ -784,6 +789,7 @@ onMounted(async () => {
                     <td v-show="visibleColumnKeys['memory'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.memory || '-' }}</span></td>
                     <td v-show="visibleColumnKeys['system_disk'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.system_disk || '-' }}</span></td>
                     <td v-show="visibleColumnKeys['data_disk'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.data_disk || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['db_type'] && activeCategory === 'database'"><span class="text-sm text-slate-600">{{ asset.extra_data?.db_type || '' }}</span></td>
                     <td v-show="visibleColumnKeys['version'] && activeCategory === 'database'"><span class="text-sm text-slate-600">{{ asset.extra_data?.version || '' }}</span></td>
                     <td v-show="visibleColumnKeys['namespace'] && activeCategory === 'database'"><span class="text-sm text-slate-600">{{ asset.extra_data?.namespace || '' }}</span></td>
                     <td v-show="visibleColumnKeys['organization']"><span class="text-sm text-slate-600">{{ asset.organization_name || 'Default' }}</span></td>
@@ -934,6 +940,23 @@ onMounted(async () => {
                   </select>
                 </div>
               </div>
+              <div v-if="form.category === 'database'" class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">数据库类型</label>
+                  <select v-model="form.db_type" class="input-field">
+                    <option value="">请选择</option>
+                    <option v-for="t in dbTypeOptions" :key="t" :value="t">{{ t }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">版本</label>
+                  <input v-model="form.version" type="text" class="input-field" placeholder="数据库版本" />
+                </div>
+              </div>
+              <div v-if="form.category === 'database'">
+                <label class="block text-xs font-medium text-slate-600 mb-1.5">命名空间</label>
+                <input v-model="form.namespace" type="text" class="input-field" placeholder="命名空间" />
+              </div>
               <div v-if="['host', 'database'].includes(form.category)" class="grid grid-cols-2 gap-4">
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1.5">外网地址</label>
@@ -1051,16 +1074,6 @@ onMounted(async () => {
 
             <!-- 数据库专属字段 -->
             <template v-if="form.category === 'database'">
-              <div class="grid grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">版本</label>
-                  <input v-model="form.version" type="text" class="input-field" placeholder="数据库版本" />
-                </div>
-                <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">命名空间</label>
-                  <input v-model="form.namespace" type="text" class="input-field" placeholder="命名空间" />
-                </div>
-              </div>
               <div>
                 <label class="block text-xs font-medium text-slate-600 mb-1.5">申请人</label>
                 <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />

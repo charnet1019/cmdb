@@ -30,7 +30,7 @@ export const categoryOptions = categories.filter(c => c.key !== 'all')
 export const platformOptions: Record<string, string[]> = {
   host: ['Linux', 'Windows', 'Unix', 'MacOS', 'NAS'],
   network: ['Cisco', 'Huawei', 'H3C', 'Ruijie', 'ZTE', 'TP-Link', 'Tenda', 'ASUS', 'MERCURY', 'Netgear', 'Juniper'],
-  database: ['MySQL', 'MongoDB', 'Redis', 'PostgreSQL', 'Oracle', 'SQL Server', 'InfluxDB', 'Elasticsearch', 'RabbitMQ', 'RocketMQ', 'Kafka', 'ClickHouse', 'EMQ', '达梦', 'TiDB', 'IoTDB', 'TDengine', 'Prometheus', 'Neo4j', 'Milvus', 'Weaviate', 'Qdrant'],
+  database: ['物理机', '虚拟机', 'RDS', 'Kubernetes', 'Docker'],
   cloud: ['Kubernetes', 'KubeSphere', 'Rancher', 'Harvester', 'OpenStack', 'ZStack', 'CloudStack', 'VMware', 'oVirt', 'KVM', 'AWS', 'Azure', 'GCP', '阿里云', '腾讯云', '青云', 'UCloud', '火山云', '天翼云', '移动云', '华为云'],
   web: ['Nginx', 'Apache', 'IIS', 'Tomcat', 'Nginx Ingress', 'Higress', 'Traefik', 'APISIX', 'Loadbalancer', 'F5'],
   gpt: ['OpenAI', 'Claude', 'ChatGLM', '通义千问']
@@ -38,6 +38,9 @@ export const platformOptions: Record<string, string[]> = {
 
 // Device type options for network
 export const deviceTypeOptions = ['交换机', '路由器', '防火墙', '无线控制器', '负载均衡']
+
+// Database type options
+export const dbTypeOptions = ['MySQL', 'MongoDB', 'Redis', 'PostgreSQL', 'Oracle', 'SQL Server', 'InfluxDB', 'Elasticsearch', 'RabbitMQ', 'RocketMQ', 'Kafka', 'ClickHouse', 'EMQ', '达梦', 'TiDB', 'IoTDB', 'TDengine', 'Prometheus', 'Neo4j', 'Milvus', 'Weaviate', 'Qdrant']
 
 // Subcategories for each type
 const hostSubCategories = ['Linux', 'Unix', 'Windows', 'MacOS', 'NAS']
