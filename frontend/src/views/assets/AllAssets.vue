@@ -159,6 +159,32 @@ const {
 } = useColumnConfig(activeCategory)
 const showColumnCustomizer = ref(false)
 
+// Password popover
+const passwordPopover = ref<{ credId: number; password: string; x: number; y: number } | null>(null)
+
+async function showPasswordPopover(cred: { id: number }, event: MouseEvent) {
+  if (passwordPopover.value?.credId === cred.id) {
+    passwordPopover.value = null
+    return
+  }
+  try {
+    await viewPassword(cred)
+    const password = decryptedPasswords.value.get(cred.id)
+    if (password) {
+      const rect = (event.target as HTMLElement).getBoundingClientRect()
+      passwordPopover.value = { credId: cred.id, password, x: rect.left, y: rect.top }
+      // viewPassword toggles — re-hide from decryptedPasswords to keep table clean
+      decryptedPasswords.value.delete(cred.id)
+    }
+  } catch (e: any) {
+    message.error(e.response?.data?.detail || '解密失败')
+  }
+}
+
+function closePasswordPopover() {
+  passwordPopover.value = null
+}
+
 // Tree view mode
 const treeViewMode = ref<'asset' | 'type'>('asset')
 
@@ -526,7 +552,15 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="space-y-4" @click="closePasswordPopover">
+    <!-- Password popover -->
+    <Teleport to="body">
+      <div
+        v-if="passwordPopover"
+        class="fixed z-[100] bg-slate-900 text-white text-xs font-mono px-3 py-2 rounded-lg shadow-lg pointer-events-none"
+        :style="{ left: passwordPopover.x + 'px', top: (passwordPopover.y - 40) + 'px' }"
+      >{{ passwordPopover.password }}</div>
+    </Teleport>
     <!-- Category Tabs -->
     <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
       <div class="flex border-b border-slate-100">
@@ -798,23 +832,19 @@ onMounted(async () => {
                       <span v-else class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">禁用</span>
                     </td>
                     <td v-show="visibleColumnKeys['applicant'] && (activeCategory === 'host' || activeCategory === 'database' || activeCategory === 'all')" class="text-sm text-slate-600">{{ asset.extra_data?.applicant || '' }}</td>
-                    <td v-show="visibleColumnKeys['credentials']">
+                    <td v-show="visibleColumnKeys['credentials']" class="w-[220px] max-w-[220px]">
                       <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
-                        <span class="font-medium">{{ cred.username }}</span>
-                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" />
-                        <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed" />
-                        <span v-if="decryptedPasswords.has(cred.id)" class="text-slate-700 font-mono ml-1">{{ decryptedPasswords.get(cred.id) }}</span>
-                        <span v-else class="text-slate-400 font-mono ml-1">********</span>
-                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword(cred)" />
-                        <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed" />
-                        <template v-if="asset.is_active">
-                          <EyeOutlined v-if="!decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" />
-                          <EyeInvisibleOutlined v-else class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" />
-                        </template>
-                        <EyeOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed ml-1" />
+                        <span class="font-medium shrink-0">{{ cred.username }}</span>
+                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(cred.username)" />
+                        <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed shrink-0" />
+                        <span class="text-slate-400 font-mono ml-1 shrink-0">********</span>
+                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyPassword(cred)" />
+                        <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed shrink-0" />
+                        <EyeOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showPasswordPopover(cred, $event)" />
+                        <EyeOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed ml-1 shrink-0" />
                       </div>
                     </td>
-                    <td v-show="visibleColumnKeys['notes']"><span class="text-sm text-slate-600">{{ asset.notes || '' }}</span></td>
+                    <td v-show="visibleColumnKeys['notes']" class="whitespace-normal max-w-[200px]"><span class="text-sm text-slate-600">{{ asset.notes || '' }}</span></td>
                     <td class="text-right">
                       <button v-if="asset.is_active" @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded text-xs">更新</button>
                       <button v-else disabled class="bg-slate-200 text-slate-400 px-2 py-0.5 rounded cursor-not-allowed text-xs">更新</button>
