@@ -732,8 +732,9 @@ onMounted(async () => {
                   <th v-show="visibleColumnKeys['asset_code']">资产编号</th>
                   <th v-show="visibleColumnKeys['category']">资产类型</th>
                   <th v-show="visibleColumnKeys['platform']">{{ activeCategory === 'network' ? '厂商/型号' : '平台' }}</th>
+                  <th v-show="visibleColumnKeys['device_type'] && activeCategory === 'network'">设备类型</th>
                   <th v-show="visibleColumnKeys['model'] && activeCategory === 'host'">型号</th>
-                  <th v-show="visibleColumnKeys['serial_number'] && activeCategory === 'host'">序列号</th>
+                  <th v-show="visibleColumnKeys['serial_number'] && (activeCategory === 'host' || activeCategory === 'network')">序列号</th>
                   <th v-show="visibleColumnKeys['cpu'] && activeCategory === 'host'">CPU</th>
                   <th v-show="visibleColumnKeys['memory'] && activeCategory === 'host'">内存</th>
                   <th v-show="visibleColumnKeys['system_disk'] && activeCategory === 'host'">系统盘</th>
@@ -771,16 +772,17 @@ onMounted(async () => {
                         <span v-if="!asset.external_address && !asset.internal_address && !asset.address" class="text-sm text-slate-400">-</span>
                       </template>
                     </td>
-                    <td v-show="visibleColumnKeys['asset_code']"><span class="text-sm text-slate-600 font-mono">{{ asset.asset_code || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['asset_code']"><span class="text-sm text-slate-600 font-mono">{{ asset.asset_code || '' }}</span></td>
                     <td v-show="visibleColumnKeys['category']"><span class="text-sm text-slate-600">{{ categoryOptions.find(c => c.key === asset.category)?.label || asset.category }}</span></td>
                     <td v-show="visibleColumnKeys['platform']"><span class="text-sm text-slate-600">{{ activeCategory === 'network' ? (asset.platform && asset.model ? `${asset.platform}/${asset.model}` : (asset.platform || asset.model || '-')) : (asset.platform || asset.device_type || '-') }}</span></td>
+                    <td v-show="visibleColumnKeys['device_type'] && activeCategory === 'network'"><span class="text-sm text-slate-600">{{ asset.device_type || '-' }}</span></td>
                     <td v-show="visibleColumnKeys['model'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.model || '-' }}</span></td>
-                    <td v-show="visibleColumnKeys['serial_number'] && activeCategory === 'host'"><span class="text-sm text-slate-600 font-mono">{{ asset.serial_number || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['serial_number'] && (activeCategory === 'host' || activeCategory === 'network')"><span class="text-sm text-slate-600 font-mono">{{ asset.serial_number || '' }}</span></td>
                     <td v-show="visibleColumnKeys['cpu'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.cpu || '-' }}</span></td>
                     <td v-show="visibleColumnKeys['memory'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.memory || '-' }}</span></td>
                     <td v-show="visibleColumnKeys['system_disk'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.system_disk || '-' }}</span></td>
                     <td v-show="visibleColumnKeys['data_disk'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.data_disk || '-' }}</span></td>
-                    <td v-show="visibleColumnKeys['organization']"><span class="text-sm text-slate-600">{{ asset.organization_name || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['organization']"><span class="text-sm text-slate-600">{{ asset.organization_name || 'Default' }}</span></td>
                     <td v-show="visibleColumnKeys['is_active']">
                       <span v-if="asset.is_active" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">启用</span>
                       <span v-else class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">禁用</span>
