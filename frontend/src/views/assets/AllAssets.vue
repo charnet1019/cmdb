@@ -737,18 +737,18 @@ onMounted(async () => {
                   <th v-show="visibleColumnKeys['category']">资产类型</th>
                   <th v-show="visibleColumnKeys['platform']">{{ activeCategory === 'network' ? '厂商/型号' : '平台' }}</th>
                   <th v-show="visibleColumnKeys['device_type'] && activeCategory === 'network'">设备类型</th>
-                  <th v-show="visibleColumnKeys['model'] && activeCategory === 'host'">型号</th>
-                  <th v-show="visibleColumnKeys['serial_number'] && (activeCategory === 'host' || activeCategory === 'network')">序列号</th>
-                  <th v-show="visibleColumnKeys['cpu'] && activeCategory === 'host'">CPU</th>
-                  <th v-show="visibleColumnKeys['memory'] && activeCategory === 'host'">内存</th>
-                  <th v-show="visibleColumnKeys['system_disk'] && activeCategory === 'host'">系统盘</th>
-                  <th v-show="visibleColumnKeys['data_disk'] && activeCategory === 'host'">数据盘</th>
-                  <th v-show="visibleColumnKeys['db_type'] && activeCategory === 'database'">数据库类型</th>
-                  <th v-show="visibleColumnKeys['version'] && activeCategory === 'database'">版本</th>
-                  <th v-show="visibleColumnKeys['namespace'] && activeCategory === 'database'">命名空间</th>
+                  <th v-show="visibleColumnKeys['model'] && (activeCategory === 'host' || activeCategory === 'all')">型号</th>
+                  <th v-show="visibleColumnKeys['serial_number'] && (activeCategory === 'host' || activeCategory === 'network' || activeCategory === 'all')">序列号</th>
+                  <th v-show="visibleColumnKeys['cpu'] && (activeCategory === 'host' || activeCategory === 'all')">CPU</th>
+                  <th v-show="visibleColumnKeys['memory'] && (activeCategory === 'host' || activeCategory === 'all')">内存</th>
+                  <th v-show="visibleColumnKeys['system_disk'] && (activeCategory === 'host' || activeCategory === 'all')">系统盘</th>
+                  <th v-show="visibleColumnKeys['data_disk'] && (activeCategory === 'host' || activeCategory === 'all')">数据盘</th>
+                  <th v-show="visibleColumnKeys['db_type'] && (activeCategory === 'database' || activeCategory === 'all')">数据库类型</th>
+                  <th v-show="visibleColumnKeys['version'] && (activeCategory === 'database' || activeCategory === 'all')">版本</th>
+                  <th v-show="visibleColumnKeys['namespace'] && (activeCategory === 'database' || activeCategory === 'all')">命名空间</th>
                   <th v-show="visibleColumnKeys['organization']">节点</th>
                   <th v-show="visibleColumnKeys['is_active']">状态</th>
-                  <th v-show="visibleColumnKeys['applicant'] && (activeCategory === 'host' || activeCategory === 'database')">申请人</th>
+                  <th v-show="visibleColumnKeys['applicant'] && (activeCategory === 'host' || activeCategory === 'database' || activeCategory === 'all')">申请人</th>
                   <th v-show="visibleColumnKeys['credentials']">用户名密码</th>
                   <th v-show="visibleColumnKeys['notes']">描述</th>
                   <th class="text-right">操作</th>
@@ -783,21 +783,21 @@ onMounted(async () => {
                     <td v-show="visibleColumnKeys['category']"><span class="text-sm text-slate-600">{{ categoryOptions.find(c => c.key === asset.category)?.label || asset.category }}</span></td>
                     <td v-show="visibleColumnKeys['platform']"><span class="text-sm text-slate-600">{{ activeCategory === 'network' ? (asset.platform && asset.model ? `${asset.platform}/${asset.model}` : (asset.platform || asset.model || '-')) : (asset.platform || asset.device_type || '-') }}</span></td>
                     <td v-show="visibleColumnKeys['device_type'] && activeCategory === 'network'"><span class="text-sm text-slate-600">{{ asset.device_type || '-' }}</span></td>
-                    <td v-show="visibleColumnKeys['model'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.model || '' }}</span></td>
-                    <td v-show="visibleColumnKeys['serial_number'] && (activeCategory === 'host' || activeCategory === 'network')"><span class="text-sm text-slate-600 font-mono">{{ asset.serial_number || '' }}</span></td>
-                    <td v-show="visibleColumnKeys['cpu'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.cpu || '-' }}</span></td>
-                    <td v-show="visibleColumnKeys['memory'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.memory || '-' }}</span></td>
-                    <td v-show="visibleColumnKeys['system_disk'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.system_disk || '-' }}</span></td>
-                    <td v-show="visibleColumnKeys['data_disk'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.data_disk || '-' }}</span></td>
-                    <td v-show="visibleColumnKeys['db_type'] && activeCategory === 'database'"><span class="text-sm text-slate-600">{{ asset.extra_data?.db_type || '' }}</span></td>
-                    <td v-show="visibleColumnKeys['version'] && activeCategory === 'database'"><span class="text-sm text-slate-600">{{ asset.extra_data?.version || '' }}</span></td>
-                    <td v-show="visibleColumnKeys['namespace'] && activeCategory === 'database'"><span class="text-sm text-slate-600">{{ asset.extra_data?.namespace || '' }}</span></td>
+                    <td v-show="visibleColumnKeys['model'] && (activeCategory === 'host' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.model || '' }}</span></td>
+                    <td v-show="visibleColumnKeys['serial_number'] && (activeCategory === 'host' || activeCategory === 'network' || activeCategory === 'all')"><span class="text-sm text-slate-600 font-mono">{{ asset.serial_number || '' }}</span></td>
+                    <td v-show="visibleColumnKeys['cpu'] && (activeCategory === 'host' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.cpu || '' }}</span></td>
+                    <td v-show="visibleColumnKeys['memory'] && (activeCategory === 'host' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.memory || '' }}</span></td>
+                    <td v-show="visibleColumnKeys['system_disk'] && (activeCategory === 'host' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.system_disk || '' }}</span></td>
+                    <td v-show="visibleColumnKeys['data_disk'] && (activeCategory === 'host' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.data_disk || '' }}</span></td>
+                    <td v-show="visibleColumnKeys['db_type'] && (activeCategory === 'database' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.extra_data?.db_type || '' }}</span></td>
+                    <td v-show="visibleColumnKeys['version'] && (activeCategory === 'database' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.extra_data?.version || '' }}</span></td>
+                    <td v-show="visibleColumnKeys['namespace'] && (activeCategory === 'database' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.extra_data?.namespace || '' }}</span></td>
                     <td v-show="visibleColumnKeys['organization']"><span class="text-sm text-slate-600">{{ asset.organization_name || 'Default' }}</span></td>
                     <td v-show="visibleColumnKeys['is_active']">
                       <span v-if="asset.is_active" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">启用</span>
                       <span v-else class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">禁用</span>
                     </td>
-                    <td v-show="visibleColumnKeys['applicant'] && (activeCategory === 'host' || activeCategory === 'database')" class="text-sm text-slate-600">{{ asset.extra_data?.applicant || '-' }}</td>
+                    <td v-show="visibleColumnKeys['applicant'] && (activeCategory === 'host' || activeCategory === 'database' || activeCategory === 'all')" class="text-sm text-slate-600">{{ asset.extra_data?.applicant || '' }}</td>
                     <td v-show="visibleColumnKeys['credentials']">
                       <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
                         <span class="font-medium">{{ cred.username }}</span>
