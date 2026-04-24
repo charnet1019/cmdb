@@ -739,6 +739,8 @@ onMounted(async () => {
                   <th v-show="visibleColumnKeys['memory'] && activeCategory === 'host'">内存</th>
                   <th v-show="visibleColumnKeys['system_disk'] && activeCategory === 'host'">系统盘</th>
                   <th v-show="visibleColumnKeys['data_disk'] && activeCategory === 'host'">数据盘</th>
+                  <th v-show="visibleColumnKeys['version'] && activeCategory === 'database'">版本</th>
+                  <th v-show="visibleColumnKeys['namespace'] && activeCategory === 'database'">命名空间</th>
                   <th v-show="visibleColumnKeys['organization']">节点</th>
                   <th v-show="visibleColumnKeys['is_active']">状态</th>
                   <th v-show="visibleColumnKeys['applicant'] && (activeCategory === 'host' || activeCategory === 'database')">申请人</th>
@@ -776,12 +778,14 @@ onMounted(async () => {
                     <td v-show="visibleColumnKeys['category']"><span class="text-sm text-slate-600">{{ categoryOptions.find(c => c.key === asset.category)?.label || asset.category }}</span></td>
                     <td v-show="visibleColumnKeys['platform']"><span class="text-sm text-slate-600">{{ activeCategory === 'network' ? (asset.platform && asset.model ? `${asset.platform}/${asset.model}` : (asset.platform || asset.model || '-')) : (asset.platform || asset.device_type || '-') }}</span></td>
                     <td v-show="visibleColumnKeys['device_type'] && activeCategory === 'network'"><span class="text-sm text-slate-600">{{ asset.device_type || '-' }}</span></td>
-                    <td v-show="visibleColumnKeys['model'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.model || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['model'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.model || '' }}</span></td>
                     <td v-show="visibleColumnKeys['serial_number'] && (activeCategory === 'host' || activeCategory === 'network')"><span class="text-sm text-slate-600 font-mono">{{ asset.serial_number || '' }}</span></td>
                     <td v-show="visibleColumnKeys['cpu'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.cpu || '-' }}</span></td>
                     <td v-show="visibleColumnKeys['memory'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.memory || '-' }}</span></td>
                     <td v-show="visibleColumnKeys['system_disk'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.system_disk || '-' }}</span></td>
                     <td v-show="visibleColumnKeys['data_disk'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.data_disk || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['version'] && activeCategory === 'database'"><span class="text-sm text-slate-600">{{ asset.extra_data?.version || '' }}</span></td>
+                    <td v-show="visibleColumnKeys['namespace'] && activeCategory === 'database'"><span class="text-sm text-slate-600">{{ asset.extra_data?.namespace || '' }}</span></td>
                     <td v-show="visibleColumnKeys['organization']"><span class="text-sm text-slate-600">{{ asset.organization_name || 'Default' }}</span></td>
                     <td v-show="visibleColumnKeys['is_active']">
                       <span v-if="asset.is_active" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">启用</span>
@@ -804,7 +808,7 @@ onMounted(async () => {
                         <EyeOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed ml-1" />
                       </div>
                     </td>
-                    <td v-show="visibleColumnKeys['notes']"><span class="text-sm text-slate-600">{{ asset.notes || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['notes']"><span class="text-sm text-slate-600">{{ asset.notes || '' }}</span></td>
                     <td class="text-right">
                       <button v-if="asset.is_active" @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded text-xs">更新</button>
                       <button v-else disabled class="bg-slate-200 text-slate-400 px-2 py-0.5 rounded cursor-not-allowed text-xs">更新</button>
