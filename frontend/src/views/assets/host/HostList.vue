@@ -17,12 +17,15 @@ import {
   FolderOpenOutlined,
   FileTextOutlined,
   EditOutlined,
-  FolderAddOutlined
+  FolderAddOutlined,
+  SettingOutlined
 } from '@ant-design/icons-vue'
 import { useAssets } from '../composables/useAssets'
 import { useOrganizations } from '../composables/useOrganizations'
 import { useCredentials } from '../composables/useCredentials'
 import { useTypeTree, categories, platformOptions, categoryOptions } from '../composables/useTypeTree'
+import { useColumnConfig } from '../composables/useColumnConfig'
+import ColumnCustomizer from '../components/ColumnCustomizer.vue'
 import type { Asset, AssetCategory } from '@/types'
 
 const {
@@ -124,7 +127,19 @@ const form = ref({
 })
 
 const currentCategory = 'host' as AssetCategory
+
+const {
+  allColumns: allColumnsConfig,
+  visibleColumnKeys,
+  toggleColumn,
+  resetColumns
+} = useColumnConfig(currentCategory)
+const showColumnCustomizer = ref(false)
+
 const modalTitle = computed(() => editingAsset.value ? '编辑资产' : '创建资产')
+const visibleColumnCount = computed(() =>
+  allColumnsConfig.value.filter(column => visibleColumnKeys[column.key]).length + 1
+)
 
 function fetchData() {
   fetchAssets({ category: currentCategory, search: searchQuery.value, organizationId: selectedOrgId.value })
@@ -323,21 +338,33 @@ onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
               </Dropdown>
             </div>
             <input v-model="searchQuery" type="text" placeholder="搜索" class="border border-gray-200 rounded py-1.5 px-3 text-xs w-72" @keyup.enter="handleSearch" />
+              <button @click="showColumnCustomizer = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="自定义列"><SettingOutlined class="text-sm" /></button>
           </div>
         </div>
         <div class="bg-white rounded-xl shadow-sm overflow-hidden relative">
           <div class="overflow-x-auto">
             <table class="data-table min-w-[800px]">
-              <thead><tr><th class="w-10"><input type="checkbox" class="rounded border-gray-300 w-3.5 h-3.5" @change="selectAllChanged($event)" :checked="allSelected" /></th><th>名称</th><th>地址</th><th>系统平台</th><th>用户名密码</th><th class="text-right">操作</th></tr></thead>
+              <thead><tr><th class="w-10"><input type="checkbox" class="rounded border-gray-300 w-3.5 h-3.5" @change="selectAllChanged($event)" :checked="allSelected" /></th><th>名称</th><th>地址</th><th v-show="visibleColumnKeys['asset_code']">资产编号</th><th v-show="visibleColumnKeys['platform']">系统平台</th><th v-show="visibleColumnKeys['model']">型号</th><th v-show="visibleColumnKeys['serial_number']">序列号</th><th v-show="visibleColumnKeys['cpu']">CPU</th><th v-show="visibleColumnKeys['memory']">内存</th><th v-show="visibleColumnKeys['system_disk']">系统盘</th><th v-show="visibleColumnKeys['data_disk']">数据盘</th><th v-show="visibleColumnKeys['applicant']">申请人</th><th v-show="visibleColumnKeys['organization']">节点</th><th v-show="visibleColumnKeys['is_active']">状态</th><th v-show="visibleColumnKeys['credentials']">用户名密码</th><th v-show="visibleColumnKeys['notes']">描述</th><th class="text-right">操作</th></tr></thead>
               <tbody>
-                <tr v-if="assets.length === 0 && !loading"><td colspan="6" class="text-center py-16 text-slate-400">暂无数据</td></tr>
+                <tr v-if="assets.length === 0 && !loading"><td :colspan="visibleColumnCount" class="text-center py-16 text-slate-400">暂无数据</td></tr>
                 <template v-else>
                   <tr v-for="asset in assets" :key="asset.id" :class="{ 'opacity-50 bg-slate-50': !asset.is_active }">
                     <td><input type="checkbox" class="rounded border-gray-300 w-3.5 h-3.5" v-model="asset.selected" @change="selectionChanged" /></td>
-                    <td><p class="font-medium text-slate-900">{{ asset.name }}</p><p v-if="asset.asset_code" class="text-xs text-slate-400">{{ asset.asset_code }}</p></td>
+                    <td><p class="font-medium text-slate-900">{{ asset.name }}</p></td>
                     <td><span class="text-sm text-slate-600 font-mono">{{ asset.address || '-' }}</span></td>
-                    <td><span class="text-sm text-slate-600">{{ asset.platform || '-' }}</span></td>
-                    <td><div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1"><span class="font-medium">{{ cred.username }}</span><CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" /><CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed" /><span v-if="decryptedPasswords.has(cred.id)" class="text-slate-700 font-mono ml-1">{{ decryptedPasswords.get(cred.id) }}</span><span v-else class="text-slate-400 font-mono ml-1">********</span><CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword(cred)" /><CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed" /><template v-if="asset.is_active"><EyeOutlined v-if="!decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" /><EyeInvisibleOutlined v-else class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" /></template><EyeOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed ml-1" /></div></td>
+                    <td v-show="visibleColumnKeys['asset_code']"><span class="text-sm text-slate-600 font-mono">{{ asset.asset_code || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['platform']"><span class="text-sm text-slate-600">{{ asset.platform || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['model']"><span class="text-sm text-slate-600">{{ asset.model || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['serial_number']"><span class="text-sm text-slate-600 font-mono">{{ asset.serial_number || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['cpu']"><span class="text-sm text-slate-600">{{ asset.cpu || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['memory']"><span class="text-sm text-slate-600">{{ asset.memory || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['system_disk']"><span class="text-sm text-slate-600">{{ asset.system_disk || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['data_disk']"><span class="text-sm text-slate-600">{{ asset.data_disk || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['applicant']"><span class="text-sm text-slate-600">{{ asset.extra_data?.applicant || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['organization']"><span class="text-sm text-slate-600">{{ asset.organization_name || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['is_active']"><span class="text-sm" :class="asset.is_active ? 'text-green-600' : 'text-slate-400'">{{ asset.is_active ? '启用' : '禁用' }}</span></td>
+                    <td v-show="visibleColumnKeys['credentials']"><div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1"><span class="font-medium">{{ cred.username }}</span><CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" /><CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed" /><span v-if="decryptedPasswords.has(cred.id)" class="text-slate-700 font-mono ml-1">{{ decryptedPasswords.get(cred.id) }}</span><span v-else class="text-slate-400 font-mono ml-1">********</span><CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyPassword(cred)" /><CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed" /><template v-if="asset.is_active"><EyeOutlined v-if="!decryptedPasswords.has(cred.id)" class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" /><EyeInvisibleOutlined v-else class="text-[14px] cursor-pointer hover:text-primary ml-1" @click="viewPassword(cred)" /></template><EyeOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed ml-1" /></div></td>
+                    <td v-show="visibleColumnKeys['notes']"><span class="text-sm text-slate-600 truncate block max-w-[200px]">{{ asset.notes || '-' }}</span></td>
                     <td class="text-right"><button v-if="asset.is_active" @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded text-xs">更新</button><button v-else disabled class="bg-slate-200 text-slate-400 px-2 py-0.5 rounded cursor-not-allowed text-xs">更新</button><button v-if="asset.is_active" @click="handleDelete(asset, fetchData, fetchOrganizations)" class="border border-red-400 text-red-500 px-2 py-0.5 rounded text-xs ml-1">删除</button><button v-else disabled class="border border-slate-200 text-slate-300 px-2 py-0.5 rounded cursor-not-allowed text-xs ml-1">删除</button></td>
                   </tr>
                 </template>
@@ -349,6 +376,13 @@ onMounted(() => { fetchData(); fetchOrganizations(); fetchAssetStats() })
         </div>
       </div>
     </div>
+    <ColumnCustomizer
+      v-model:visible="showColumnCustomizer"
+      :columns="allColumnsConfig"
+      :visibleKeys="visibleColumnKeys"
+      @toggle="(key) => { console.log('[HostList] @toggle', key); toggleColumn(key) }"
+      @reset="resetColumns"
+    />
     <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showModal = false"></div>
       <div class="relative bg-white w-full max-w-2xl rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto">

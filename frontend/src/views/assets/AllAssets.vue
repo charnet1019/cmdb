@@ -29,7 +29,9 @@ import { useAssets } from './composables/useAssets'
 import { useOrganizations } from './composables/useOrganizations'
 import { useCredentials } from './composables/useCredentials'
 import { useTypeTree, categories, platformOptions, categoryOptions } from './composables/useTypeTree'
+import { useColumnConfig } from './composables/useColumnConfig'
 import { createAsset, updateAsset, createCredential, updateCredential } from '@/api/assets'
+import ColumnCustomizer from './components/ColumnCustomizer.vue'
 import type { Asset, AssetCategory } from '@/types'
 
 // Router for URL state persistence
@@ -146,6 +148,16 @@ const {
   selectType,
   getCategoryIcon
 } = useTypeTree(assetStats)
+
+// Column customization
+const {
+  allColumns: allColumnsConfig,
+  visibleColumnKeys,
+  columnConfigVersion,
+  toggleColumn,
+  resetColumns
+} = useColumnConfig(activeCategory)
+const showColumnCustomizer = ref(false)
 
 // Tree view mode
 const treeViewMode = ref<'asset' | 'type'>('asset')
@@ -700,7 +712,7 @@ onMounted(async () => {
             </div>
             <div class="flex items-center gap-2">
               <input v-model="searchQuery" type="text" placeholder="搜索" class="border border-gray-200 rounded py-1.5 px-3 text-xs w-72" @keyup.enter="handleSearch" />
-              <button class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="自定义列"><SettingOutlined class="text-sm" /></button>
+              <button @click="showColumnCustomizer = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="自定义列"><SettingOutlined class="text-sm" /></button>
               <button v-if="activeCategory !== 'all'" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导入"><ImportOutlined class="text-sm" /></button>
               <button class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导出"><ExportOutlined class="text-sm" /></button>
               <button @click="handleSearch" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="刷新"><ReloadOutlined class="text-sm" /></button>
@@ -710,27 +722,37 @@ onMounted(async () => {
 
         <!-- Table -->
         <div class="bg-white rounded-xl shadow-sm overflow-hidden relative">
-          <div class="overflow-x-auto">
+          <div class="overflow-x-auto" :key="columnConfigVersion">
             <table class="data-table min-w-[800px]">
               <thead>
                 <tr>
                   <th class="w-10"><input type="checkbox" class="rounded border-gray-300 w-3.5 h-3.5" @change="selectAllChanged($event)" :checked="allSelected" /></th>
                   <th>名称</th>
                   <th>地址</th>
-                  <th>{{ activeCategory === 'network' ? '厂商/型号' : '平台' }}</th>
-                  <th v-if="activeCategory === 'host' || activeCategory === 'database'">申请人</th>
-                  <th>用户名密码</th>
+                  <th v-show="visibleColumnKeys['asset_code']">资产编号</th>
+                  <th v-show="visibleColumnKeys['category']">资产类型</th>
+                  <th v-show="visibleColumnKeys['platform']">{{ activeCategory === 'network' ? '厂商/型号' : '平台' }}</th>
+                  <th v-show="visibleColumnKeys['model'] && activeCategory === 'host'">型号</th>
+                  <th v-show="visibleColumnKeys['serial_number'] && activeCategory === 'host'">序列号</th>
+                  <th v-show="visibleColumnKeys['cpu'] && activeCategory === 'host'">CPU</th>
+                  <th v-show="visibleColumnKeys['memory'] && activeCategory === 'host'">内存</th>
+                  <th v-show="visibleColumnKeys['system_disk'] && activeCategory === 'host'">系统盘</th>
+                  <th v-show="visibleColumnKeys['data_disk'] && activeCategory === 'host'">数据盘</th>
+                  <th v-show="visibleColumnKeys['organization']">节点</th>
+                  <th v-show="visibleColumnKeys['is_active']">状态</th>
+                  <th v-show="visibleColumnKeys['applicant'] && (activeCategory === 'host' || activeCategory === 'database')">申请人</th>
+                  <th v-show="visibleColumnKeys['credentials']">用户名密码</th>
+                  <th v-show="visibleColumnKeys['notes']">描述</th>
                   <th class="text-right">操作</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-if="assets.length === 0 && !loading"><td :colspan="activeCategory === 'host' || activeCategory === 'database' ? 7 : 6" class="text-center py-16 text-slate-400">暂无数据</td></tr>
+                <tr v-if="assets.length === 0 && !loading"><td :colspan="allColumnsConfig.filter(c => visibleColumnKeys[c.key]).length + 1" class="text-center py-16 text-slate-400">暂无数据</td></tr>
                 <template v-else>
                   <tr v-for="asset in assets" :key="asset.id" :class="{ 'opacity-50 bg-slate-50': !asset.is_active }">
                     <td><input type="checkbox" class="rounded border-gray-300 w-3.5 h-3.5" v-model="asset.selected" @change="selectionChanged" /></td>
                     <td>
                       <p class="font-medium text-slate-900">{{ asset.name }}</p>
-                      <p v-if="asset.asset_code" class="text-xs text-slate-400">{{ asset.asset_code }}</p>
                     </td>
                     <td>
                       <template v-if="asset.url">
@@ -749,9 +771,22 @@ onMounted(async () => {
                         <span v-if="!asset.external_address && !asset.internal_address && !asset.address" class="text-sm text-slate-400">-</span>
                       </template>
                     </td>
-                    <td><span class="text-sm text-slate-600">{{ activeCategory === 'network' ? (asset.platform && asset.model ? `${asset.platform}/${asset.model}` : (asset.platform || asset.model || '-')) : (asset.platform || asset.device_type || '-') }}</span></td>
-                    <td v-if="activeCategory === 'host' || activeCategory === 'database'" class="text-sm text-slate-600">{{ asset.extra_data?.applicant || '-' }}</td>
-                    <td>
+                    <td v-show="visibleColumnKeys['asset_code']"><span class="text-sm text-slate-600 font-mono">{{ asset.asset_code || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['category']"><span class="text-sm text-slate-600">{{ categoryOptions.find(c => c.key === asset.category)?.label || asset.category }}</span></td>
+                    <td v-show="visibleColumnKeys['platform']"><span class="text-sm text-slate-600">{{ activeCategory === 'network' ? (asset.platform && asset.model ? `${asset.platform}/${asset.model}` : (asset.platform || asset.model || '-')) : (asset.platform || asset.device_type || '-') }}</span></td>
+                    <td v-show="visibleColumnKeys['model'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.model || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['serial_number'] && activeCategory === 'host'"><span class="text-sm text-slate-600 font-mono">{{ asset.serial_number || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['cpu'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.cpu || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['memory'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.memory || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['system_disk'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.system_disk || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['data_disk'] && activeCategory === 'host'"><span class="text-sm text-slate-600">{{ asset.data_disk || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['organization']"><span class="text-sm text-slate-600">{{ asset.organization_name || '-' }}</span></td>
+                    <td v-show="visibleColumnKeys['is_active']">
+                      <span v-if="asset.is_active" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">启用</span>
+                      <span v-else class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">禁用</span>
+                    </td>
+                    <td v-show="visibleColumnKeys['applicant'] && (activeCategory === 'host' || activeCategory === 'database')" class="text-sm text-slate-600">{{ asset.extra_data?.applicant || '-' }}</td>
+                    <td v-show="visibleColumnKeys['credentials']">
                       <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
                         <span class="font-medium">{{ cred.username }}</span>
                         <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary" @click="copyUsername(cred.username)" />
@@ -767,6 +802,7 @@ onMounted(async () => {
                         <EyeOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed ml-1" />
                       </div>
                     </td>
+                    <td v-show="visibleColumnKeys['notes']"><span class="text-sm text-slate-600">{{ asset.notes || '-' }}</span></td>
                     <td class="text-right">
                       <button v-if="asset.is_active" @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded text-xs">更新</button>
                       <button v-else disabled class="bg-slate-200 text-slate-400 px-2 py-0.5 rounded cursor-not-allowed text-xs">更新</button>
@@ -791,6 +827,15 @@ onMounted(async () => {
         </div>
       </div>
     </div>
+
+    <!-- Column Customizer -->
+    <ColumnCustomizer
+      v-model:visible="showColumnCustomizer"
+      :columns="allColumnsConfig"
+      :visibleKeys="visibleColumnKeys"
+      @toggle="toggleColumn"
+      @reset="resetColumns"
+    />
 
     <!-- Create/Edit Modal -->
     <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
