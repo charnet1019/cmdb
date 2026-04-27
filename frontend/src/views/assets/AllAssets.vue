@@ -161,17 +161,37 @@ const {
 } = useColumnConfig(activeCategory)
 const showColumnCustomizer = ref(false)
 
-// Column drag-to-reorder (order stored in localStorage, visual reorder pending v-for refactor)
-const COL_WIDTHS: Record<string, string> = {
-  checkbox: '40px', name: '160px', address: '200px',
-  asset_code: '120px', category: '100px', platform: '140px',
-  device_type: '100px', model: '100px', serial_number: '130px',
-  cpu: '80px', memory: '80px', system_disk: '90px', data_disk: '90px',
-  oob: '130px', oob_credentials: '200px',
-  db_type: '110px', version: '80px', namespace: '120px',
-  organization: '100px', is_active: '70px', applicant: '90px',
-  credentials: '220px', notes: '200px', actions: '100px'
+// Column drag-to-reorder
+const FIXED_COLS = new Set(['checkbox', 'name', 'address', 'actions'])
+
+const orderedColumns = computed(() => {
+  const categoryKeys = new Set(allColumnsConfig.value.map((c: any) => c.key))
+  const middle = columnOrder.value.filter(k => categoryKeys.has(k))
+  return ['checkbox', 'name', 'address', ...middle, 'actions']
+})
+
+function isColVisible(key: string): boolean {
+  if (FIXED_COLS.has(key)) return true
+  if (!visibleColumnKeys[key]) return false
+  const cat = activeCategory.value
+  switch (key) {
+    case 'device_type': return cat === 'network'
+    case 'model': return cat === 'host' || cat === 'all'
+    case 'serial_number': return cat === 'host' || cat === 'network' || cat === 'all'
+    case 'cpu': case 'memory': case 'system_disk': case 'data_disk':
+    case 'oob': case 'oob_credentials': return cat === 'host' || cat === 'all'
+    case 'db_type': case 'version': case 'namespace': return cat === 'database' || cat === 'all'
+    case 'applicant': return cat === 'host' || cat === 'database' || cat === 'all'
+    default: return true
+  }
 }
+
+function thLabel(key: string): string {
+  if (key === 'platform') return activeCategory.value === 'network' ? '厂商/型号' : '平台'
+  const col = allColumnsConfig.value.find((c: any) => c.key === key)
+  return col?.label ?? key
+}
+
 const dragFromKey = ref('')
 const dragOverKey = ref('')
 function handleColDragStart(key: string, e: DragEvent) {
@@ -819,105 +839,101 @@ onMounted(async () => {
             <table class="data-table min-w-[800px]">
               <thead>
                 <tr>
-                  <th class="w-10"><input type="checkbox" class="rounded border-gray-300 w-3.5 h-3.5" @change="selectAllChanged($event)" :checked="allSelected" /></th>
-                  <th>名称</th>
-                  <th>地址</th>
-                  <th v-show="visibleColumnKeys['asset_code']">资产编号</th>
-                  <th v-show="visibleColumnKeys['category']">资产类型</th>
-                  <th v-show="visibleColumnKeys['platform']">{{ activeCategory === 'network' ? '厂商/型号' : '平台' }}</th>
-                  <th v-show="visibleColumnKeys['device_type'] && activeCategory === 'network'">设备类型</th>
-                  <th v-show="visibleColumnKeys['model'] && (activeCategory === 'host' || activeCategory === 'all')">型号</th>
-                  <th v-show="visibleColumnKeys['serial_number'] && (activeCategory === 'host' || activeCategory === 'network' || activeCategory === 'all')">序列号</th>
-                  <th v-show="visibleColumnKeys['cpu'] && (activeCategory === 'host' || activeCategory === 'all')">CPU</th>
-                  <th v-show="visibleColumnKeys['memory'] && (activeCategory === 'host' || activeCategory === 'all')">内存</th>
-                  <th v-show="visibleColumnKeys['system_disk'] && (activeCategory === 'host' || activeCategory === 'all')">系统盘</th>
-                  <th v-show="visibleColumnKeys['data_disk'] && (activeCategory === 'host' || activeCategory === 'all')">数据盘</th>
-                  <th v-show="visibleColumnKeys['oob'] && (activeCategory === 'host' || activeCategory === 'all')">OOB</th>
-                  <th v-show="visibleColumnKeys['oob_credentials'] && (activeCategory === 'host' || activeCategory === 'all')">OOB用户名密码</th>
-                  <th v-show="visibleColumnKeys['db_type'] && (activeCategory === 'database' || activeCategory === 'all')">数据库类型</th>
-                  <th v-show="visibleColumnKeys['version'] && (activeCategory === 'database' || activeCategory === 'all')">版本</th>
-                  <th v-show="visibleColumnKeys['namespace'] && (activeCategory === 'database' || activeCategory === 'all')">命名空间</th>
-                  <th v-show="visibleColumnKeys['organization']">节点</th>
-                  <th v-show="visibleColumnKeys['is_active']">状态</th>
-                  <th v-show="visibleColumnKeys['applicant'] && (activeCategory === 'host' || activeCategory === 'database' || activeCategory === 'all')">申请人</th>
-                  <th v-show="visibleColumnKeys['credentials']">用户名密码</th>
-                  <th v-show="visibleColumnKeys['notes']">描述</th>
-                  <th class="text-right">操作</th>
+                  <template v-for="key in orderedColumns" :key="key">
+                    <th v-if="isColVisible(key)"
+                        :class="{ 'w-10': key === 'checkbox', 'text-right': key === 'actions', 'col-drag-over': !FIXED_COLS.has(key) && dragOverKey === key }"
+                        :draggable="!FIXED_COLS.has(key) || undefined"
+                        @dragstart="!FIXED_COLS.has(key) ? handleColDragStart(key, $event) : undefined"
+                        @dragover="!FIXED_COLS.has(key) ? handleColDragOver(key, $event) : undefined"
+                        @dragleave="dragOverKey = ''"
+                        @drop="!FIXED_COLS.has(key) ? handleColDrop(key, $event) : undefined"
+                        @dragend="handleColDragEnd">
+                      <input v-if="key === 'checkbox'" type="checkbox" class="rounded border-gray-300 w-3.5 h-3.5" @change="selectAllChanged($event)" :checked="allSelected" />
+                      <template v-else>{{ thLabel(key) }}</template>
+                    </th>
+                  </template>
                 </tr>
               </thead>
               <tbody>
-                <tr v-if="assets.length === 0 && !loading"><td :colspan="allColumnsConfig.filter(c => visibleColumnKeys[c.key]).length + 1" class="text-center py-16 text-slate-400">暂无数据</td></tr>
+                <tr v-if="assets.length === 0 && !loading"><td :colspan="orderedColumns.filter(k => isColVisible(k)).length" class="text-center py-16 text-slate-400">暂无数据</td></tr>
                 <template v-else>
                   <tr v-for="asset in assets" :key="asset.id" :class="{ 'opacity-50 bg-slate-50': !asset.is_active }">
-                    <td><input type="checkbox" class="rounded border-gray-300 w-3.5 h-3.5" v-model="asset.selected" @change="selectionChanged" /></td>
-                    <td>
-                      <p class="font-medium text-slate-900">{{ asset.name }}</p>
-                    </td>
-                    <td>
-                      <template v-if="asset.url">
-                        <span class="text-sm text-slate-600 font-mono">{{ asset.url }}</span>
-                      </template>
-                      <template v-else>
-                        <div v-if="asset.external_address" class="text-sm text-slate-600 font-mono">
-                          <span class="text-[10px] text-blue-500 font-medium mr-1">外</span>
-                          <span>{{ asset.external_address }}</span>
-                        </div>
-                        <div v-if="asset.internal_address" class="text-sm text-slate-600 font-mono">
-                          <span class="text-[10px] text-green-500 font-medium mr-1">内</span>
-                          <span>{{ asset.internal_address }}</span>
-                        </div>
-                        <span v-if="!asset.external_address && !asset.internal_address && asset.address" class="text-sm text-slate-600 font-mono">{{ asset.address }}</span>
-                        <span v-if="!asset.external_address && !asset.internal_address && !asset.address" class="text-sm text-slate-400">-</span>
-                      </template>
-                    </td>
-                    <td v-show="visibleColumnKeys['asset_code']"><span class="text-sm text-slate-600 font-mono">{{ asset.asset_code || '' }}</span></td>
-                    <td v-show="visibleColumnKeys['category']"><span class="text-sm text-slate-600">{{ categoryOptions.find(c => c.key === asset.category)?.label || asset.category }}</span></td>
-                    <td v-show="visibleColumnKeys['platform']"><span class="text-sm text-slate-600">{{ activeCategory === 'network' ? (asset.platform && asset.model ? `${asset.platform}/${asset.model}` : (asset.platform || asset.model || '-')) : (asset.platform || asset.device_type || '-') }}</span></td>
-                    <td v-show="visibleColumnKeys['device_type'] && activeCategory === 'network'"><span class="text-sm text-slate-600">{{ asset.device_type || '-' }}</span></td>
-                    <td v-show="visibleColumnKeys['model'] && (activeCategory === 'host' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.model || '' }}</span></td>
-                    <td v-show="visibleColumnKeys['serial_number'] && (activeCategory === 'host' || activeCategory === 'network' || activeCategory === 'all')"><span class="text-sm text-slate-600 font-mono">{{ asset.serial_number || '' }}</span></td>
-                    <td v-show="visibleColumnKeys['cpu'] && (activeCategory === 'host' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.cpu || '' }}</span></td>
-                    <td v-show="visibleColumnKeys['memory'] && (activeCategory === 'host' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.memory || '' }}</span></td>
-                    <td v-show="visibleColumnKeys['system_disk'] && (activeCategory === 'host' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.system_disk || '' }}</span></td>
-                    <td v-show="visibleColumnKeys['data_disk'] && (activeCategory === 'host' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.data_disk || '' }}</span></td>
-                    <td v-show="visibleColumnKeys['oob'] && (activeCategory === 'host' || activeCategory === 'all')"><span class="text-sm text-slate-600 font-mono">{{ asset.extra_data?.oob || '' }}</span></td>
-                    <td v-show="visibleColumnKeys['oob_credentials'] && (activeCategory === 'host' || activeCategory === 'all')">
-                      <div v-if="asset.extra_data?.oob_username" class="flex items-center gap-1.5 text-slate-600">
-                        <span class="font-medium shrink-0">{{ asset.extra_data.oob_username }}</span>
-                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(asset.extra_data.oob_username)" />
-                        <span class="text-slate-400 font-mono ml-1 shrink-0">********</span>
-                        <CopyOutlined v-if="asset.is_active && asset.extra_data?.oob_password" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(asset.extra_data.oob_password)" />
-                        <EyeOutlined v-if="asset.is_active && asset.extra_data?.oob_password" class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showOobPasswordPopover(asset, $event)" />
-                      </div>
-                    </td>
-                    <td v-show="visibleColumnKeys['db_type'] && (activeCategory === 'database' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.extra_data?.db_type || '' }}</span></td>
-                    <td v-show="visibleColumnKeys['version'] && (activeCategory === 'database' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.extra_data?.version || '' }}</span></td>
-                    <td v-show="visibleColumnKeys['namespace'] && (activeCategory === 'database' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.extra_data?.namespace || '' }}</span></td>
-                    <td v-show="visibleColumnKeys['organization']"><span class="text-sm text-slate-600">{{ asset.organization_name || 'Default' }}</span></td>
-                    <td v-show="visibleColumnKeys['is_active']">
-                      <span v-if="asset.is_active" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">启用</span>
-                      <span v-else class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">禁用</span>
-                    </td>
-                    <td v-show="visibleColumnKeys['applicant'] && (activeCategory === 'host' || activeCategory === 'database' || activeCategory === 'all')" class="text-sm text-slate-600">{{ asset.extra_data?.applicant || '' }}</td>
-                    <td v-show="visibleColumnKeys['credentials']">
-                      <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
-                        <span class="font-medium shrink-0">{{ cred.username }}</span>
-                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(cred.username)" />
-                        <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed shrink-0" />
-                        <span class="text-slate-400 font-mono ml-1 shrink-0">********</span>
-                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyPassword(cred)" />
-                        <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed shrink-0" />
-                        <EyeOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showPasswordPopover(cred, $event)" />
-                        <EyeOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed ml-1 shrink-0" />
-                      </div>
-                    </td>
-                    <td v-show="visibleColumnKeys['notes']" class="whitespace-normal"><span class="text-sm text-slate-600">{{ asset.notes || '' }}</span></td>
-                    <td class="text-right">
-                      <button v-if="asset.is_active" @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded text-xs">更新</button>
-                      <button v-else disabled class="bg-slate-200 text-slate-400 px-2 py-0.5 rounded cursor-not-allowed text-xs">更新</button>
-                      <button v-if="asset.is_active" @click="handleDelete(asset, fetchData, fetchOrganizations)" class="border border-red-400 text-red-500 px-2 py-0.5 rounded text-xs ml-1">删除</button>
-                      <button v-else disabled class="border border-slate-200 text-slate-300 px-2 py-0.5 rounded cursor-not-allowed text-xs ml-1">删除</button>
-                    </td>
+                    <template v-for="key in orderedColumns" :key="key">
+                      <td v-if="isColVisible(key)"
+                          :class="{ 'text-right': key === 'actions', 'text-sm text-slate-600': key === 'applicant', 'whitespace-normal': key === 'notes' }">
+                        <template v-if="key === 'checkbox'">
+                          <input type="checkbox" class="rounded border-gray-300 w-3.5 h-3.5" v-model="asset.selected" @change="selectionChanged" />
+                        </template>
+                        <template v-else-if="key === 'name'">
+                          <p class="font-medium text-slate-900">{{ asset.name }}</p>
+                        </template>
+                        <template v-else-if="key === 'address'">
+                          <template v-if="asset.url">
+                            <span class="text-sm text-slate-600 font-mono">{{ asset.url }}</span>
+                          </template>
+                          <template v-else>
+                            <div v-if="asset.external_address" class="text-sm text-slate-600 font-mono">
+                              <span class="text-[10px] text-blue-500 font-medium mr-1">外</span>
+                              <span>{{ asset.external_address }}</span>
+                            </div>
+                            <div v-if="asset.internal_address" class="text-sm text-slate-600 font-mono">
+                              <span class="text-[10px] text-green-500 font-medium mr-1">内</span>
+                              <span>{{ asset.internal_address }}</span>
+                            </div>
+                            <span v-if="!asset.external_address && !asset.internal_address && asset.address" class="text-sm text-slate-600 font-mono">{{ asset.address }}</span>
+                            <span v-if="!asset.external_address && !asset.internal_address && !asset.address" class="text-sm text-slate-400">-</span>
+                          </template>
+                        </template>
+                        <template v-else-if="key === 'asset_code'"><span class="text-sm text-slate-600 font-mono">{{ asset.asset_code || '' }}</span></template>
+                        <template v-else-if="key === 'category'"><span class="text-sm text-slate-600">{{ categoryOptions.find(c => c.key === asset.category)?.label || asset.category }}</span></template>
+                        <template v-else-if="key === 'platform'"><span class="text-sm text-slate-600">{{ activeCategory === 'network' ? (asset.platform && asset.model ? `${asset.platform}/${asset.model}` : (asset.platform || asset.model || '-')) : (asset.platform || asset.device_type || '-') }}</span></template>
+                        <template v-else-if="key === 'device_type'"><span class="text-sm text-slate-600">{{ asset.device_type || '-' }}</span></template>
+                        <template v-else-if="key === 'model'"><span class="text-sm text-slate-600">{{ asset.model || '' }}</span></template>
+                        <template v-else-if="key === 'serial_number'"><span class="text-sm text-slate-600 font-mono">{{ asset.serial_number || '' }}</span></template>
+                        <template v-else-if="key === 'cpu'"><span class="text-sm text-slate-600">{{ asset.cpu || '' }}</span></template>
+                        <template v-else-if="key === 'memory'"><span class="text-sm text-slate-600">{{ asset.memory || '' }}</span></template>
+                        <template v-else-if="key === 'system_disk'"><span class="text-sm text-slate-600">{{ asset.system_disk || '' }}</span></template>
+                        <template v-else-if="key === 'data_disk'"><span class="text-sm text-slate-600">{{ asset.data_disk || '' }}</span></template>
+                        <template v-else-if="key === 'oob'"><span class="text-sm text-slate-600 font-mono">{{ asset.extra_data?.oob || '' }}</span></template>
+                        <template v-else-if="key === 'oob_credentials'">
+                          <div v-if="asset.extra_data?.oob_username" class="flex items-center gap-1.5 text-slate-600">
+                            <span class="font-medium shrink-0">{{ asset.extra_data.oob_username }}</span>
+                            <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(asset.extra_data.oob_username)" />
+                            <span class="text-slate-400 font-mono ml-1 shrink-0">********</span>
+                            <CopyOutlined v-if="asset.is_active && asset.extra_data?.oob_password" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(asset.extra_data.oob_password)" />
+                            <EyeOutlined v-if="asset.is_active && asset.extra_data?.oob_password" class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showOobPasswordPopover(asset, $event)" />
+                          </div>
+                        </template>
+                        <template v-else-if="key === 'db_type'"><span class="text-sm text-slate-600">{{ asset.extra_data?.db_type || '' }}</span></template>
+                        <template v-else-if="key === 'version'"><span class="text-sm text-slate-600">{{ asset.extra_data?.version || '' }}</span></template>
+                        <template v-else-if="key === 'namespace'"><span class="text-sm text-slate-600">{{ asset.extra_data?.namespace || '' }}</span></template>
+                        <template v-else-if="key === 'organization'"><span class="text-sm text-slate-600">{{ asset.organization_name || 'Default' }}</span></template>
+                        <template v-else-if="key === 'is_active'">
+                          <span v-if="asset.is_active" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">启用</span>
+                          <span v-else class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">禁用</span>
+                        </template>
+                        <template v-else-if="key === 'applicant'">{{ asset.extra_data?.applicant || '' }}</template>
+                        <template v-else-if="key === 'credentials'">
+                          <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
+                            <span class="font-medium shrink-0">{{ cred.username }}</span>
+                            <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(cred.username)" />
+                            <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed shrink-0" />
+                            <span class="text-slate-400 font-mono ml-1 shrink-0">********</span>
+                            <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyPassword(cred)" />
+                            <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed shrink-0" />
+                            <EyeOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showPasswordPopover(cred, $event)" />
+                            <EyeOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed ml-1 shrink-0" />
+                          </div>
+                        </template>
+                        <template v-else-if="key === 'notes'"><span class="text-sm text-slate-600">{{ asset.notes || '' }}</span></template>
+                        <template v-else-if="key === 'actions'">
+                          <button v-if="asset.is_active" @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded text-xs">更新</button>
+                          <button v-else disabled class="bg-slate-200 text-slate-400 px-2 py-0.5 rounded cursor-not-allowed text-xs">更新</button>
+                          <button v-if="asset.is_active" @click="handleDelete(asset, fetchData, fetchOrganizations)" class="border border-red-400 text-red-500 px-2 py-0.5 rounded text-xs ml-1">删除</button>
+                          <button v-else disabled class="border border-slate-200 text-slate-300 px-2 py-0.5 rounded cursor-not-allowed text-xs ml-1">删除</button>
+                        </template>
+                      </td>
+                    </template>
                   </tr>
                 </template>
               </tbody>
