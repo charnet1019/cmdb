@@ -114,6 +114,7 @@ const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
 }
 
 const STORAGE_KEY_PREFIX = 'cmdb_columns_'
+const STORAGE_ORDER_KEY_PREFIX = 'cmdb_columns_order_'
 
 export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCategory | 'all') {
   const getCategoryValue = () => unref(category)
@@ -134,14 +135,13 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
 
   const visibleColumnKeys = shallowReactive<Record<string, boolean>>({})
   const columnConfigVersion = ref(0)
+  const columnOrder = ref<string[]>([])
 
   function initVisibleColumns() {
     const saved = loadSavedConfig()
-    // 清除旧属性
     for (const key of Object.keys(visibleColumnKeys)) {
       delete visibleColumnKeys[key]
     }
-    // 设置新属性
     for (const col of allColumns.value) {
       if (col.fixed) {
         visibleColumnKeys[col.key] = true
@@ -151,6 +151,36 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
         visibleColumnKeys[col.key] = col.defaultVisible || false
       }
     }
+  }
+
+  function loadSavedOrder(): string[] {
+    const saved = localStorage.getItem(STORAGE_ORDER_KEY_PREFIX + getCategoryValue())
+    if (saved) { try { return JSON.parse(saved) } catch { return [] } }
+    return []
+  }
+
+  function initColumnOrder() {
+    const nonFixed = allColumns.value.filter(c => !c.fixed).map(c => c.key)
+    const saved = loadSavedOrder()
+    const valid = saved.filter(k => nonFixed.includes(k))
+    const missing = nonFixed.filter(k => !valid.includes(k))
+    columnOrder.value = [...valid, ...missing]
+  }
+
+  function saveOrder() {
+    localStorage.setItem(STORAGE_ORDER_KEY_PREFIX + getCategoryValue(), JSON.stringify(columnOrder.value))
+  }
+
+  function reorderColumn(fromKey: string, toKey: string) {
+    if (fromKey === toKey) return
+    const arr = [...columnOrder.value]
+    const fromIdx = arr.indexOf(fromKey)
+    const toIdx = arr.indexOf(toKey)
+    if (fromIdx === -1 || toIdx === -1) return
+    arr.splice(fromIdx, 1)
+    arr.splice(toIdx, 0, fromKey)
+    columnOrder.value = arr
+    saveOrder()
   }
 
   function toggleColumn(key: string) {
@@ -178,17 +208,22 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
     }
     columnConfigVersion.value++
     localStorage.removeItem(STORAGE_KEY_PREFIX + getCategoryValue())
+    localStorage.removeItem(STORAGE_ORDER_KEY_PREFIX + getCategoryValue())
+    initColumnOrder()
   }
 
   watch(() => unref(category), () => {
     initVisibleColumns()
+    initColumnOrder()
   }, { immediate: true })
 
   return {
     allColumns,
     visibleColumnKeys,
     columnConfigVersion,
+    columnOrder,
     toggleColumn,
-    resetColumns
+    resetColumns,
+    reorderColumn
   }
 }

@@ -154,10 +154,44 @@ const {
   allColumns: allColumnsConfig,
   visibleColumnKeys,
   columnConfigVersion,
+  columnOrder,
   toggleColumn,
-  resetColumns
+  resetColumns,
+  reorderColumn
 } = useColumnConfig(activeCategory)
 const showColumnCustomizer = ref(false)
+
+// Column drag-to-reorder (order stored in localStorage, visual reorder pending v-for refactor)
+const COL_WIDTHS: Record<string, string> = {
+  checkbox: '40px', name: '160px', address: '200px',
+  asset_code: '120px', category: '100px', platform: '140px',
+  device_type: '100px', model: '100px', serial_number: '130px',
+  cpu: '80px', memory: '80px', system_disk: '90px', data_disk: '90px',
+  oob: '130px', oob_credentials: '200px',
+  db_type: '110px', version: '80px', namespace: '120px',
+  organization: '100px', is_active: '70px', applicant: '90px',
+  credentials: '220px', notes: '200px', actions: '100px'
+}
+const dragFromKey = ref('')
+const dragOverKey = ref('')
+function handleColDragStart(key: string, e: DragEvent) {
+  dragFromKey.value = key
+  e.dataTransfer?.setData('text/plain', key)
+}
+function handleColDragOver(key: string, e: DragEvent) {
+  e.preventDefault()
+  dragOverKey.value = key
+}
+function handleColDrop(toKey: string, e: DragEvent) {
+  e.preventDefault()
+  dragOverKey.value = ''
+  if (dragFromKey.value) reorderColumn(dragFromKey.value, toKey)
+  dragFromKey.value = ''
+}
+function handleColDragEnd() {
+  dragFromKey.value = ''
+  dragOverKey.value = ''
+}
 
 // Password popover
 const passwordPopover = ref<{ credId: number; password: string; x: number; y: number } | null>(null)
@@ -847,7 +881,7 @@ onMounted(async () => {
                     <td v-show="visibleColumnKeys['system_disk'] && (activeCategory === 'host' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.system_disk || '' }}</span></td>
                     <td v-show="visibleColumnKeys['data_disk'] && (activeCategory === 'host' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.data_disk || '' }}</span></td>
                     <td v-show="visibleColumnKeys['oob'] && (activeCategory === 'host' || activeCategory === 'all')"><span class="text-sm text-slate-600 font-mono">{{ asset.extra_data?.oob || '' }}</span></td>
-                    <td v-show="visibleColumnKeys['oob_credentials'] && (activeCategory === 'host' || activeCategory === 'all')" class="w-[200px] max-w-[200px]">
+                    <td v-show="visibleColumnKeys['oob_credentials'] && (activeCategory === 'host' || activeCategory === 'all')">
                       <div v-if="asset.extra_data?.oob_username" class="flex items-center gap-1.5 text-slate-600">
                         <span class="font-medium shrink-0">{{ asset.extra_data.oob_username }}</span>
                         <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(asset.extra_data.oob_username)" />
@@ -865,7 +899,7 @@ onMounted(async () => {
                       <span v-else class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">禁用</span>
                     </td>
                     <td v-show="visibleColumnKeys['applicant'] && (activeCategory === 'host' || activeCategory === 'database' || activeCategory === 'all')" class="text-sm text-slate-600">{{ asset.extra_data?.applicant || '' }}</td>
-                    <td v-show="visibleColumnKeys['credentials']" class="w-[220px] max-w-[220px]">
+                    <td v-show="visibleColumnKeys['credentials']">
                       <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
                         <span class="font-medium shrink-0">{{ cred.username }}</span>
                         <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(cred.username)" />
@@ -877,7 +911,7 @@ onMounted(async () => {
                         <EyeOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed ml-1 shrink-0" />
                       </div>
                     </td>
-                    <td v-show="visibleColumnKeys['notes']" class="whitespace-normal max-w-[200px]"><span class="text-sm text-slate-600">{{ asset.notes || '' }}</span></td>
+                    <td v-show="visibleColumnKeys['notes']" class="whitespace-normal"><span class="text-sm text-slate-600">{{ asset.notes || '' }}</span></td>
                     <td class="text-right">
                       <button v-if="asset.is_active" @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded text-xs">更新</button>
                       <button v-else disabled class="bg-slate-200 text-slate-400 px-2 py-0.5 rounded cursor-not-allowed text-xs">更新</button>
