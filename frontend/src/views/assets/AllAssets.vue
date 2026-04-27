@@ -185,6 +185,17 @@ function closePasswordPopover() {
   passwordPopover.value = null
 }
 
+function showOobPasswordPopover(asset: any, event: MouseEvent) {
+  const password = asset.extra_data?.oob_password
+  if (!password) return
+  if (passwordPopover.value?.credId === -asset.id) {
+    passwordPopover.value = null
+    return
+  }
+  const rect = (event.target as HTMLElement).getBoundingClientRect()
+  passwordPopover.value = { credId: -asset.id, password, x: rect.left, y: rect.top }
+}
+
 // Tree view mode
 const treeViewMode = ref<'asset' | 'type'>('asset')
 
@@ -194,6 +205,7 @@ const searchQuery = ref('')
 // Modal
 const showModal = ref(false)
 const showPassword = ref(false)
+const showOobPassword = ref(false)
 const modalLoading = ref(false)
 const editingAsset = ref<Asset | null>(null)
 const formSelectedOrgId = ref<number | null>(null)
@@ -221,6 +233,9 @@ const form = ref({
   version: '',
   namespace: '',
   db_type: activeCategory.value === 'database' ? 'MySQL' : '',
+  oob: '',
+  oob_username: '',
+  oob_password: '',
   applicant: '',
   notes: ''
 })
@@ -330,12 +345,12 @@ function openCreateModal() {
     version: '',
     namespace: '',
     db_type: activeCategory.value === 'database' ? 'MySQL' : '',
+    oob: '',
+    oob_username: '',
+    oob_password: '',
     applicant: '',
     notes: ''
   }
-  formSelectedOrgId.value = selectedOrgId.value
-
-  // Auto-fill based on selected type tree node
   if (selectedTypeNode.value && selectedTypeNode.value.category) {
     const node = selectedTypeNode.value
     form.value.category = node.category as AssetCategory
@@ -374,6 +389,9 @@ function openEditModal(asset: Asset) {
     version: asset.extra_data?.version || '',
     namespace: asset.extra_data?.namespace || '',
     db_type: asset.extra_data?.db_type || '',
+    oob: asset.extra_data?.oob || '',
+    oob_username: asset.extra_data?.oob_username || '',
+    oob_password: asset.extra_data?.oob_password || '',
     applicant: asset.extra_data?.applicant || '',
     notes: asset.notes || ''
   }
@@ -400,8 +418,11 @@ async function handleSubmit() {
     if (form.value.category === 'host' || form.value.category === 'database') {
       const extraFields: Record<string, any> = {}
       // Host applicant
-      if (form.value.category === 'host' && form.value.applicant) {
-        extraFields.applicant = form.value.applicant
+      if (form.value.category === 'host') {
+        if (form.value.oob) extraFields.oob = form.value.oob
+        if (form.value.oob_username) extraFields.oob_username = form.value.oob_username
+        if (form.value.oob_password) extraFields.oob_password = form.value.oob_password
+        if (form.value.applicant) extraFields.applicant = form.value.applicant
       }
       // Database fields
       if (form.value.category === 'database') {
@@ -777,6 +798,8 @@ onMounted(async () => {
                   <th v-show="visibleColumnKeys['memory'] && (activeCategory === 'host' || activeCategory === 'all')">内存</th>
                   <th v-show="visibleColumnKeys['system_disk'] && (activeCategory === 'host' || activeCategory === 'all')">系统盘</th>
                   <th v-show="visibleColumnKeys['data_disk'] && (activeCategory === 'host' || activeCategory === 'all')">数据盘</th>
+                  <th v-show="visibleColumnKeys['oob'] && (activeCategory === 'host' || activeCategory === 'all')">OOB</th>
+                  <th v-show="visibleColumnKeys['oob_credentials'] && (activeCategory === 'host' || activeCategory === 'all')">OOB用户名密码</th>
                   <th v-show="visibleColumnKeys['db_type'] && (activeCategory === 'database' || activeCategory === 'all')">数据库类型</th>
                   <th v-show="visibleColumnKeys['version'] && (activeCategory === 'database' || activeCategory === 'all')">版本</th>
                   <th v-show="visibleColumnKeys['namespace'] && (activeCategory === 'database' || activeCategory === 'all')">命名空间</th>
@@ -823,6 +846,16 @@ onMounted(async () => {
                     <td v-show="visibleColumnKeys['memory'] && (activeCategory === 'host' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.memory || '' }}</span></td>
                     <td v-show="visibleColumnKeys['system_disk'] && (activeCategory === 'host' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.system_disk || '' }}</span></td>
                     <td v-show="visibleColumnKeys['data_disk'] && (activeCategory === 'host' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.data_disk || '' }}</span></td>
+                    <td v-show="visibleColumnKeys['oob'] && (activeCategory === 'host' || activeCategory === 'all')"><span class="text-sm text-slate-600 font-mono">{{ asset.extra_data?.oob || '' }}</span></td>
+                    <td v-show="visibleColumnKeys['oob_credentials'] && (activeCategory === 'host' || activeCategory === 'all')" class="w-[200px] max-w-[200px]">
+                      <div v-if="asset.extra_data?.oob_username" class="flex items-center gap-1.5 text-slate-600">
+                        <span class="font-medium shrink-0">{{ asset.extra_data.oob_username }}</span>
+                        <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(asset.extra_data.oob_username)" />
+                        <span class="text-slate-400 font-mono ml-1 shrink-0">********</span>
+                        <CopyOutlined v-if="asset.is_active && asset.extra_data?.oob_password" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(asset.extra_data.oob_password)" />
+                        <EyeOutlined v-if="asset.is_active && asset.extra_data?.oob_password" class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showOobPasswordPopover(asset, $event)" />
+                      </div>
+                    </td>
                     <td v-show="visibleColumnKeys['db_type'] && (activeCategory === 'database' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.extra_data?.db_type || '' }}</span></td>
                     <td v-show="visibleColumnKeys['version'] && (activeCategory === 'database' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.extra_data?.version || '' }}</span></td>
                     <td v-show="visibleColumnKeys['namespace'] && (activeCategory === 'database' || activeCategory === 'all')"><span class="text-sm text-slate-600">{{ asset.extra_data?.namespace || '' }}</span></td>
@@ -1140,6 +1173,26 @@ onMounted(async () => {
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1.5">数据盘</label>
                   <input v-model="form.data_disk" type="text" class="input-field" placeholder="如: 2TB HDD" />
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1.5">OOB</label>
+                <input v-model="form.oob" type="text" class="input-field" placeholder="带外管理地址" />
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">OOB用户名</label>
+                  <input v-model="form.oob_username" type="text" class="input-field" placeholder="OOB用户名" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">OOB密码</label>
+                  <div class="relative">
+                    <input v-model="form.oob_password" :type="showOobPassword ? 'text' : 'password'" class="input-field pr-8" placeholder="OOB密码" />
+                    <button type="button" @click="showOobPassword = !showOobPassword" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                      <EyeOutlined v-if="!showOobPassword" class="text-sm" />
+                      <EyeInvisibleOutlined v-else class="text-sm" />
+                    </button>
+                  </div>
                 </div>
               </div>
               <div>
