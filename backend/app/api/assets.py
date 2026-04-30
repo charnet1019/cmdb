@@ -2,9 +2,12 @@
 Asset Management API
 CRUD operations for assets, credentials, and organizations
 """
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from urllib.parse import quote
+from io import BytesIO
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, File, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
@@ -20,12 +23,32 @@ from app.schemas import (
 )
 from app.api.deps import get_current_user, PermissionChecker
 from app.core.encryption import encrypt_value, decrypt_value
+from app.services.import_service import (
+    generate_host_create_template,
+    generate_host_update_template,
+    parse_import_file,
+    batch_create_hosts,
+    batch_update_hosts
+)
 
 
 # Request models
 class ReorderOrganizationsRequest(BaseModel):
     parent_id: Optional[int] = None
     ordered_ids: List[int]
+
+
+class ImportResult(BaseModel):
+    """Import result data"""
+    total_rows: int
+    success_count: int
+    failed_count: int
+    errors: List[Dict[str, Any]] = []
+
+
+class ImportResponse(ResponseBase):
+    """Import response schema"""
+    data: ImportResult
 
 
 router = APIRouter(prefix="/assets", tags=["资产管理"])
@@ -159,6 +182,13 @@ async def list_assets(
     result = await db.execute(query)
     assets = result.scalars().all()
 
+    # Get all organization names
+    org_ids = set(a.organization_id for a in assets if a.organization_id)
+    org_names = {}
+    if org_ids:
+        org_result = await db.execute(select(Organization.id, Organization.name).where(Organization.id.in_(org_ids)))
+        org_names = {row.id: row.name for row in org_result}
+
     # Build response
     asset_responses = []
     for asset in assets:
@@ -181,6 +211,7 @@ async def list_assets(
             "external_address": asset.external_address,
             "platform": asset.platform,
             "organization_id": asset.organization_id,
+            "organization_name": org_names.get(asset.organization_id) if asset.organization_id else None,
             "device_type": asset.device_type,
             "vendor": asset.vendor,
             "model": asset.model,
@@ -344,6 +375,99 @@ async def bulk_delete_assets(
     return ResponseBase(message=f"已删除 {len(assets)} 个资产")
 
 
+# ============== Import APIs ==============
+@router.get("/import/template/{category}")
+async def download_import_template(
+    category: str,
+    mode: str = Query("create", description="create or update"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Download XLSX import template for specified category
+    Only supports 'host' category initially
+    """
+    if category != "host":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="目前仅支持主机资产导入"
+        )
+
+    if mode == "create":
+        buffer = generate_host_create_template()
+        filename = "主机创建模板.xlsx"
+    else:
+        buffer = generate_host_update_template()
+        filename = "主机更新模板.xlsx"
+
+    return StreamingResponse(
+        BytesIO(buffer.getvalue()),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{quote(filename)}"'}
+    )
+
+
+@router.post("/import/{category}", response_model=ImportResponse)
+async def import_assets(
+    category: str,
+    mode: str = Query("create", description="create or update"),
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Import host assets from XLSX file
+    """
+    if category != "host":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="目前仅支持主机资产导入"
+        )
+
+    # Validate file type
+    if not file.filename or not file.filename.endswith(".xlsx"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="请上传xlsx格式的文件"
+        )
+
+    # Read file content
+    content = await file.read()
+
+    # Validate file size (max 5MB)
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="文件大小不能超过5MB"
+        )
+
+    try:
+        # Parse and validate
+        valid_records, parse_errors = await parse_import_file(content, mode, db)
+
+        # Process valid records
+        if mode == "create":
+            success_count, process_errors = await batch_create_hosts(valid_records, db)
+        else:
+            success_count, process_errors = await batch_update_hosts(valid_records, db)
+
+        # Combine errors
+        all_errors = parse_errors + process_errors
+
+        return ImportResponse(
+            data=ImportResult(
+                total_rows=len(valid_records) + len(parse_errors),
+                success_count=success_count,
+                failed_count=len(all_errors),
+                errors=all_errors
+            )
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"导入处理失败: {str(e)}"
+        )
+
+
 @router.get("/{asset_id}", response_model=AssetResponse)
 async def get_asset(
     asset_id: int,
@@ -364,6 +488,14 @@ async def get_asset(
             detail="资产不存在"
         )
 
+    # Get organization name if exists
+    organization_name = None
+    if asset.organization_id:
+        org_result = await db.execute(select(Organization.name).where(Organization.id == asset.organization_id))
+        org_row = org_result.scalar_one_or_none()
+        if org_row:
+            organization_name = org_row
+
     credentials = [
         {
             "id": c.id,
@@ -383,6 +515,7 @@ async def get_asset(
         external_address=asset.external_address,
         platform=asset.platform,
         organization_id=asset.organization_id,
+        organization_name=organization_name,
         device_type=asset.device_type,
         vendor=asset.vendor,
         model=asset.model,

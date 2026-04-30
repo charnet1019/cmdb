@@ -143,3 +143,50 @@ export async function decryptCredential(credentialId: number): Promise<Credentia
 export async function deleteCredential(id: number): Promise<void> {
   await api.delete(`/credentials/${id}`)
 }
+
+// Import APIs
+export async function downloadImportTemplate(
+  category: string,
+  mode: 'create' | 'update'
+): Promise<void> {
+  const response = await api.get(`/assets/import/template/${category}`, {
+    params: { mode },
+    responseType: 'blob'
+  })
+
+  // Create blob and trigger download
+  const blob = new Blob([response.data], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', mode === 'create' ? '主机创建模板.xlsx' : '主机更新模板.xlsx')
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(url)
+}
+
+export interface ImportResult {
+  total_rows: number
+  success_count: number
+  failed_count: number
+  errors: Array<{ row?: number; errors?: string[]; error?: string; name?: string; id?: number }>
+}
+
+export async function importAssets(
+  category: string,
+  mode: 'create' | 'update',
+  file: File
+): Promise<ImportResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await api.post(`/assets/import/${category}`, formData, {
+    params: { mode },
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+
+  return response.data.data
+}

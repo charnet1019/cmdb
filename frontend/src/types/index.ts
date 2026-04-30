@@ -31,6 +31,7 @@ export interface Asset {
   external_address: string | null
   platform: string | null
   organization_id: number | null
+  organization_name?: string | null
   device_type: string | null
   vendor: string | null
   model: string | null

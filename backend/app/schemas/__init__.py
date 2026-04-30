@@ -160,6 +160,7 @@ class AssetResponse(AssetBase):
     """Asset response schema"""
     id: int
     asset_code: Optional[str]
+    organization_name: Optional[str] = None
     device_type: Optional[str]
     vendor: Optional[str]
     model: Optional[str]

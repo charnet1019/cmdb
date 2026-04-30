@@ -32,6 +32,7 @@ import { useTypeTree, categories, platformOptions, categoryOptions, deviceTypeOp
 import { useColumnConfig } from './composables/useColumnConfig'
 import { createAsset, updateAsset, createCredential, updateCredential } from '@/api/assets'
 import ColumnCustomizer from './components/ColumnCustomizer.vue'
+import ImportModal from './components/ImportModal.vue'
 import type { Asset, AssetCategory } from '@/types'
 
 // Router for URL state persistence
@@ -160,6 +161,7 @@ const {
   reorderColumn
 } = useColumnConfig(activeCategory)
 const showColumnCustomizer = ref(false)
+const showImportModal = ref(false)
 
 // Column drag-to-reorder
 const FIXED_COLS = new Set(['checkbox', 'name', 'address', 'actions'])
@@ -309,6 +311,13 @@ function fetchData() {
 function handleSearch() {
   page.value = 1
   fetchData()
+}
+
+// Handle import success - refresh data
+function handleImportSuccess() {
+  fetchData()
+  fetchAssetStats()
+  fetchOrganizations()
 }
 
 // Switch tree view
@@ -826,7 +835,7 @@ onMounted(async () => {
             <div class="flex items-center gap-2">
               <input v-model="searchQuery" type="text" placeholder="搜索" class="border border-gray-200 rounded py-1.5 px-3 text-xs w-72" @keyup.enter="handleSearch" />
               <button @click="showColumnCustomizer = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="自定义列"><SettingOutlined class="text-sm" /></button>
-              <button v-if="activeCategory !== 'all'" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导入"><ImportOutlined class="text-sm" /></button>
+              <button v-if="activeCategory !== 'all'" @click="showImportModal = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导入"><ImportOutlined class="text-sm" /></button>
               <button class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导出"><ExportOutlined class="text-sm" /></button>
               <button @click="handleSearch" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="刷新"><ReloadOutlined class="text-sm" /></button>
             </div>
@@ -960,6 +969,13 @@ onMounted(async () => {
       :visibleKeys="visibleColumnKeys"
       @toggle="toggleColumn"
       @reset="resetColumns"
+    />
+
+    <!-- Import Modal -->
+    <ImportModal
+      v-model:visible="showImportModal"
+      :category="activeCategory"
+      @success="handleImportSuccess"
     />
 
     <!-- Create/Edit Modal -->
