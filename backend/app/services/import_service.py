@@ -145,9 +145,8 @@ def generate_host_update_template() -> BytesIO:
 
     # Example row
     example_data = [
-        "1", "test-server-01", "CI001", "研发部/服务器组", "Linux",
-        "192.168.1.100", "10.0.0.100", "Dell R740",
-        "SN123456", "8 核", "16GB", "500GB SSD", "2TB HDD",
+        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "test-server-01", "CI001", "研发部/服务器组", "Linux",
+        "192.168.1.100", "10.0.0.100", "Dell R740", "SN123456", "8 核", "16GB", "500GB SSD", "2TB HDD",
         "192.168.1.100", "admin", "password", "张三",
         "admin:password123\nroot:rootpass",
         "测试服务器"
@@ -162,8 +161,8 @@ def generate_host_update_template() -> BytesIO:
             bottom=Side(style='thin', color='E7E6E6')
         )
 
-    # Column widths
-    column_widths = [8, 15, 12, 18, 12, 18, 18, 15, 15, 10, 10, 12, 12, 15, 12, 12, 12, 15, 20]
+    # Column widths (ID column widened for UUID format)
+    column_widths = [38, 15, 12, 18, 12, 18, 18, 15, 15, 10, 10, 12, 12, 15, 12, 12, 12, 15, 20]
     for idx, width in enumerate(column_widths, 1):
         col_letter = ws.cell(row=1, column=idx).column_letter
         ws.column_dimensions[col_letter].width = width
@@ -290,12 +289,11 @@ async def parse_import_file(
                     record["extra_data"][field_name] = value
             elif field_name not in ["organization"]:
                 # Field name is already clean
-                # Convert id to int for update mode
+                # Convert id to string for UUID format (update mode)
                 if field_name == "id" and value:
-                    try:
-                        value = int(float(value))
-                    except (ValueError, TypeError):
-                        errors.append("ID必须为数字")
+                    value = str(value).strip()
+                    if not value:
+                        errors.append("ID 不能为空")
                         value = None
                 record[field_name] = value
 
