@@ -168,8 +168,9 @@ const FIXED_COLS = new Set(['checkbox', 'name', 'address', 'actions'])
 
 const orderedColumns = computed(() => {
   const categoryKeys = new Set(allColumnsConfig.value.map((c: any) => c.key))
-  const middle = columnOrder.value.filter(k => categoryKeys.has(k))
-  return ['checkbox', 'name', 'address', ...middle, 'actions']
+  const middle = columnOrder.value.filter(k => categoryKeys.has(k) && k !== 'id')
+  const idCol = visibleColumnKeys['id'] ? ['id'] : []
+  return ['checkbox', ...idCol, 'name', 'address', ...middle, 'actions']
 })
 
 function isColVisible(key: string): boolean {
@@ -894,6 +895,7 @@ onMounted(async () => {
                           </template>
                         </template>
                         <template v-else-if="key === 'asset_code'"><span class="text-sm text-slate-600 font-mono">{{ asset.asset_code || '' }}</span></template>
+                        <template v-else-if="key === 'id'"><span class="text-sm text-slate-600 font-mono">{{ asset.id || '' }}</span></template>
                         <template v-else-if="key === 'category'"><span class="text-sm text-slate-600">{{ categoryOptions.find(c => c.key === asset.category)?.label || asset.category }}</span></template>
                         <template v-else-if="key === 'platform'"><span class="text-sm text-slate-600">{{ activeCategory === 'network' ? (asset.platform && asset.model ? `${asset.platform}/${asset.model}` : (asset.platform || asset.model || '-')) : (asset.platform || asset.device_type || '-') }}</span></template>
                         <template v-else-if="key === 'device_type'"><span class="text-sm text-slate-600">{{ asset.device_type || '-' }}</span></template>

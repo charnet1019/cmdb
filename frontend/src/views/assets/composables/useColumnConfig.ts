@@ -10,6 +10,7 @@ export interface ColumnDefinition {
 
 const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
   all: [
+    { key: 'id', label: 'ID', defaultVisible: false },
     { key: 'name', label: '名称', fixed: true, defaultVisible: true },
     { key: 'address', label: '地址', fixed: true, defaultVisible: true },
     { key: 'asset_code', label: '资产编号', defaultVisible: false },
@@ -31,6 +32,7 @@ const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
     { key: 'actions', label: '操作', fixed: true, defaultVisible: true }
   ],
   host: [
+    { key: 'id', label: 'ID', defaultVisible: false },
     { key: 'name', label: '名称', fixed: true, defaultVisible: true },
     { key: 'address', label: '地址', fixed: true, defaultVisible: true },
     { key: 'asset_code', label: '资产编号', defaultVisible: false },
@@ -51,6 +53,7 @@ const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
     { key: 'actions', label: '操作', fixed: true, defaultVisible: true }
   ],
   network: [
+    { key: 'id', label: 'ID', defaultVisible: false },
     { key: 'name', label: '名称', fixed: true, defaultVisible: true },
     { key: 'address', label: '地址', fixed: true, defaultVisible: true },
     { key: 'asset_code', label: '资产编号', defaultVisible: false },
@@ -64,6 +67,7 @@ const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
     { key: 'actions', label: '操作', fixed: true, defaultVisible: true }
   ],
   database: [
+    { key: 'id', label: 'ID', defaultVisible: false },
     { key: 'name', label: '名称', fixed: true, defaultVisible: true },
     { key: 'address', label: '地址', fixed: true, defaultVisible: true },
     { key: 'asset_code', label: '资产编号', defaultVisible: false },
@@ -79,6 +83,7 @@ const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
     { key: 'actions', label: '操作', fixed: true, defaultVisible: true }
   ],
   cloud: [
+    { key: 'id', label: 'ID', defaultVisible: false },
     { key: 'name', label: '名称', fixed: true, defaultVisible: true },
     { key: 'address', label: '地址', fixed: true, defaultVisible: true },
     { key: 'asset_code', label: '资产编号', defaultVisible: false },
@@ -90,6 +95,7 @@ const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
     { key: 'actions', label: '操作', fixed: true, defaultVisible: true }
   ],
   web: [
+    { key: 'id', label: 'ID', defaultVisible: false },
     { key: 'name', label: '名称', fixed: true, defaultVisible: true },
     { key: 'address', label: '地址', fixed: true, defaultVisible: true },
     { key: 'asset_code', label: '资产编号', defaultVisible: false },
@@ -101,6 +107,7 @@ const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
     { key: 'actions', label: '操作', fixed: true, defaultVisible: true }
   ],
   gpt: [
+    { key: 'id', label: 'ID', defaultVisible: false },
     { key: 'name', label: '名称', fixed: true, defaultVisible: true },
     { key: 'address', label: '地址', fixed: true, defaultVisible: true },
     { key: 'asset_code', label: '资产编号', defaultVisible: false },
