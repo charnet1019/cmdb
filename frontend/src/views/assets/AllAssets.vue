@@ -290,6 +290,8 @@ const form = ref({
   system_disk: '',
   data_disk: '',
   url: '',
+  internal_url: '',
+  external_url: '',
   version: '',
   namespace: '',
   db_type: activeCategory.value === 'database' ? 'MySQL' : '',
@@ -410,6 +412,8 @@ function openCreateModal() {
     system_disk: '',
     data_disk: '',
     url: '',
+    internal_url: '',
+    external_url: '',
     version: '',
     namespace: '',
     db_type: activeCategory.value === 'database' ? 'MySQL' : '',
@@ -454,6 +458,8 @@ function openEditModal(asset: Asset) {
     system_disk: asset.system_disk || '',
     data_disk: asset.data_disk || '',
     url: asset.url || '',
+    internal_url: asset.internal_url || '',
+    external_url: asset.external_url || '',
     version: asset.extra_data?.version || '',
     namespace: asset.extra_data?.namespace || '',
     db_type: asset.extra_data?.db_type || '',
@@ -517,7 +523,8 @@ async function handleSubmit() {
       memory: form.value.memory || undefined,
       system_disk: form.value.system_disk || undefined,
       data_disk: form.value.data_disk || undefined,
-      url: form.value.url || undefined,
+      internal_url: form.value.internal_url || undefined,
+      external_url: form.value.external_url || undefined,
       extra_data: extraData,
       notes: form.value.notes || undefined,
       organization_id: formSelectedOrgId.value || undefined
@@ -882,9 +889,21 @@ onMounted(async () => {
                           <p class="font-medium text-slate-900">{{ asset.name }}</p>
                         </template>
                         <template v-else-if="key === 'address'">
-                          <template v-if="asset.url">
-                            <span class="text-sm text-slate-600 font-mono">{{ asset.url }}</span>
+                          <!-- Cloud/Web/GPT assets show URLs -->
+                          <template v-if="['cloud', 'web', 'gpt'].includes(asset.category)">
+                            <div v-if="asset.external_url" class="text-sm text-slate-600 font-mono">
+                              <span class="text-[10px] text-blue-500 font-medium mr-1">外</span>
+                              <span>{{ asset.external_url }}</span>
+                            </div>
+                            <div v-if="asset.internal_url" class="text-sm text-slate-600 font-mono">
+                              <span class="text-[10px] text-green-500 font-medium mr-1">内</span>
+                              <span>{{ asset.internal_url }}</span>
+                            </div>
+                            <!-- Fallback to legacy url field -->
+                            <span v-if="!asset.external_url && !asset.internal_url && asset.url" class="text-sm text-slate-600 font-mono">{{ asset.url }}</span>
+                            <span v-if="!asset.external_url && !asset.internal_url && !asset.url" class="text-sm text-slate-400">-</span>
                           </template>
+                          <!-- Other assets show addresses -->
                           <template v-else>
                             <div v-if="asset.external_address" class="text-sm text-slate-600 font-mono">
                               <span class="text-[10px] text-blue-500 font-medium mr-1">外</span>
@@ -1117,9 +1136,15 @@ onMounted(async () => {
                   <input v-model="form.internal_address" type="text" class="input-field" placeholder="内网IP地址" />
                 </div>
               </div>
-              <div v-else-if="['cloud', 'web', 'gpt'].includes(form.category)">
-                <label class="block text-xs font-medium text-slate-600 mb-1.5">URL</label>
-                <input v-model="form.url" type="text" class="input-field" placeholder="https://" />
+              <div v-else-if="['cloud', 'web', 'gpt'].includes(form.category)" class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">外网 URL</label>
+                  <input v-model="form.external_url" type="text" class="input-field" placeholder="https://external.example.com" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">内网 URL</label>
+                  <input v-model="form.internal_url" type="text" class="input-field" placeholder="https://internal.example.com" />
+                </div>
               </div>
             </template>
 

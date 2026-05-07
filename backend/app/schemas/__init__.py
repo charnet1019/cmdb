@@ -117,6 +117,10 @@ class AssetBase(BaseModel):
     platform: Optional[str] = Field(None, max_length=50)
     organization_id: Optional[int] = None
     notes: Optional[str] = None
+    # URL fields for cloud/web/gpt
+    url: Optional[str] = Field(None, max_length=500)  # Legacy field for backward compatibility
+    internal_url: Optional[str] = None  # 内网 URL
+    external_url: Optional[str] = None  # 外网 URL
 
 
 class AssetCreate(AssetBase):
@@ -130,7 +134,6 @@ class AssetCreate(AssetBase):
     memory: Optional[str] = None
     system_disk: Optional[str] = None
     data_disk: Optional[str] = None
-    url: Optional[str] = None
     extra_data: Optional[dict] = Field(None, serialization_alias="metadata")
 
 
@@ -150,10 +153,12 @@ class AssetUpdate(BaseModel):
     memory: Optional[str] = None
     system_disk: Optional[str] = None
     data_disk: Optional[str] = None
-    url: Optional[str] = None
     notes: Optional[str] = None
     extra_data: Optional[dict] = None
     is_active: Optional[bool] = None
+    # URL fields
+    internal_url: Optional[str] = None
+    external_url: Optional[str] = None
 
 
 class AssetResponse(AssetBase):
@@ -169,7 +174,6 @@ class AssetResponse(AssetBase):
     memory: Optional[str]
     system_disk: Optional[str]
     data_disk: Optional[str]
-    url: Optional[str]
     extra_data: Optional[dict] = None
     is_active: bool
     created_at: datetime
