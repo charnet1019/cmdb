@@ -28,11 +28,12 @@ import {
 import { useAssets } from './composables/useAssets'
 import { useOrganizations } from './composables/useOrganizations'
 import { useCredentials } from './composables/useCredentials'
-import { useTypeTree, categories, platformOptions, categoryOptions, deviceTypeOptions, dbTypeOptions } from './composables/useTypeTree'
+import { useTypeTree, categories, platformOptions, categoryOptions, dbTypeOptions } from './composables/useTypeTree'
 import { useColumnConfig } from './composables/useColumnConfig'
 import { createAsset, updateAsset, createCredential, updateCredential } from '@/api/assets'
 import ColumnCustomizer from './components/ColumnCustomizer.vue'
 import ImportModal from './components/ImportModal.vue'
+import ExportModal from './components/ExportModal.vue'
 import type { Asset, AssetCategory } from '@/types'
 
 // Router for URL state persistence
@@ -73,6 +74,7 @@ const {
   selectedCount,
   selectedActiveCount,
   selectedInactiveCount,
+  selectedIds,
   canDisable,
   canActivate,
   fetchAssets,
@@ -162,6 +164,7 @@ const {
 } = useColumnConfig(activeCategory)
 const showColumnCustomizer = ref(false)
 const showImportModal = ref(false)
+const showExportModal = ref(false)
 
 // Column drag-to-reorder
 const FIXED_COLS = new Set(['checkbox', 'name', 'address', 'actions'])
@@ -268,7 +271,7 @@ const editingAsset = ref<Asset | null>(null)
 const formSelectedOrgId = ref<number | null>(null)
 
 // Device type options for network
-const deviceTypeOptions = ['交换机', '路由器', '防火墙', '负载均衡', '无线控制器']
+const localDeviceTypeOptions = ['交换机', '路由器', '防火墙', '负载均衡', '无线控制器']
 
 // Form
 const form = ref({
@@ -390,14 +393,15 @@ function handleSelectType(node: any) {
 // Open create modal
 function openCreateModal() {
   editingAsset.value = null
+  const defaultCategory = activeCategory.value !== 'all' ? activeCategory.value : 'host'
   form.value = {
     name: '',
     asset_code: '',
-    category: activeCategory.value !== 'all' ? activeCategory.value : 'host',
+    category: defaultCategory,
     address: '',
     internal_address: '',
     external_address: '',
-    platform: activeCategory.value === 'database' ? 'Kubernetes' : '',
+    platform: defaultCategory === 'database' ? 'Kubernetes' : defaultCategory === 'cloud' ? 'Proxmox' : '',
     device_type: '',
     model: '',
     serial_number: '',
@@ -837,7 +841,7 @@ onMounted(async () => {
               <input v-model="searchQuery" type="text" placeholder="搜索" class="border border-gray-200 rounded py-1.5 px-3 text-xs w-72" @keyup.enter="handleSearch" />
               <button @click="showColumnCustomizer = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="自定义列"><SettingOutlined class="text-sm" /></button>
               <button v-if="activeCategory !== 'all'" @click="showImportModal = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导入"><ImportOutlined class="text-sm" /></button>
-              <button class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导出"><ExportOutlined class="text-sm" /></button>
+              <button @click="showExportModal = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导出"><ExportOutlined class="text-sm" /></button>
               <button @click="handleSearch" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="刷新"><ReloadOutlined class="text-sm" /></button>
             </div>
           </div>
@@ -980,6 +984,15 @@ onMounted(async () => {
       @success="handleImportSuccess"
     />
 
+    <!-- Export Modal -->
+    <ExportModal
+      v-model:visible="showExportModal"
+      :category="activeCategory"
+      :selected-ids="selectedIds"
+      :search-query="searchQuery"
+      :organization-id="selectedOrgId"
+    />
+
     <!-- Create/Edit Modal -->
     <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showModal = false"></div>
@@ -1027,7 +1040,7 @@ onMounted(async () => {
                   <label class="block text-xs font-medium text-slate-600 mb-1.5">设备类型</label>
                   <select v-model="form.device_type" class="input-field">
                     <option value="">请选择</option>
-                    <option v-for="t in deviceTypeOptions" :key="t" :value="t">{{ t }}</option>
+                    <option v-for="t in localDeviceTypeOptions" :key="t" :value="t">{{ t }}</option>
                   </select>
                 </div>
               </div>
@@ -1048,9 +1061,15 @@ onMounted(async () => {
                 <label class="block text-xs font-medium text-slate-600 mb-1.5">序列号</label>
                 <input v-model="form.serial_number" type="text" class="input-field" placeholder="设备序列号" />
               </div>
-              <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1.5">地址</label>
-                <input v-model="form.address" type="text" class="input-field" placeholder="支持格式: IP、IP:端口" />
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">外网地址</label>
+                  <input v-model="form.external_address" type="text" class="input-field" placeholder="外网 IP 地址" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">内网地址</label>
+                  <input v-model="form.internal_address" type="text" class="input-field" placeholder="内网 IP 地址" />
+                </div>
               </div>
             </template>
 
@@ -1088,7 +1107,7 @@ onMounted(async () => {
                 <label class="block text-xs font-medium text-slate-600 mb-1.5">命名空间</label>
                 <input v-model="form.namespace" type="text" class="input-field" placeholder="命名空间" />
               </div>
-              <div v-if="['host', 'database'].includes(form.category)" class="grid grid-cols-2 gap-4">
+              <div v-if="['host', 'database', 'network'].includes(form.category)" class="grid grid-cols-2 gap-4">
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1.5">外网地址</label>
                   <input v-model="form.external_address" type="text" class="input-field" placeholder="外网IP地址" />

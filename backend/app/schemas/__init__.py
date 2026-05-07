@@ -158,7 +158,7 @@ class AssetUpdate(BaseModel):
 
 class AssetResponse(AssetBase):
     """Asset response schema"""
-    id: int
+    id: str
     asset_code: Optional[str]
     organization_name: Optional[str] = None
     device_type: Optional[str]
@@ -180,7 +180,7 @@ class AssetResponse(AssetBase):
 
 class AssetSimple(BaseModel):
     """Simple asset schema"""
-    id: int
+    id: str
     name: str
     category: str
     address: Optional[str]
@@ -211,7 +211,7 @@ class CredentialUpdate(BaseModel):
 class CredentialResponse(CredentialBase):
     """Credential response schema"""
     id: int
-    asset_id: int
+    asset_id: str
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -365,13 +365,13 @@ class AssetListResponse(ResponseBase):
 
 class BulkUpdateRequest(BaseModel):
     """Bulk update request schema"""
-    ids: List[int]
+    ids: List[str]
     data: dict
 
 
 class BulkDeleteRequest(BaseModel):
     """Bulk delete request schema"""
-    ids: List[int]
+    ids: List[str]
 
 
 class AuthorizationListResponse(ResponseBase):

@@ -30,6 +30,10 @@ from app.services.import_service import (
     batch_create_hosts,
     batch_update_hosts
 )
+from app.services.export_service import (
+    export_assets_to_excel,
+    export_assets_to_csv
+)
 
 
 # Request models
@@ -433,11 +437,11 @@ async def import_assets(
     # Read file content
     content = await file.read()
 
-    # Validate file size (max 5MB)
-    if len(content) > 5 * 1024 * 1024:
+    # Validate file size (max 10MB)
+    if len(content) > 10 * 1024 * 1024:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="文件大小不能超过5MB"
+            detail="文件大小不能超过10MB"
         )
 
     try:
@@ -468,9 +472,136 @@ async def import_assets(
         )
 
 
+# ============== Export APIs ==============
+@router.get("/export")
+async def export_assets(
+    format: str = Query("excel", description="excel or csv"),
+    scope: str = Query("all", description="all, selected, or filtered"),
+    category: Optional[str] = Query(None, description="Asset category"),
+    organization_id: Optional[int] = Query(None, description="Organization ID"),
+    search: Optional[str] = Query(None, description="Search query"),
+    ids: Optional[str] = Query(None, description="Comma-separated asset IDs for selected scope"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Export assets to Excel or CSV
+    scope: all (all assets), selected (specific IDs), filtered (current search/filter)
+    """
+    # Build query based on scope
+    query = select(Asset)
+
+    if scope == "selected" and ids:
+        # Export only selected assets
+        asset_ids = [id.strip() for id in ids.split(",") if id.strip()]
+        if not asset_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="请选择要导出的资产"
+            )
+        query = query.where(Asset.id.in_(asset_ids))
+    else:
+        # Apply filters for 'all' or 'filtered' scope
+        if category:
+            query = query.where(Asset.category == category)
+        if organization_id is not None:
+            org_ids = await get_descendant_org_ids(db, organization_id)
+            query = query.where(Asset.organization_id.in_(org_ids))
+        if search:
+            query = query.where(
+                or_(
+                    Asset.name.ilike(f"%{search}%"),
+                    Asset.address.ilike(f"%{search}%"),
+                    Asset.notes.ilike(f"%{search}%"),
+                )
+            )
+
+    # Execute query with credentials loaded
+    query = query.options(selectinload(Asset.credentials))
+    result = await db.execute(query)
+    assets = result.scalars().all()
+
+    if not assets:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="未找到要导出的资产"
+        )
+
+    # Get organization names
+    org_ids = set(a.organization_id for a in assets if a.organization_id)
+    org_names = {}
+    if org_ids:
+        org_result = await db.execute(select(Organization.id, Organization.name).where(Organization.id.in_(org_ids)))
+        org_names = {row.id: row.name for row in org_result}
+
+    # Prepare asset data
+    asset_data = []
+    for asset in assets:
+        # Decrypt credentials
+        credentials = []
+        for cred in asset.credentials:
+            try:
+                decrypted_password = decrypt_value(cred.password_encrypted)
+                credentials.append({
+                    "username": cred.username,
+                    "password": decrypted_password
+                })
+            except Exception:
+                # Skip if decryption fails
+                credentials.append({
+                    "username": cred.username,
+                    "password": ""  # Empty password if decryption fails
+                })
+
+        asset_data.append({
+            "id": asset.id,
+            "name": asset.name,
+            "asset_code": asset.asset_code,
+            "category": asset.category,
+            "address": asset.address,
+            "internal_address": asset.internal_address,
+            "external_address": asset.external_address,
+            "platform": asset.platform,
+            "organization_id": asset.organization_id,
+            "organization_name": org_names.get(asset.organization_id) if asset.organization_id else None,
+            "device_type": asset.device_type,
+            "vendor": asset.vendor,
+            "model": asset.model,
+            "serial_number": asset.serial_number,
+            "cpu": asset.cpu,
+            "memory": asset.memory,
+            "system_disk": asset.system_disk,
+            "data_disk": asset.data_disk,
+            "url": asset.url,
+            "credentials": credentials,
+            "notes": asset.notes,
+            "extra_data": asset.extra_data,
+            "is_active": asset.is_active,
+            "created_at": asset.created_at,
+        })
+
+    # Generate file based on format
+    if format == "csv":
+        buffer = export_assets_to_csv(asset_data)
+        filename = f"资产导出_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        return StreamingResponse(
+            BytesIO(buffer.getvalue()),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{quote(filename)}"'}
+        )
+    else:
+        buffer = export_assets_to_excel(asset_data)
+        filename = f"资产导出_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        return StreamingResponse(
+            BytesIO(buffer.getvalue()),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{quote(filename)}"'}
+        )
+
+
 @router.get("/{asset_id}", response_model=AssetResponse)
 async def get_asset(
-    asset_id: int,
+    asset_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -535,7 +666,7 @@ async def get_asset(
 
 @router.put("/{asset_id}", response_model=AssetResponse)
 async def update_asset(
-    asset_id: int,
+    asset_id: str,
     data: AssetUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -602,7 +733,7 @@ async def update_asset(
 
 @router.delete("/{asset_id}", response_model=ResponseBase)
 async def delete_asset(
-    asset_id: int,
+    asset_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -872,7 +1003,7 @@ async def list_credentials(
 @cred_router.post("", response_model=CredentialResponse, status_code=status.HTTP_201_CREATED)
 async def create_credential(
     data: CredentialCreate,
-    asset_id: int = Query(...),
+    asset_id: str = Query(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -1002,3 +1133,4 @@ async def delete_credential(
     await db.commit()
 
     return ResponseBase(message="凭证已删除")
+

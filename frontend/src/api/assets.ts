@@ -190,3 +190,44 @@ export async function importAssets(
 
   return response.data.data
 }
+
+// Export APIs
+export async function exportAssets(params: {
+  format: 'excel' | 'csv'
+  scope: 'all' | 'selected' | 'filtered'
+  category?: string
+  organization_id?: number
+  search?: string
+  ids?: string  // Comma-separated IDs for selected scope
+}): Promise<void> {
+  const response = await api.get('/assets/export', {
+    params,
+    responseType: 'blob'
+  })
+
+  // Create blob and trigger download
+  const blob = new Blob([response.data], {
+    type: params.format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  // Get filename from Content-Disposition header or generate default
+  const contentDisposition = response.headers['content-disposition']
+  let filename = `asset_export.${params.format === 'csv' ? 'csv' : 'xlsx'}`
+  if (contentDisposition) {
+    const match = contentDisposition.match(/filename="?(.+?)"?$/)
+    if (match) {
+      try {
+        filename = decodeURIComponent(match[1])
+      } catch {
+        // Fallback to default if decode fails
+      }
+    }
+  }
+  link.setAttribute('download', filename)
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(url)
+}

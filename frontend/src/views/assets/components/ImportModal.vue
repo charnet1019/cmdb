@@ -59,9 +59,9 @@ function handleFileSelect(event: Event) {
       return
     }
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      message.error('文件大小不能超过5MB')
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      message.error('文件大小不能超过10MB')
       target.value = ''
       return
     }
@@ -214,7 +214,7 @@ function formatError(error: any): string {
           >
             <UploadOutlined class="text-3xl text-slate-400 mb-2" />
             <p class="text-sm text-slate-600">点击选择xlsx文件</p>
-            <p class="text-xs text-slate-400 mt-1">支持.xlsx格式，最大5MB</p>
+            <p class="text-xs text-slate-400 mt-1">支持.xlsx格式，最大10MB</p>
           </div>
 
           <!-- Selected file display -->

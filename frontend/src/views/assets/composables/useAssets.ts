@@ -52,6 +52,7 @@ export function useAssets() {
   const selectedInactiveCount = computed(() => assets.value.filter(asset => asset.selected && !asset.is_active).length)
   const canDisable = computed(() => selectedActiveCount.value > 0)
   const canActivate = computed(() => selectedInactiveCount.value > 0)
+  const selectedIds = computed(() => assets.value.filter(asset => asset.selected).map(asset => String(asset.id)))
 
   // Fetch assets
   async function fetchAssets(params: {
@@ -234,6 +235,7 @@ export function useAssets() {
     selectedCount,
     selectedActiveCount,
     selectedInactiveCount,
+    selectedIds,
     canDisable,
     canActivate,
 

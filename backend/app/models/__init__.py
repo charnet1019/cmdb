@@ -4,6 +4,7 @@ SQLAlchemy ORM models for CMDB
 """
 from datetime import datetime
 from typing import Optional, List
+from uuid import uuid4
 from sqlalchemy import (
     String, Text, Boolean, Integer, DateTime, ForeignKey, Index, Enum as SQLEnum
 )
@@ -119,7 +120,7 @@ class Asset(Base):
     """Asset model"""
     __tablename__ = "assets"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, index=True, default=lambda: str(uuid4()))
     name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     asset_code: Mapped[Optional[str]] = mapped_column(String(50), unique=True)  # CI编号
     category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # AssetCategory
@@ -176,7 +177,7 @@ class Credential(Base):
     __tablename__ = "credentials"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    asset_id: Mapped[int] = mapped_column(Integer, ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True)
     username: Mapped[str] = mapped_column(String(100), nullable=False)
     password_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     credential_type: Mapped[str] = mapped_column(String(50), default="password")  # password, ssh_key, api_key, snmp
