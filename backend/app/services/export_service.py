@@ -40,6 +40,7 @@ EXPORT_COLUMNS = [
     ("notes", "描述"),
     ("is_active", "状态"),
     ("created_at", "创建时间"),
+    ("updated_at", "更新时间"),
 ]
 
 CATEGORY_LABELS = {
@@ -150,6 +151,7 @@ def export_assets_to_excel(data: List[Dict[str, Any]]) -> BytesIO:
         "notes": 30,
         "is_active": 10,
         "created_at": 20,
+        "updated_at": 20,
     }
 
     for col_idx, (field, _) in enumerate(EXPORT_COLUMNS, 1):

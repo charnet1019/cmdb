@@ -231,6 +231,7 @@ async def list_assets(
             "extra_data": asset.extra_data,
             "is_active": asset.is_active,
             "created_at": asset.created_at,
+            "updated_at": asset.updated_at,
             "credentials": credentials,
         })
 
@@ -313,6 +314,7 @@ async def create_asset(
         extra_data=asset.extra_data,
         is_active=asset.is_active,
         created_at=asset.created_at,
+        updated_at=asset.updated_at,
         credentials=[],
     )
 
@@ -668,6 +670,7 @@ async def get_asset(
         extra_data=asset.extra_data,
         is_active=asset.is_active,
         created_at=asset.created_at,
+        updated_at=asset.updated_at,
         credentials=credentials,
     )
 
@@ -734,6 +737,7 @@ async def update_asset(
         extra_data=asset.extra_data,
         is_active=asset.is_active,
         created_at=asset.created_at,
+        updated_at=asset.updated_at,
         credentials=[
             {"id": c.id, "username": c.username, "credential_type": c.credential_type}
             for c in credentials

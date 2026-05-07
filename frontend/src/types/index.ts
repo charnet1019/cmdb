@@ -48,6 +48,7 @@ export interface Asset {
   extra_data: Record<string, any> | null
   is_active: boolean
   created_at: string
+  updated_at: string
   credentials: CredentialSimple[]
 }
 

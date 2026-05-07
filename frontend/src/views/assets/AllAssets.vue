@@ -960,6 +960,16 @@ onMounted(async () => {
                           </div>
                         </template>
                         <template v-else-if="key === 'notes'"><span class="text-sm text-slate-600">{{ asset.notes || '' }}</span></template>
+                        <template v-else-if="key === 'created_at'">
+                          <span class="text-sm text-slate-600">
+                            {{ asset.created_at ? new Date(asset.created_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(/\//g, '-') : '' }}
+                          </span>
+                        </template>
+                        <template v-else-if="key === 'updated_at'">
+                          <span class="text-sm text-slate-600">
+                            {{ asset.updated_at ? new Date(asset.updated_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(/\//g, '-') : '' }}
+                          </span>
+                        </template>
                         <template v-else-if="key === 'actions'">
                           <button v-if="asset.is_active" @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded text-xs">更新</button>
                           <button v-else disabled class="bg-slate-200 text-slate-400 px-2 py-0.5 rounded cursor-not-allowed text-xs">更新</button>
