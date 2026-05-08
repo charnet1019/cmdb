@@ -2,7 +2,7 @@
 Database Models
 SQLAlchemy ORM models for CMDB
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from uuid import uuid4
 from sqlalchemy import (
@@ -51,8 +51,8 @@ class User(Base):
     mfa_secret: Mapped[Optional[str]] = mapped_column(String(100))
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     last_login_ip: Mapped[Optional[str]] = mapped_column(String(45))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     groups: Mapped[List["Group"]] = relationship(
@@ -70,8 +70,8 @@ class Group(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     users: Mapped[List[User]] = relationship(
@@ -88,7 +88,7 @@ class UserGroup(Base):
 
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     group_id: Mapped[int] = mapped_column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     __table_args__ = (
         Index("idx_user_groups_user_id", "user_id"),
@@ -105,7 +105,7 @@ class Organization(Base):
     parent_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("organizations.id"))
     path: Mapped[Optional[str]] = mapped_column(String(500), index=True)
     level: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Self-referential relationship
     children: Mapped[List["Organization"]] = relationship(
@@ -154,8 +154,8 @@ class Asset(Base):
     extra_data: Mapped[Optional[dict]] = mapped_column("metadata", JSONB)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     credentials: Mapped[List["Credential"]] = relationship(
@@ -184,8 +184,8 @@ class Credential(Base):
     password_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     credential_type: Mapped[str] = mapped_column(String(50), default="password")  # password, ssh_key, api_key, snmp
     extra_data: Mapped[Optional[dict]] = mapped_column("metadata", JSONB)  # AKID, Secret, etc.
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     asset: Mapped[Asset] = relationship("Asset", back_populates="credentials")
@@ -208,8 +208,8 @@ class Authorization(Base):
     valid_until: Mapped[Optional[datetime]] = mapped_column(DateTime)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     __table_args__ = (
         Index("idx_authorizations_entity", "entity_type", "entity_id"),
@@ -288,7 +288,7 @@ class Setting(Base):
     key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
     value: Mapped[Optional[dict]] = mapped_column(JSONB)
     description: Mapped[Optional[str]] = mapped_column(Text)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         return f"<Setting {self.key}>"

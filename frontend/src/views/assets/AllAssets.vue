@@ -36,6 +36,25 @@ import ImportModal from './components/ImportModal.vue'
 import ExportModal from './components/ExportModal.vue'
 import type { Asset, AssetCategory } from '@/types'
 
+// Format datetime: treat naive ISO strings as UTC, then convert to local timezone (UTC+8)
+function formatDateTime(isoString?: string | null): string {
+  if (!isoString) return ''
+  try {
+    // If string has no timezone info, treat it as UTC by appending +00:00
+    const normalized = isoString.match(/[+-]\d{2}:\d{2}$|Z$/) ? isoString : isoString + '+00:00'
+    const date = new Date(normalized)
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).replace(/\//g, '-')
+  } catch {
+    return isoString
+  }
+}
+
 // Router for URL state persistence
 const route = useRoute()
 const router = useRouter()
@@ -966,14 +985,10 @@ onMounted(async () => {
                         </template>
                         <template v-else-if="key === 'notes'"><span class="text-sm text-slate-600">{{ asset.notes || '' }}</span></template>
                         <template v-else-if="key === 'created_at'">
-                          <span class="text-sm text-slate-600">
-                            {{ asset.created_at ? new Date(asset.created_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(/\//g, '-') : '' }}
-                          </span>
+                          <span class="text-sm text-slate-600">{{ formatDateTime(asset.created_at) }}</span>
                         </template>
                         <template v-else-if="key === 'updated_at'">
-                          <span class="text-sm text-slate-600">
-                            {{ asset.updated_at ? new Date(asset.updated_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(/\//g, '-') : '' }}
-                          </span>
+                          <span class="text-sm text-slate-600">{{ formatDateTime(asset.updated_at) }}</span>
                         </template>
                         <template v-else-if="key === 'actions'">
                           <button v-if="asset.is_active" @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded text-xs">更新</button>
@@ -1249,7 +1264,7 @@ onMounted(async () => {
                   </div>
                   <div class="flex-1 relative">
                     <label class="block text-xs text-slate-500 mb-1">密码</label>
-                    <input v-model="newCredentialForm.password" :type="showPassword ? 'text' : 'password'" class="input-field text-sm w-full pr-8" placeholder="输入密码" />
+                    <input v-model="newCredentialForm.password" :type="showPassword ? 'text' : 'password'" class="input-field text-sm w-full pr-8" placeholder="输入密码" autocomplete="off" />
                     <button type="button" @click="showPassword = !showPassword" class="absolute right-2 top-[calc(50%+10px)] -translate-y-1/2 text-slate-400 hover:text-slate-600">
                       <EyeOutlined v-if="!showPassword" class="text-sm" />
                       <EyeInvisibleOutlined v-else class="text-sm" />
@@ -1314,7 +1329,7 @@ onMounted(async () => {
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1.5">OOB密码</label>
                   <div class="relative">
-                    <input v-model="form.oob_password" :type="showOobPassword ? 'text' : 'password'" class="input-field pr-8" placeholder="OOB密码" />
+                    <input v-model="form.oob_password" :type="showOobPassword ? 'text' : 'password'" class="input-field pr-8" placeholder="OOB 密码" autocomplete="off" />
                     <button type="button" @click="showOobPassword = !showOobPassword" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                       <EyeOutlined v-if="!showOobPassword" class="text-sm" />
                       <EyeInvisibleOutlined v-else class="text-sm" />
