@@ -1179,9 +1179,9 @@ onMounted(async () => {
             </template>
 
             <!-- 用户名密码区域 -->
-            <div class="border border-slate-200 rounded-lg overflow-hidden">
-              <div class="bg-slate-50 px-4 py-2.5 border-b border-slate-200">
-                <label class="text-xs font-medium text-slate-600">用户名密码</label>
+            <div class="bg-slate-50 rounded-lg">
+              <div class="px-4 py-2.5 border-b border-slate-200">
+                <span class="text-xs font-medium text-slate-600">用户名密码</span>
               </div>
               <div class="p-4">
                 <!-- 已有凭证列表 -->
@@ -1372,13 +1372,13 @@ onMounted(async () => {
           <button @click="showOrgModal = false" class="p-1.5 hover:bg-slate-100 rounded-lg"><CloseOutlined class="text-slate-400" /></button>
         </div>
         <div class="p-6">
-          <form @submit.prevent="handleOrgModalSubmit" class="space-y-4">
-            <div><label class="block text-xs font-medium text-slate-600 mb-1.5">节点名称 <span class="text-red-500">*</span></label><input v-model="orgForm.name" type="text" class="input-field" placeholder="请输入节点名称" autofocus /></div>
+          <div class="space-y-4">
+            <div><label class="block text-xs font-medium text-slate-600 mb-1.5">节点名称 <span class="text-red-500">*</span></label><input v-model="orgForm.name" type="text" class="input-field" placeholder="请输入节点名称" autofocus @keydown.enter="handleOrgModalSubmit" /></div>
             <div class="flex justify-end gap-3 pt-2 border-t border-slate-100">
               <button type="button" @click="showOrgModal = false" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">取消</button>
-              <button type="submit" :disabled="orgModalLoading" class="btn-primary">{{ orgModalLoading ? '处理中...' : '确定' }}</button>
+              <button type="button" @click="handleOrgModalSubmit" :disabled="orgModalLoading" class="btn-primary">{{ orgModalLoading ? '处理中...' : '确定' }}</button>
             </div>
-          </form>
+          </div>
         </div>
       </div>
     </div>

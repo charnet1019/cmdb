@@ -110,7 +110,7 @@ async function handleLogin() {
         </div>
 
         <!-- Login form -->
-        <form @submit.prevent="handleLogin" class="space-y-6">
+        <form @submit.prevent="handleLogin" autocomplete="on" class="space-y-6">
           <!-- Username -->
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-2">用户名</label>
@@ -120,6 +120,7 @@ async function handleLogin() {
                 v-model="formState.username"
                 type="text"
                 placeholder="请输入用户名或邮箱"
+                autocomplete="username"
                 class="input-field pl-12"
               />
             </div>
@@ -134,6 +135,7 @@ async function handleLogin() {
                 v-model="formState.password"
                 :type="showPassword ? 'text' : 'password'"
                 placeholder="请输入密码"
+                autocomplete="current-password"
                 class="input-field pl-12 pr-12"
               />
               <button
