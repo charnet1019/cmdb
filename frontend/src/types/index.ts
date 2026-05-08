@@ -22,7 +22,7 @@ export interface Group {
 
 // Asset types
 export interface Asset {
-  id: number
+  id: string  // UUID string from backend
   name: string
   asset_code: string | null
   category: AssetCategory

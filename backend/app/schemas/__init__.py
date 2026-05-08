@@ -140,6 +140,7 @@ class AssetCreate(AssetBase):
 class AssetUpdate(BaseModel):
     """Asset update schema"""
     name: Optional[str] = Field(None, max_length=100)
+    asset_code: Optional[str] = None  # CI 编号
     address: Optional[str] = None
     internal_address: Optional[str] = None
     external_address: Optional[str] = None

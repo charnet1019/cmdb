@@ -26,7 +26,7 @@ export async function getAssets(params: {
   return getPaginated<Asset>('/assets', params)
 }
 
-export async function getAsset(id: number): Promise<Asset> {
+export async function getAsset(id: string): Promise<Asset> {
   const response = await api.get(`/assets/${id}`)
   // Backend returns AssetResponse directly
   return response.data
@@ -38,22 +38,22 @@ export async function createAsset(data: Partial<Asset>): Promise<Asset> {
   return response.data
 }
 
-export async function updateAsset(id: number, data: Partial<Asset>): Promise<Asset> {
+export async function updateAsset(id: string, data: Partial<Asset>): Promise<Asset> {
   const response = await api.put(`/assets/${id}`, data)
   // Backend returns AssetResponse directly
   return response.data
 }
 
-export async function deleteAsset(id: number): Promise<void> {
+export async function deleteAsset(id: string): Promise<void> {
   await api.delete(`/assets/${id}`)
 }
 
 // Bulk operations
-export async function bulkUpdateAssets(ids: number[], data: Partial<Asset>): Promise<void> {
+export async function bulkUpdateAssets(ids: string[], data: Partial<Asset>): Promise<void> {
   await api.put('/assets/bulk', { ids, data })
 }
 
-export async function bulkDeleteAssets(ids: number[]): Promise<void> {
+export async function bulkDeleteAssets(ids: string[]): Promise<void> {
   await api.delete('/assets/bulk', { data: { ids } })
 }
 
@@ -104,14 +104,14 @@ export async function reorderOrganizations(parentId: number | null, orderedIds: 
 }
 
 // Credential APIs
-export async function getCredentials(assetId?: number): Promise<Credential[]> {
+export async function getCredentials(assetId?: string): Promise<Credential[]> {
   const response = await api.get('/credentials', {
     params: { asset_id: assetId }
   })
   return response.data.data
 }
 
-export async function createCredential(assetId: number, data: {
+export async function createCredential(assetId: string, data: {
   username: string
   password: string
   credential_type?: string

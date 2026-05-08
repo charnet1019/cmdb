@@ -508,9 +508,10 @@ async function handleSubmit() {
       extraData = Object.keys(extraFields).length > 0 ? extraFields : undefined
     }
 
-    const data = {
+    const data: Record<string, any> = {
       name: form.value.name,
-      asset_code: form.value.asset_code || undefined,
+      // Only include asset_code if form has a value (empty string is valid to clear it)
+      ...(form.value.asset_code !== '' && { asset_code: form.value.asset_code }),
       category: form.value.category,
       address: form.value.address || undefined,
       internal_address: form.value.internal_address || undefined,

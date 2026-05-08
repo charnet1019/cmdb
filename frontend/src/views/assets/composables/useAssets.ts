@@ -113,7 +113,7 @@ export function useAssets() {
     allSelected.value = assets.value.every(asset => asset.selected)
   }
 
-  function getSelectedAssetIds(): number[] {
+  function getSelectedAssetIds(): string[] {
     return assets.value.filter(asset => asset.selected).map(asset => asset.id)
   }
 
