@@ -530,6 +530,10 @@ async function handleSubmit() {
       notes: form.value.notes || undefined,
       organization_id: formSelectedOrgId.value || undefined
     }
+    console.log('DEBUG: Submitting data:', data)
+    console.log('DEBUG: editingAsset:', editingAsset.value)
+    console.log('DEBUG: form.value.asset_code:', form.value.asset_code)
+    console.log('DEBUG: data.asset_code:', data.asset_code)
 
     if (editingAsset.value) {
       await updateAsset(editingAsset.value.id, data)

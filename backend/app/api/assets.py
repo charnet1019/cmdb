@@ -696,12 +696,14 @@ async def update_asset(
 
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
+    print(f"DEBUG: update_data for asset {asset_id}: {update_data}")
     for field, value in update_data.items():
         # Map schema 'extra_data' to model 'extra_data'
         if field == "extra_data":
             setattr(asset, "extra_data", value)
         else:
             setattr(asset, field, value)
+    print(f"DEBUG: asset.asset_code after update: {asset.asset_code}")
 
     await db.commit()
     await db.refresh(asset)
