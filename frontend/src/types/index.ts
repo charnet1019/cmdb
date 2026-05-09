@@ -47,6 +47,8 @@ export interface Asset {
   notes: string | null
   extra_data: Record<string, any> | null
   is_active: boolean
+  applicant: string | null  // 申请人
+  namespace: string | null  // 命名空间（数据库 Schema 等）
   created_at: string
   updated_at: string
   credentials: CredentialSimple[]
