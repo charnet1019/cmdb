@@ -127,7 +127,8 @@ class Asset(Base):
     address: Mapped[Optional[str]] = mapped_column(String(255))  # Legacy single address field
     internal_address: Mapped[Optional[str]] = mapped_column(Text)  # 内网地址(多行)
     external_address: Mapped[Optional[str]] = mapped_column(Text)  # 外网地址(多行)
-    platform: Mapped[Optional[str]] = mapped_column(String(50))
+    platform: Mapped[Optional[str]] = mapped_column(String(50))  # 物理机/虚拟机/RDS/Docker/Kubernetes
+    db_type: Mapped[Optional[str]] = mapped_column(String(50))  # 数据库类型：MySQL/PostgreSQL/MongoDB/Redis
     organization_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("organizations.id"))
 
     # Network device specific fields

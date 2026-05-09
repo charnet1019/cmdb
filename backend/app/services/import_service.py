@@ -98,7 +98,8 @@ DATABASE_CREATE_FIELDS = [
     ("name", "*资产名称", True),
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
-    ("platform", "*平台", True),  # MySQL/PostgreSQL/MongoDB/Redis 等
+    ("platform", "*平台", True),  # 物理机/虚拟机/RDS/Docker/Kubernetes
+    ("db_type", "*数据库类型", True),  # MySQL/PostgreSQL/MongoDB/Redis
     ("external_address", "外网地址", False),  # 外网访问地址（可选，可带端口）
     ("internal_address", "内网地址", False),  # 内网访问地址（可选，可带端口）
     ("credentials", "*用户名密码", True),  # 格式：username:password，每行一个
@@ -114,7 +115,8 @@ DATABASE_UPDATE_FIELDS = [
     ("name", "资产名称", False),
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
-    ("platform", "数据库类型", False),
+    ("platform", "平台", False),  # 物理机/虚拟机/RDS/Docker/Kubernetes
+    ("db_type", "数据库类型", False),  # MySQL/PostgreSQL/MongoDB/Redis
     ("external_address", "外网地址", False),  # 外网访问地址（可带端口）
     ("internal_address", "内网地址", False),  # 内网访问地址（可带端口）
     ("credentials", "用户名密码", False),
@@ -367,14 +369,14 @@ def generate_network_update_template() -> BytesIO:
 def generate_database_create_template() -> BytesIO:
     """Generate XLSX template for database creation"""
     example_data = [
-        "MySQL-Prod-01", "DB001", "研发部/数据库", "MySQL",
-        "",  # external_address - 外网地址（可选）
-        "192.168.1.100:3306",  # internal_address - 内网地址（必填）
+        "MySQL-Prod-01", "DB001", "研发部/数据库", "RDS", "MySQL",
+        "",  # external_address - 外网地址
+        "192.168.1.100:3306",  # internal_address - 内网地址
         "root:mysqlroot123\napp:apppass",
         "8.0.32",
-        "main",  # namespace - 数据库 Schema
-        "张三",  # applicant - 申请人
-        "启用",  # is_active - 状态
+        "main",  # namespace
+        "张三",  # applicant
+        "启用",  # is_active
         "生产环境主数据库"
     ]
     return _generate_template("database", "create", "数据库导入模板", DATABASE_CREATE_FIELDS, example_data)
@@ -383,9 +385,9 @@ def generate_database_create_template() -> BytesIO:
 def generate_database_update_template() -> BytesIO:
     """Generate XLSX template for database update"""
     example_data = [
-        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "MySQL-Prod-01", "DB001", "研发部/数据库", "MySQL",
-        "",  # external_address - 外网地址
-        "192.168.1.100:3306",  # internal_address - 内网地址
+        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "MySQL-Prod-01", "DB001", "研发部/数据库", "RDS", "MySQL",
+        "",  # external_address
+        "192.168.1.100:3306",  # internal_address
         "root:mysqlroot123\napp:apppass",
         "8.0.32",
         "main",  # namespace
@@ -899,6 +901,7 @@ async def batch_create_databases(
                 asset_code=record.get("asset_code"),
                 category="database",
                 platform=record.get("platform"),
+                db_type=record.get("db_type"),
                 external_address=record.get("external_address"),
                 internal_address=record.get("internal_address"),
                 applicant=record.get("applicant"),
@@ -962,7 +965,7 @@ async def batch_update_databases(
                 failed_records.append({"id": record.get("id"), "error": "资产不存在"})
                 continue
 
-            for field in ["name", "asset_code", "platform", "external_address", "internal_address", "applicant", "notes"]:
+            for field in ["name", "asset_code", "platform", "db_type", "external_address", "internal_address", "applicant", "notes"]:
                 if record.get(field):
                     setattr(asset, field, record[field])
 

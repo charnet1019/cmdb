@@ -29,7 +29,8 @@ export interface Asset {
   address: string | null
   internal_address: string | null
   external_address: string | null
-  platform: string | null
+  platform: string | null  // 物理机/虚拟机/RDS/Docker/Kubernetes
+  db_type: string | null  // 数据库类型：MySQL/PostgreSQL/MongoDB/Redis
   organization_id: number | null
   organization_name?: string | null
   device_type: string | null
