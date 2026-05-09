@@ -549,10 +549,6 @@ async function handleSubmit() {
       notes: form.value.notes || undefined,
       organization_id: formSelectedOrgId.value || undefined
     }
-    console.log('DEBUG: Submitting data:', data)
-    console.log('DEBUG: editingAsset:', editingAsset.value)
-    console.log('DEBUG: form.value.asset_code:', form.value.asset_code)
-    console.log('DEBUG: data.asset_code:', data.asset_code)
 
     if (editingAsset.value) {
       await updateAsset(editingAsset.value.id, data)
@@ -1197,8 +1193,9 @@ onMounted(async () => {
                           v-model="cred.username"
                           type="text"
                           class="input-field text-sm flex-1"
+                          autocomplete="off"
                           @blur="stopFieldEdit"
-                          @keyup.enter="stopFieldEdit"
+                          @keyup.enter.prevent="stopFieldEdit"
                         />
                         <span
                           v-else
@@ -1216,8 +1213,9 @@ onMounted(async () => {
                           v-model="cred.password"
                           type="text"
                           class="input-field text-sm flex-1"
+                          autocomplete="off"
                           @blur="stopFieldEdit"
-                          @keyup.enter="stopFieldEdit"
+                          @keyup.enter.prevent="stopFieldEdit"
                           placeholder="输入新密码"
                         />
                         <span
@@ -1256,21 +1254,39 @@ onMounted(async () => {
                     </div>
                   </div>
                 </div>
-                <!-- 添加新凭证表单 -->
+                <!-- 添加新凭证 -->
                 <div class="flex items-end gap-3">
                   <div class="flex-1">
                     <label class="block text-xs text-slate-500 mb-1">用户名</label>
-                    <input v-model="newCredentialForm.username" type="text" class="input-field text-sm" placeholder="输入用户名" />
+                    <input
+                      v-model="newCredentialForm.username"
+                      type="text"
+                      class="input-field text-sm"
+                      placeholder="输入用户名"
+                      autocomplete="off"
+                      @keyup.enter.prevent="addCredentialToForm"
+                    />
                   </div>
                   <div class="flex-1 relative">
                     <label class="block text-xs text-slate-500 mb-1">密码</label>
-                    <input v-model="newCredentialForm.password" :type="showPassword ? 'text' : 'password'" class="input-field text-sm w-full pr-8" placeholder="输入密码" autocomplete="off" />
+                    <input
+                      v-model="newCredentialForm.password"
+                      :type="showPassword ? 'text' : 'password'"
+                      class="input-field text-sm w-full pr-8"
+                      placeholder="输入密码"
+                      autocomplete="off"
+                      @keyup.enter.prevent="addCredentialToForm"
+                    />
                     <button type="button" @click="showPassword = !showPassword" class="absolute right-2 top-[calc(50%+10px)] -translate-y-1/2 text-slate-400 hover:text-slate-600">
                       <EyeOutlined v-if="!showPassword" class="text-sm" />
                       <EyeInvisibleOutlined v-else class="text-sm" />
                     </button>
                   </div>
-                  <button type="button" @click="addCredentialToForm" class="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-blue-600 transition-colors h-[38px]">
+                  <button
+                    type="button"
+                    @click="addCredentialToForm"
+                    class="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-blue-600 transition-colors h-[38px]"
+                  >
                     <PlusCircleOutlined class="mr-1" /> 添加
                   </button>
                 </div>
@@ -1324,7 +1340,7 @@ onMounted(async () => {
               <div class="grid grid-cols-2 gap-4">
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1.5">OOB用户名</label>
-                  <input v-model="form.oob_username" type="text" class="input-field" placeholder="OOB用户名" />
+                  <input v-model="form.oob_username" type="text" class="input-field" placeholder="OOB用户名" autocomplete="off" />
                 </div>
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1.5">OOB密码</label>
