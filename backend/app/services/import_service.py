@@ -99,8 +99,8 @@ DATABASE_CREATE_FIELDS = [
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
     ("platform", "*数据库类型", True),  # MySQL/PostgreSQL/MongoDB/Redis
-    ("external_address", "外网地址：端口", False),  # 外网访问地址
-    ("internal_address", "*内网地址：端口", True),  # 内网访问地址（必填）
+    ("external_address", "外网地址", False),  # 外网访问地址（可选，可带端口）
+    ("internal_address", "内网地址", False),  # 内网访问地址（可选，可带端口）
     ("credentials", "*用户名密码", True),  # 格式：username:password，每行一个
     ("version", "版本", False),
     ("namespace", "命名空间", False),  # 数据库 Schema/命名空间
@@ -115,8 +115,8 @@ DATABASE_UPDATE_FIELDS = [
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
     ("platform", "数据库类型", False),
-    ("external_address", "外网地址：端口", False),  # 外网访问地址
-    ("internal_address", "内网地址：端口", False),  # 内网访问地址
+    ("external_address", "外网地址", False),  # 外网访问地址（可带端口）
+    ("internal_address", "内网地址", False),  # 内网访问地址（可带端口）
     ("credentials", "用户名密码", False),
     ("version", "版本", False),
     ("namespace", "命名空间", False),  # 数据库 Schema/命名空间
