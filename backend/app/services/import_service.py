@@ -99,9 +99,13 @@ DATABASE_CREATE_FIELDS = [
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
     ("platform", "*数据库类型", True),  # MySQL/PostgreSQL/MongoDB/Redis
-    ("address", "*地址:端口", True),
+    ("external_address", "外网地址：端口", False),  # 外网访问地址
+    ("internal_address", "*内网地址：端口", True),  # 内网访问地址（必填）
     ("credentials", "*用户名密码", True),  # 格式：username:password，每行一个
     ("version", "版本", False),
+    ("namespace", "命名空间", False),  # 数据库 Schema/命名空间
+    ("applicant", "申请人", False),  # 申请人
+    ("is_active", "状态", False),  # 启用/禁用 或 true/false 或 1/0
     ("notes", "描述", False),
 ]
 
@@ -111,9 +115,13 @@ DATABASE_UPDATE_FIELDS = [
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
     ("platform", "数据库类型", False),
-    ("address", "地址:端口", False),
+    ("external_address", "外网地址：端口", False),  # 外网访问地址
+    ("internal_address", "内网地址：端口", False),  # 内网访问地址
     ("credentials", "用户名密码", False),
     ("version", "版本", False),
+    ("namespace", "命名空间", False),  # 数据库 Schema/命名空间
+    ("applicant", "申请人", False),  # 申请人
+    ("is_active", "状态", False),  # 启用/禁用 或 true/false 或 1/0
     ("notes", "描述", False),
 ]
 
@@ -360,9 +368,13 @@ def generate_database_create_template() -> BytesIO:
     """Generate XLSX template for database creation"""
     example_data = [
         "MySQL-Prod-01", "DB001", "研发部/数据库", "MySQL",
-        "192.168.1.100:3306",
+        "",  # external_address - 外网地址（可选）
+        "192.168.1.100:3306",  # internal_address - 内网地址（必填）
         "root:mysqlroot123\napp:apppass",
         "8.0.32",
+        "main",  # namespace - 数据库 Schema
+        "张三",  # applicant - 申请人
+        "启用",  # is_active - 状态
         "生产环境主数据库"
     ]
     return _generate_template("database", "create", "数据库导入模板", DATABASE_CREATE_FIELDS, example_data)
@@ -372,9 +384,13 @@ def generate_database_update_template() -> BytesIO:
     """Generate XLSX template for database update"""
     example_data = [
         "56c4d4cd-42ba-4397-abfa-36ecba64af13", "MySQL-Prod-01", "DB001", "研发部/数据库", "MySQL",
-        "192.168.1.100:3306",
+        "",  # external_address - 外网地址
+        "192.168.1.100:3306",  # internal_address - 内网地址
         "root:mysqlroot123\napp:apppass",
         "8.0.32",
+        "main",  # namespace
+        "张三",  # applicant
+        "启用",  # is_active
         "生产环境主数据库"
     ]
     return _generate_template("database", "update", "数据库更新模板", DATABASE_UPDATE_FIELDS, example_data)
