@@ -26,9 +26,29 @@ from app.core.encryption import encrypt_value, decrypt_value
 from app.services.import_service import (
     generate_host_create_template,
     generate_host_update_template,
+    generate_network_create_template,
+    generate_network_update_template,
+    generate_database_create_template,
+    generate_database_update_template,
+    generate_cloud_create_template,
+    generate_cloud_update_template,
+    generate_web_create_template,
+    generate_web_update_template,
+    generate_gpt_create_template,
+    generate_gpt_update_template,
     parse_import_file,
     batch_create_hosts,
-    batch_update_hosts
+    batch_update_hosts,
+    batch_create_networks,
+    batch_update_networks,
+    batch_create_databases,
+    batch_update_databases,
+    batch_create_clouds,
+    batch_update_clouds,
+    batch_create_webs,
+    batch_update_webs,
+    batch_create_gpts,
+    batch_update_gpts,
 )
 from app.services.export_service import (
     export_assets_to_excel,
@@ -396,23 +416,53 @@ async def download_import_template(
 ):
     """
     Download XLSX import template for specified category
-    Only supports 'host' category initially
+    Supports: host, network, database, cloud, web, gpt
     """
-    if category != "host":
+    # Category mapping for template generators
+    template_map = {
+        "host": {
+            "create": (generate_host_create_template, "主机创建模板.xlsx"),
+            "update": (generate_host_update_template, "主机更新模板.xlsx"),
+        },
+        "network": {
+            "create": (generate_network_create_template, "网络设备创建模板.xlsx"),
+            "update": (generate_network_update_template, "网络设备更新模板.xlsx"),
+        },
+        "database": {
+            "create": (generate_database_create_template, "数据库创建模板.xlsx"),
+            "update": (generate_database_update_template, "数据库更新模板.xlsx"),
+        },
+        "cloud": {
+            "create": (generate_cloud_create_template, "云服务创建模板.xlsx"),
+            "update": (generate_cloud_update_template, "云服务更新模板.xlsx"),
+        },
+        "web": {
+            "create": (generate_web_create_template, "网站服务创建模板.xlsx"),
+            "update": (generate_web_update_template, "网站服务更新模板.xlsx"),
+        },
+        "gpt": {
+            "create": (generate_gpt_create_template, "AI 服务创建模板.xlsx"),
+            "update": (generate_gpt_update_template, "AI 服务更新模板.xlsx"),
+        },
+    }
+
+    if category not in template_map:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="目前仅支持主机资产导入"
+            detail=f"不支持的资产类型：{category}"
         )
 
-    if mode == "create":
-        buffer = generate_host_create_template()
-        filename = "主机创建模板.xlsx"
-    else:
-        buffer = generate_host_update_template()
-        filename = "主机更新模板.xlsx"
+    if mode not in ["create", "update"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="mode 参数必须是 create 或 update"
+        )
+
+    generator, filename = template_map[category][mode]
+    buffer = generator()
 
     return StreamingResponse(
-        BytesIO(buffer.getvalue()),
+        buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{quote(filename)}"'}
     )
@@ -427,12 +477,14 @@ async def import_assets(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Import host assets from XLSX file
+    Import assets from XLSX file
+    Supported categories: host, network, database, cloud, web, gpt
     """
-    if category != "host":
+    supported_categories = ["host", "network", "database", "cloud", "web", "gpt"]
+    if category not in supported_categories:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="目前仅支持主机资产导入"
+            detail=f"不支持的资产类型：{category}。支持的类型：{', '.join(supported_categories)}"
         )
 
     # Validate file type
@@ -454,13 +506,41 @@ async def import_assets(
 
     try:
         # Parse and validate
-        valid_records, parse_errors = await parse_import_file(content, mode, db)
+        valid_records, parse_errors = await parse_import_file(content, category, mode, db)
 
-        # Process valid records
-        if mode == "create":
-            success_count, process_errors = await batch_create_hosts(valid_records, db)
+        # Process valid records based on category
+        if category == "host":
+            if mode == "create":
+                success_count, process_errors = await batch_create_hosts(valid_records, db)
+            else:
+                success_count, process_errors = await batch_update_hosts(valid_records, db)
+        elif category == "network":
+            if mode == "create":
+                success_count, process_errors = await batch_create_networks(valid_records, db)
+            else:
+                success_count, process_errors = await batch_update_networks(valid_records, db)
+        elif category == "database":
+            if mode == "create":
+                success_count, process_errors = await batch_create_databases(valid_records, db)
+            else:
+                success_count, process_errors = await batch_update_databases(valid_records, db)
+        elif category == "cloud":
+            if mode == "create":
+                success_count, process_errors = await batch_create_clouds(valid_records, db)
+            else:
+                success_count, process_errors = await batch_update_clouds(valid_records, db)
+        elif category == "web":
+            if mode == "create":
+                success_count, process_errors = await batch_create_webs(valid_records, db)
+            else:
+                success_count, process_errors = await batch_update_webs(valid_records, db)
+        elif category == "gpt":
+            if mode == "create":
+                success_count, process_errors = await batch_create_gpts(valid_records, db)
+            else:
+                success_count, process_errors = await batch_update_gpts(valid_records, db)
         else:
-            success_count, process_errors = await batch_update_hosts(valid_records, db)
+            raise HTTPException(400, f"不支持的资产类型：{category}")
 
         # Combine errors
         all_errors = parse_errors + process_errors

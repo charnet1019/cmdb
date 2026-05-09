@@ -9,6 +9,7 @@ import {
   CloseCircleOutlined
 } from '@ant-design/icons-vue'
 import { downloadImportTemplate, importAssets, type ImportResult } from '@/api/assets'
+import * as XLSX from 'xlsx'
 
 const props = defineProps<{
   visible: boolean
@@ -47,7 +48,7 @@ watch(() => props.visible, (visible) => {
 })
 
 // Handle file selection
-function handleFileSelect(event: Event) {
+async function handleFileSelect(event: Event) {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0]
 
@@ -66,8 +67,44 @@ function handleFileSelect(event: Event) {
       return
     }
 
+    // Validate template type matches import mode
+    const isValid = await validateTemplateType(file)
+    if (!isValid) {
+      target.value = ''
+      return
+    }
+
     selectedFile.value = file
     importResult.value = null
+  }
+}
+
+// Validate template type matches import mode
+async function validateTemplateType(file: File): Promise<boolean> {
+  try {
+    const arrayBuffer = await file.arrayBuffer()
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+    const headers = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' })[0] || []
+
+    const headerLabels = (headers as any[]).map(h => String(h).trim())
+    const hasIdField = headerLabels.some((label: string) => label.includes('ID') || label === '*ID')
+
+    if (importMode.value === 'create' && hasIdField) {
+      message.error('检测到更新模板（包含 ID 字段），请切换到"更新"模式或使用创建模板')
+      return false
+    }
+
+    if (importMode.value === 'update' && !hasIdField) {
+      message.error('检测到创建模板（缺少 ID 字段），请切换到"创建"模式或使用更新模板')
+      return false
+    }
+
+    return true
+  } catch (error) {
+    console.error('Template validation error:', error)
+    // If validation fails, allow user to proceed (backend will validate)
+    return true
   }
 }
 

@@ -154,14 +154,30 @@ export async function downloadImportTemplate(
     responseType: 'blob'
   })
 
+  // Extract filename from Content-Disposition header
+  const contentDisposition = response.headers['content-disposition']
+  let filename = `${category}_${mode}_template.xlsx`
+  if (contentDisposition) {
+    const match = contentDisposition.match(/filename="?(.+?)"?$/)
+    if (match && match[1]) {
+      try {
+        filename = decodeURIComponent(match[1])
+      } catch {
+        // Fallback to default if decode fails
+      }
+    }
+  }
+
   // Create blob and trigger download
+  // Note: In dev environment (HTTP), createObjectURL may trigger "insecure connection" warning
+  // This is expected behavior and only appears in dev, not in production (HTTPS)
   const blob = new Blob([response.data], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   })
   const url = window.URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.setAttribute('download', mode === 'create' ? '主机创建模板.xlsx' : '主机更新模板.xlsx')
+  link.setAttribute('download', filename)
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
