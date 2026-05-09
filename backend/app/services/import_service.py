@@ -31,6 +31,7 @@ HOST_CREATE_FIELDS = [
     ("oob_username", "OOB 用户名", False),
     ("oob_password", "OOB 密码", False),
     ("applicant", "申请人", False),
+    ("is_active", "状态", False),  # 启用/禁用 或 True/False 或 1/0
     ("credentials", "*用户名密码", True),  # 格式：username:password，每行一个
     ("notes", "描述", False),
 ]
@@ -53,6 +54,7 @@ HOST_UPDATE_FIELDS = [
     ("oob_username", "OOB 用户名", False),
     ("oob_password", "OOB 密码", False),
     ("applicant", "申请人", False),
+    ("is_active", "状态", False),  # 启用/禁用 或 True/False 或 1/0
     ("credentials", "用户名密码", False),  # 格式：username:password，每行一个
     ("notes", "描述", False),
 ]
@@ -68,6 +70,7 @@ NETWORK_CREATE_FIELDS = [
     ("serial_number", "序列号", False),
     ("external_address", "外网地址", False),  # 多行，每行一个
     ("internal_address", "内网地址", False),  # 多行，每行一个
+    ("applicant", "申请人", False),
     ("credentials", "*用户名密码", True),  # 格式：username:password，多行每行一个
     ("is_active", "*状态", True),  # 启用/禁用 或 True/False 或 1/0
     ("notes", "描述", False),
@@ -84,6 +87,7 @@ NETWORK_UPDATE_FIELDS = [
     ("serial_number", "序列号", False),
     ("external_address", "外网地址", False),
     ("internal_address", "内网地址", False),
+    ("applicant", "申请人", False),
     ("credentials", "用户名密码", False),
     ("is_active", "状态", False),  # 启用/禁用 或 True/False 或 1/0
     ("notes", "描述", False),
@@ -119,9 +123,13 @@ CLOUD_CREATE_FIELDS = [
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
     ("platform", "*云平台", True),  # AWS/阿里云/腾讯云/Azure
+    ("external_address", "外网地址", False),  # 多行，每行一个
+    ("internal_address", "内网地址", False),  # 多行，每行一个
     ("resource_id", "资源 ID", False),  # 云资源唯一标识
     ("credentials", "*访问凭证", True),  # 格式：AKID:Secret 或 username:password
     ("region", "区域", False),  # 如：cn-hangzhou
+    ("applicant", "申请人", False),
+    ("is_active", "状态", False),  # 启用/禁用 或 True/False 或 1/0
     ("notes", "描述", False),
 ]
 
@@ -131,9 +139,13 @@ CLOUD_UPDATE_FIELDS = [
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
     ("platform", "云平台", False),
+    ("external_address", "外网地址", False),
+    ("internal_address", "内网地址", False),
     ("resource_id", "资源 ID", False),
     ("credentials", "访问凭证", False),
     ("region", "区域", False),
+    ("applicant", "申请人", False),
+    ("is_active", "状态", False),
     ("notes", "描述", False),
 ]
 
@@ -142,9 +154,11 @@ WEB_CREATE_FIELDS = [
     ("name", "*资产名称", True),
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
-    ("external_url", "*外网 URL", True),
-    ("internal_url", "内网 URL", False),
+    ("external_address", "*外网地址", True),
+    ("internal_address", "内网地址", False),
     ("credentials", "*用户名密码", True),  # 格式：username:password，每行一个
+    ("applicant", "申请人", False),
+    ("is_active", "状态", False),  # 启用/禁用 或 True/False 或 1/0
     ("notes", "描述", False),
 ]
 
@@ -153,9 +167,11 @@ WEB_UPDATE_FIELDS = [
     ("name", "资产名称", False),
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
-    ("external_url", "外网 URL", False),
-    ("internal_url", "内网 URL", False),
+    ("external_address", "外网地址", False),
+    ("internal_address", "内网地址", False),
     ("credentials", "用户名密码", False),
+    ("applicant", "申请人", False),
+    ("is_active", "状态", False),
     ("notes", "描述", False),
 ]
 
@@ -165,8 +181,11 @@ GPT_CREATE_FIELDS = [
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
     ("platform", "*AI 平台", True),  # OpenAI/Claude/ChatGLM/通义千问
-    ("url", "*API 端点", True),  # API 地址
+    ("external_address", "*外网地址", True),  # API 地址
+    ("internal_address", "内网地址", False),
     ("credentials", "*API Key", True),  # 格式：key_name:api_key，每行一个
+    ("applicant", "申请人", False),
+    ("is_active", "状态", False),  # 启用/禁用 或 True/False 或 1/0
     ("notes", "描述", False),
 ]
 
@@ -176,8 +195,11 @@ GPT_UPDATE_FIELDS = [
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
     ("platform", "AI 平台", False),
-    ("url", "API 端点", False),
+    ("external_address", "外网地址", False),
+    ("internal_address", "内网地址", False),
     ("credentials", "API Key", False),
+    ("applicant", "申请人", False),
+    ("is_active", "状态", False),
     ("notes", "描述", False),
 ]
 
@@ -553,8 +575,8 @@ async def parse_import_file(
                 if credentials_list:
                     record["credentials"] = credentials_list
 
-            # Map extra_data fields
-            elif field_name in ["oob", "oob_username", "oob_password", "applicant"]:
+            # Map extra_data fields (oob related fields only)
+            elif field_name in ["oob", "oob_username", "oob_password"]:
                 if value:
                     if "extra_data" not in record:
                         record["extra_data"] = {}
@@ -629,12 +651,24 @@ async def batch_create_hosts(
                 memory=record.get("memory"),
                 system_disk=record.get("system_disk"),
                 data_disk=record.get("data_disk"),
+                applicant=record.get("applicant"),
                 organization_id=record.get("organization_id"),
                 notes=record.get("notes"),
                 extra_data=record.get("extra_data"),
             )
             db.add(asset)
             await db.flush()  # Get asset ID
+
+            # Handle is_active (status)
+            if record.get("is_active") is not None:
+                is_active = record["is_active"]
+                if isinstance(is_active, str):
+                    is_active = is_active.lower().strip() in ("true", "1", "yes", "启用", "是")
+                elif isinstance(is_active, bool):
+                    pass
+                elif isinstance(is_active, (int, float)):
+                    is_active = bool(is_active)
+                asset.is_active = is_active
 
             # Create credentials if provided
             if record.get("credentials"):
@@ -710,6 +744,7 @@ async def batch_create_networks(
                 serial_number=record.get("serial_number"),
                 external_address=record.get("external_address"),
                 internal_address=record.get("internal_address"),
+                applicant=record.get("applicant"),
                 organization_id=record.get("organization_id"),
                 notes=record.get("notes"),
                 is_active=is_active,
@@ -771,7 +806,7 @@ async def batch_update_networks(
 
             # Update fields
             for field in ["name", "asset_code", "device_type", "vendor", "model",
-                          "serial_number", "external_address", "internal_address", "notes"]:
+                          "serial_number", "external_address", "internal_address", "applicant", "notes"]:
                 if record.get(field):
                     setattr(asset, field, record[field])
 
@@ -850,12 +885,29 @@ async def batch_create_databases(
                 platform=record.get("platform"),
                 external_address=record.get("external_address"),
                 internal_address=record.get("internal_address"),
+                applicant=record.get("applicant"),
                 organization_id=record.get("organization_id"),
                 notes=record.get("notes"),
-                extra_data={"version": record.get("version")} if record.get("version") else None,
+                extra_data={
+                    k: v for k, v in {
+                        "version": record.get("version"),
+                        "namespace": record.get("namespace")
+                    }.items() if v
+                } if record.get("version") or record.get("namespace") else None,
             )
             db.add(asset)
             await db.flush()
+
+            # Handle is_active (status)
+            if record.get("is_active") is not None:
+                is_active = record["is_active"]
+                if isinstance(is_active, str):
+                    is_active = is_active.lower().strip() in ("true", "1", "yes", "启用", "是")
+                elif isinstance(is_active, bool):
+                    pass
+                elif isinstance(is_active, (int, float)):
+                    is_active = bool(is_active)
+                asset.is_active = is_active
 
             if record.get("credentials"):
                 for cred in record["credentials"]:
@@ -894,16 +946,33 @@ async def batch_update_databases(
                 failed_records.append({"id": record.get("id"), "error": "资产不存在"})
                 continue
 
-            for field in ["name", "asset_code", "platform", "address", "notes"]:
+            for field in ["name", "asset_code", "platform", "external_address", "internal_address", "applicant", "notes"]:
                 if record.get(field):
                     setattr(asset, field, record[field])
 
             if record.get("organization_id"):
                 asset.organization_id = record["organization_id"]
 
-            if record.get("version"):
+            # Handle is_active (status)
+            if record.get("is_active") is not None:
+                is_active = record["is_active"]
+                if isinstance(is_active, str):
+                    is_active = is_active.lower().strip() in ("true", "1", "yes", "启用", "是")
+                elif isinstance(is_active, bool):
+                    pass
+                elif isinstance(is_active, (int, float)):
+                    is_active = bool(is_active)
+                asset.is_active = is_active
+
+            # Handle namespace and version in extra_data
+            if record.get("version") or record.get("namespace"):
                 current_extra = asset.extra_data or {}
-                asset.extra_data = {**current_extra, "version": record["version"]}
+                updates = {}
+                if record.get("version"):
+                    updates["version"] = record["version"]
+                if record.get("namespace"):
+                    updates["namespace"] = record["namespace"]
+                asset.extra_data = {**current_extra, **updates}
 
             if "credentials" in record:
                 await db.execute(delete(Credential).where(Credential.asset_id == asset.id))
@@ -956,8 +1025,9 @@ async def batch_create_clouds(
                 asset_code=record.get("asset_code"),
                 category="cloud",
                 platform=record.get("platform"),
-                external_address=record.get("external_url"),
-                internal_address=record.get("internal_url"),
+                external_address=record.get("external_address"),
+                internal_address=record.get("internal_address"),
+                applicant=record.get("applicant"),
                 organization_id=record.get("organization_id"),
                 notes=record.get("notes"),
                 extra_data={
@@ -969,6 +1039,17 @@ async def batch_create_clouds(
             )
             db.add(asset)
             await db.flush()
+
+            # Handle is_active (status)
+            if record.get("is_active") is not None:
+                is_active = record["is_active"]
+                if isinstance(is_active, str):
+                    is_active = is_active.lower().strip() in ("true", "1", "yes", "启用", "是")
+                elif isinstance(is_active, bool):
+                    pass
+                elif isinstance(is_active, (int, float)):
+                    is_active = bool(is_active)
+                asset.is_active = is_active
 
             if record.get("credentials"):
                 for cred in record["credentials"]:
@@ -1007,12 +1088,23 @@ async def batch_update_clouds(
                 failed_records.append({"id": record.get("id"), "error": "资产不存在"})
                 continue
 
-            for field in ["name", "asset_code", "platform", "notes"]:
+            for field in ["name", "asset_code", "platform", "external_address", "internal_address", "applicant", "notes"]:
                 if record.get(field):
                     setattr(asset, field, record[field])
 
             if record.get("organization_id"):
                 asset.organization_id = record["organization_id"]
+
+            # Handle is_active (status)
+            if record.get("is_active") is not None:
+                is_active = record["is_active"]
+                if isinstance(is_active, str):
+                    is_active = is_active.lower().strip() in ("true", "1", "yes", "启用", "是")
+                elif isinstance(is_active, bool):
+                    pass
+                elif isinstance(is_active, (int, float)):
+                    is_active = bool(is_active)
+                asset.is_active = is_active
 
             if record.get("resource_id") or record.get("region"):
                 current_extra = asset.extra_data or {}
@@ -1073,13 +1165,25 @@ async def batch_create_webs(
                 name=record["name"],
                 asset_code=record.get("asset_code"),
                 category="web",
-                external_url=record.get("external_url"),
-                internal_url=record.get("internal_url"),
+                external_address=record.get("external_address"),
+                internal_address=record.get("internal_address"),
+                applicant=record.get("applicant"),
                 organization_id=record.get("organization_id"),
                 notes=record.get("notes"),
             )
             db.add(asset)
             await db.flush()
+
+            # Handle is_active (status)
+            if record.get("is_active") is not None:
+                is_active = record["is_active"]
+                if isinstance(is_active, str):
+                    is_active = is_active.lower().strip() in ("true", "1", "yes", "启用", "是")
+                elif isinstance(is_active, bool):
+                    pass
+                elif isinstance(is_active, (int, float)):
+                    is_active = bool(is_active)
+                asset.is_active = is_active
 
             if record.get("credentials"):
                 for cred in record["credentials"]:
@@ -1118,12 +1222,23 @@ async def batch_update_webs(
                 failed_records.append({"id": record.get("id"), "error": "资产不存在"})
                 continue
 
-            for field in ["name", "asset_code", "external_url", "internal_url", "notes"]:
+            for field in ["name", "asset_code", "external_address", "internal_address", "applicant", "notes"]:
                 if record.get(field):
                     setattr(asset, field, record[field])
 
             if record.get("organization_id"):
                 asset.organization_id = record["organization_id"]
+
+            # Handle is_active (status)
+            if record.get("is_active") is not None:
+                is_active = record["is_active"]
+                if isinstance(is_active, str):
+                    is_active = is_active.lower().strip() in ("true", "1", "yes", "启用", "是")
+                elif isinstance(is_active, bool):
+                    pass
+                elif isinstance(is_active, (int, float)):
+                    is_active = bool(is_active)
+                asset.is_active = is_active
 
             if "credentials" in record:
                 await db.execute(delete(Credential).where(Credential.asset_id == asset.id))
@@ -1176,13 +1291,25 @@ async def batch_create_gpts(
                 asset_code=record.get("asset_code"),
                 category="gpt",
                 platform=record.get("platform"),
-                external_url=record.get("external_url"),
-                internal_url=record.get("internal_url"),
+                external_address=record.get("external_address"),
+                internal_address=record.get("internal_address"),
+                applicant=record.get("applicant"),
                 organization_id=record.get("organization_id"),
                 notes=record.get("notes"),
             )
             db.add(asset)
             await db.flush()
+
+            # Handle is_active (status)
+            if record.get("is_active") is not None:
+                is_active = record["is_active"]
+                if isinstance(is_active, str):
+                    is_active = is_active.lower().strip() in ("true", "1", "yes", "启用", "是")
+                elif isinstance(is_active, bool):
+                    pass
+                elif isinstance(is_active, (int, float)):
+                    is_active = bool(is_active)
+                asset.is_active = is_active
 
             if record.get("credentials"):
                 for cred in record["credentials"]:
@@ -1221,12 +1348,23 @@ async def batch_update_gpts(
                 failed_records.append({"id": record.get("id"), "error": "资产不存在"})
                 continue
 
-            for field in ["name", "asset_code", "platform", "url", "notes"]:
+            for field in ["name", "asset_code", "platform", "external_address", "internal_address", "applicant", "notes"]:
                 if record.get(field):
                     setattr(asset, field, record[field])
 
             if record.get("organization_id"):
                 asset.organization_id = record["organization_id"]
+
+            # Handle is_active (status)
+            if record.get("is_active") is not None:
+                is_active = record["is_active"]
+                if isinstance(is_active, str):
+                    is_active = is_active.lower().strip() in ("true", "1", "yes", "启用", "是")
+                elif isinstance(is_active, bool):
+                    pass
+                elif isinstance(is_active, (int, float)):
+                    is_active = bool(is_active)
+                asset.is_active = is_active
 
             if "credentials" in record:
                 await db.execute(delete(Credential).where(Credential.asset_id == asset.id))
@@ -1279,12 +1417,23 @@ async def batch_update_hosts(
             # Update fields (only non-null values)
             for field in ["name", "asset_code", "platform", "external_address",
                           "internal_address", "model", "serial_number", "cpu", "memory",
-                          "system_disk", "data_disk", "notes"]:
+                          "system_disk", "data_disk", "applicant", "notes"]:
                 if record.get(field):
                     setattr(asset, field, record[field])
 
             if record.get("organization_id"):
                 asset.organization_id = record["organization_id"]
+
+            # Handle is_active (status)
+            if record.get("is_active") is not None:
+                is_active = record["is_active"]
+                if isinstance(is_active, str):
+                    is_active = is_active.lower().strip() in ("true", "1", "yes", "启用", "是")
+                elif isinstance(is_active, bool):
+                    pass
+                elif isinstance(is_active, (int, float)):
+                    is_active = bool(is_active)
+                asset.is_active = is_active
 
             if record.get("extra_data"):
                 # Merge extra_data
