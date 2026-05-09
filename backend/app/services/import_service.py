@@ -98,7 +98,7 @@ DATABASE_CREATE_FIELDS = [
     ("name", "*资产名称", True),
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
-    ("platform", "*数据库类型", True),  # MySQL/PostgreSQL/MongoDB/Redis
+    ("platform", "*平台", True),  # MySQL/PostgreSQL/MongoDB/Redis 等
     ("external_address", "外网地址", False),  # 外网访问地址（可选，可带端口）
     ("internal_address", "内网地址", False),  # 内网访问地址（可选，可带端口）
     ("credentials", "*用户名密码", True),  # 格式：username:password，每行一个
