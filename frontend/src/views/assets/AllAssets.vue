@@ -186,13 +186,13 @@ const showImportModal = ref(false)
 const showExportModal = ref(false)
 
 // Column drag-to-reorder
-const FIXED_COLS = new Set(['checkbox', 'name', 'address', 'actions'])
+const FIXED_COLS = new Set(['checkbox', 'name', 'actions'])
 
 const orderedColumns = computed(() => {
   const categoryKeys = new Set(allColumnsConfig.value.map((c: any) => c.key))
   const middle = columnOrder.value.filter(k => categoryKeys.has(k) && k !== 'id')
   const idCol = visibleColumnKeys['id'] ? ['id'] : []
-  return ['checkbox', ...idCol, 'name', 'address', ...middle, 'actions']
+  return ['checkbox', ...idCol, 'name', ...middle, 'actions']
 })
 
 function isColVisible(key: string): boolean {
@@ -297,7 +297,6 @@ const form = ref({
   name: '',
   asset_code: '',
   category: 'host' as AssetCategory,
-  address: '',
   internal_address: '',
   external_address: '',
   platform: '',
@@ -419,7 +418,6 @@ function openCreateModal() {
     name: '',
     asset_code: '',
     category: defaultCategory,
-    address: '',
     internal_address: '',
     external_address: '',
     platform: defaultCategory === 'database' ? 'Kubernetes' : defaultCategory === 'cloud' ? 'Proxmox' : '',
@@ -465,7 +463,6 @@ function openEditModal(asset: Asset) {
     name: asset.name,
     asset_code: asset.asset_code || '',
     category: asset.category,
-    address: asset.address || '',
     internal_address: asset.internal_address || '',
     external_address: asset.external_address || '',
     platform: asset.platform || '',
@@ -528,7 +525,6 @@ async function handleSubmit() {
       // Only include asset_code if form has a value (empty string is valid to clear it)
       ...(form.value.asset_code !== '' && { asset_code: form.value.asset_code }),
       category: form.value.category,
-      address: form.value.address || undefined,
       internal_address: form.value.internal_address || undefined,
       external_address: form.value.external_address || undefined,
       platform: form.value.platform || undefined,

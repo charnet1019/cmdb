@@ -124,7 +124,6 @@ class Asset(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     asset_code: Mapped[Optional[str]] = mapped_column(String(50), unique=True)  # CI编号
     category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # AssetCategory
-    address: Mapped[Optional[str]] = mapped_column(String(255))  # Legacy single address field
     internal_address: Mapped[Optional[str]] = mapped_column(Text)  # 内网地址(多行)
     external_address: Mapped[Optional[str]] = mapped_column(Text)  # 外网地址(多行)
     platform: Mapped[Optional[str]] = mapped_column(String(50))  # 物理机/虚拟机/RDS/Docker/Kubernetes

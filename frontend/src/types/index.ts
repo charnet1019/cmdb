@@ -26,7 +26,6 @@ export interface Asset {
   name: string
   asset_code: string | null
   category: AssetCategory
-  address: string | null
   internal_address: string | null
   external_address: string | null
   platform: string | null  // 物理机/虚拟机/RDS/Docker/Kubernetes
