@@ -985,7 +985,7 @@ async def batch_update_databases(
                 failed_records.append({"id": record.get("id"), "error": "资产不存在"})
                 continue
 
-            for field in ["name", "asset_code", "platform", "db_type", "external_address", "internal_address", "applicant", "notes"]:
+            for field in ["name", "asset_code", "platform", "db_type", "external_address", "internal_address", "applicant", "namespace", "notes"]:
                 if record.get(field):
                     setattr(asset, field, record[field])
 
@@ -1003,15 +1003,10 @@ async def batch_update_databases(
                     is_active = bool(is_active)
                 asset.is_active = is_active
 
-            # Handle namespace and version in extra_data
-            if record.get("version") or record.get("namespace"):
+            # Handle version in extra_data
+            if record.get("version"):
                 current_extra = asset.extra_data or {}
-                updates = {}
-                if record.get("version"):
-                    updates["version"] = record["version"]
-                if record.get("namespace"):
-                    updates["namespace"] = record["namespace"]
-                asset.extra_data = {**current_extra, **updates}
+                asset.extra_data = {**current_extra, "version": record["version"]}
 
             if "credentials" in record:
                 await db.execute(delete(Credential).where(Credential.asset_id == asset.id))
