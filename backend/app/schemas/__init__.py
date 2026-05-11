@@ -152,6 +152,7 @@ class AssetUpdate(BaseModel):
     internal_address: Optional[str] = None
     external_address: Optional[str] = None
     platform: Optional[str] = None
+    db_type: Optional[str] = Field(None, max_length=50)  # 数据库类型
     organization_id: Optional[int] = None
     device_type: Optional[str] = None
     vendor: Optional[str] = None
@@ -167,6 +168,9 @@ class AssetUpdate(BaseModel):
     # URL fields
     internal_url: Optional[str] = None
     external_url: Optional[str] = None
+    # Additional fields
+    applicant: Optional[str] = Field(None, max_length=100)  # 申请人
+    namespace: Optional[str] = Field(None, max_length=100)  # 命名空间
 
 
 class AssetResponse(AssetBase):
