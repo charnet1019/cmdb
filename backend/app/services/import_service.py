@@ -539,6 +539,16 @@ async def parse_import_file(
         # Also map simple name
         org_display_path_map[org.name] = org.id
 
+    # Read header row to map columns by label (supports flexible column order)
+    header_row = ws.iter_rows(min_row=1, max_row=1, values_only=True).__next__()
+    # Create mapping from label (without * prefix) to column index (0-based)
+    header_map = {}
+    for col_idx, header in enumerate(header_row):
+        if header:
+            # Remove * prefix and whitespace for comparison
+            label_key = str(header).strip().lstrip('*').strip()
+            header_map[label_key] = col_idx
+
     # Skip header row, process data rows
     for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
         if not any(row):  # Skip empty rows
@@ -547,8 +557,15 @@ async def parse_import_file(
         record = {}
         errors = []
 
-        for col, (field_name, label, required) in enumerate(fields, 1):
-            value = row[col - 1] if col <= len(row) else None
+        for field_name, label, required in fields:
+            # Get label without * for lookup
+            label_key = label.lstrip('*').strip()
+            col_idx = header_map.get(label_key)
+
+            if col_idx is not None and col_idx < len(row):
+                value = row[col_idx]
+            else:
+                value = None
 
             # Clean value
             if value is not None:
@@ -577,19 +594,24 @@ async def parse_import_file(
             # Special handling for credentials field (format: username:password, one per line)
             elif field_name == "credentials" and value:
                 credentials_list = []
-                for line in value.split('\n'):
+                for line_num, line in enumerate(value.split('\n'), 1):
                     line = line.strip()
                     if not line:
                         continue
                     if ':' not in line:
-                        errors.append("用户名密码格式应为：username:password，每行一个")
+                        errors.append(f"用户名密码格式错误（第{line_num}行）：'{line}'，应为 username:password 格式")
                         continue
                     # Split on first colon only
                     idx = line.index(':')
                     username = line[:idx].strip()
                     password = line[idx+1:].strip()
-                    if username and password:
-                        credentials_list.append({"username": username, "password": password})
+                    if not username:
+                        errors.append(f"用户名密码格式错误（第{line_num}行）：用户名为空")
+                        continue
+                    if not password:
+                        errors.append(f"用户名密码格式错误（第{line_num}行）：密码为空")
+                        continue
+                    credentials_list.append({"username": username, "password": password})
                 if credentials_list:
                     record["credentials"] = credentials_list
 
