@@ -480,12 +480,12 @@ function openEditModal(asset: Asset) {
     internal_url: asset.internal_url || '',
     external_url: asset.external_url || '',
     version: asset.extra_data?.version || '',
-    namespace: asset.extra_data?.namespace || '',
-    db_type: asset.extra_data?.db_type || '',
+    namespace: asset.namespace || '',
+    db_type: asset.db_type || '',
     oob: asset.extra_data?.oob || '',
     oob_username: asset.extra_data?.oob_username || '',
     oob_password: asset.extra_data?.oob_password || '',
-    applicant: asset.extra_data?.applicant || '',
+    applicant: asset.applicant || '',
     notes: asset.notes || ''
   }
   formSelectedOrgId.value = asset.organization_id || null
@@ -510,19 +510,15 @@ async function handleSubmit() {
     let extraData: Record<string, any> | undefined
     if (form.value.category === 'host' || form.value.category === 'database') {
       const extraFields: Record<string, any> = {}
-      // Host applicant
+      // Host oob fields (applicant now goes to independent column)
       if (form.value.category === 'host') {
         if (form.value.oob) extraFields.oob = form.value.oob
         if (form.value.oob_username) extraFields.oob_username = form.value.oob_username
         if (form.value.oob_password) extraFields.oob_password = form.value.oob_password
-        if (form.value.applicant) extraFields.applicant = form.value.applicant
       }
-      // Database fields
+      // Database version field (db_type, namespace, applicant now go to independent columns)
       if (form.value.category === 'database') {
-        if (form.value.db_type) extraFields.db_type = form.value.db_type
         if (form.value.version) extraFields.version = form.value.version
-        if (form.value.namespace) extraFields.namespace = form.value.namespace
-        if (form.value.applicant) extraFields.applicant = form.value.applicant
       }
       extraData = Object.keys(extraFields).length > 0 ? extraFields : undefined
     }
@@ -545,6 +541,10 @@ async function handleSubmit() {
       data_disk: form.value.data_disk || undefined,
       internal_url: form.value.internal_url || undefined,
       external_url: form.value.external_url || undefined,
+      // Independent fields for database assets
+      db_type: form.value.db_type || undefined,
+      applicant: form.value.applicant || undefined,
+      namespace: form.value.namespace || undefined,
       extra_data: extraData,
       notes: form.value.notes || undefined,
       organization_id: formSelectedOrgId.value || undefined
@@ -958,15 +958,15 @@ onMounted(async () => {
                             <EyeOutlined v-if="asset.is_active && asset.extra_data?.oob_password" class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showOobPasswordPopover(asset, $event)" />
                           </div>
                         </template>
-                        <template v-else-if="key === 'db_type'"><span class="text-sm text-slate-600">{{ asset.extra_data?.db_type || '' }}</span></template>
+                        <template v-else-if="key === 'db_type'"><span class="text-sm text-slate-600">{{ asset.db_type || '' }}</span></template>
                         <template v-else-if="key === 'version'"><span class="text-sm text-slate-600">{{ asset.extra_data?.version || '' }}</span></template>
-                        <template v-else-if="key === 'namespace'"><span class="text-sm text-slate-600">{{ asset.extra_data?.namespace || '' }}</span></template>
+                        <template v-else-if="key === 'namespace'"><span class="text-sm text-slate-600">{{ asset.namespace || '' }}</span></template>
                         <template v-else-if="key === 'organization'"><span class="text-sm text-slate-600">{{ asset.organization_name || 'Default' }}</span></template>
                         <template v-else-if="key === 'is_active'">
                           <span v-if="asset.is_active" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">启用</span>
                           <span v-else class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">禁用</span>
                         </template>
-                        <template v-else-if="key === 'applicant'">{{ asset.extra_data?.applicant || '' }}</template>
+                        <template v-else-if="key === 'applicant'">{{ asset.applicant || '' }}</template>
                         <template v-else-if="key === 'credentials'">
                           <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
                             <span class="font-medium shrink-0">{{ cred.username }}</span>
