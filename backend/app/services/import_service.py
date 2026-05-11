@@ -137,7 +137,6 @@ CLOUD_CREATE_FIELDS = [
     ("internal_address", "内网地址", False),  # 多行，每行一个
     ("resource_id", "资源 ID", False),  # 云资源唯一标识
     ("credentials", "*访问凭证", True),  # 格式：AKID:Secret 或 username:password
-    ("region", "区域", False),  # 如：cn-hangzhou
     ("applicant", "申请人", False),
     ("is_active", "状态", False),  # 启用/禁用 或 True/False 或 1/0
     ("notes", "描述", False),
@@ -153,7 +152,6 @@ CLOUD_UPDATE_FIELDS = [
     ("internal_address", "内网地址", False),
     ("resource_id", "资源 ID", False),
     ("credentials", "访问凭证", False),
-    ("region", "区域", False),
     ("applicant", "申请人", False),
     ("is_active", "状态", False),
     ("notes", "描述", False),
@@ -1065,11 +1063,8 @@ async def batch_create_clouds(
                 organization_id=record.get("organization_id"),
                 notes=record.get("notes"),
                 extra_data={
-                    k: v for k, v in {
-                        "resource_id": record.get("resource_id"),
-                        "region": record.get("region")
-                    }.items() if v
-                } if record.get("resource_id") or record.get("region") else None,
+                    "resource_id": record.get("resource_id")
+                } if record.get("resource_id") else None,
             )
             db.add(asset)
             await db.flush()
@@ -1140,14 +1135,9 @@ async def batch_update_clouds(
                     is_active = bool(is_active)
                 asset.is_active = is_active
 
-            if record.get("resource_id") or record.get("region"):
+            if record.get("resource_id"):
                 current_extra = asset.extra_data or {}
-                updates = {}
-                if record.get("resource_id"):
-                    updates["resource_id"] = record["resource_id"]
-                if record.get("region"):
-                    updates["region"] = record["region"]
-                asset.extra_data = {**current_extra, **updates}
+                asset.extra_data = {**current_extra, "resource_id": record["resource_id"]}
 
             if "credentials" in record:
                 await db.execute(delete(Credential).where(Credential.asset_id == asset.id))
