@@ -186,7 +186,6 @@ async def list_assets(
         query = query.where(
             or_(
                 Asset.name.ilike(f"%{search}%"),
-                Asset.address.ilike(f"%{search}%"),
                 Asset.notes.ilike(f"%{search}%"),
             )
         )
@@ -287,7 +286,6 @@ async def create_asset(
         name=data.name,
         asset_code=data.asset_code,
         category=data.category,
-        address=data.address,
         internal_address=data.internal_address,
         external_address=data.external_address,
         platform=data.platform,
@@ -319,7 +317,6 @@ async def create_asset(
         name=asset.name,
         asset_code=asset.asset_code,
         category=asset.category,
-        address=asset.address,
         internal_address=asset.internal_address,
         external_address=asset.external_address,
         platform=asset.platform,
@@ -607,7 +604,6 @@ async def export_assets(
             query = query.where(
                 or_(
                     Asset.name.ilike(f"%{search}%"),
-                    Asset.address.ilike(f"%{search}%"),
                     Asset.notes.ilike(f"%{search}%"),
                 )
             )
@@ -739,7 +735,6 @@ async def get_asset(
         name=asset.name,
         asset_code=asset.asset_code,
         category=asset.category,
-        address=asset.address,
         internal_address=asset.internal_address,
         external_address=asset.external_address,
         platform=asset.platform,
@@ -812,7 +807,6 @@ async def update_asset(
         name=asset.name,
         asset_code=asset.asset_code,
         category=asset.category,
-        address=asset.address,
         internal_address=asset.internal_address,
         external_address=asset.external_address,
         platform=asset.platform,
