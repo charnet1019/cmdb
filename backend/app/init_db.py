@@ -11,6 +11,10 @@ from app.core.security import get_password_hash
 from app.config import settings
 
 
+# Default admin password (change in production)
+DEFAULT_ADMIN_PASSWORD = "admin123"
+
+
 def generate_random_password(length: int = 16) -> str:
     """Generate a secure random password"""
     chars = string.ascii_letters + string.digits + "!@#$%^&*"
@@ -41,15 +45,12 @@ async def init_db():
         session.add(admin_group)
         await session.flush()
 
-        # Generate random password for admin
-        temp_password = generate_random_password()
-
-        # Create admin user
+        # Create admin user with default password
         admin_user = User(
             username="admin",
             email="admin@example.com",
             full_name="系统管理员",
-            password_hash=get_password_hash(temp_password),
+            password_hash=get_password_hash(DEFAULT_ADMIN_PASSWORD),
             is_active=True,
             is_superuser=True,
             mfa_enabled=False,
@@ -82,9 +83,9 @@ async def init_db():
         print("[OK] Initialization complete!")
         print("=" * 60)
         print("     Admin account: admin")
-        print(f"     Temporary password: {temp_password}")
+        print(f"     Default password: {DEFAULT_ADMIN_PASSWORD}")
         print("=" * 60)
-        print("[WARNING] Please save the password and change it immediately after login!")
+        print("[WARNING] Please change the default password immediately after login!")
         print("=" * 60)
 
 
