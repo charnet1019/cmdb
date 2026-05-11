@@ -545,8 +545,8 @@ async def parse_import_file(
     header_map = {}
     for col_idx, header in enumerate(header_row):
         if header:
-            # Remove * prefix and whitespace for comparison
-            label_key = str(header).strip().lstrip('*').strip()
+            # Remove * and * (full/half-width) prefix and whitespace for comparison
+            label_key = str(header).strip().replace('*', '').replace('*', '').strip()
             header_map[label_key] = col_idx
 
     # Skip header row, process data rows
@@ -927,14 +927,12 @@ async def batch_create_databases(
                 external_address=record.get("external_address"),
                 internal_address=record.get("internal_address"),
                 applicant=record.get("applicant"),
+                namespace=record.get("namespace"),  # 命名空间字段
                 organization_id=record.get("organization_id"),
                 notes=record.get("notes"),
                 extra_data={
-                    k: v for k, v in {
-                        "version": record.get("version"),
-                        "namespace": record.get("namespace")
-                    }.items() if v
-                } if record.get("version") or record.get("namespace") else None,
+                    "version": record.get("version")
+                } if record.get("version") else None,
             )
             db.add(asset)
             await db.flush()
