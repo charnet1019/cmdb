@@ -234,6 +234,7 @@ async def list_assets(
             "internal_address": asset.internal_address,
             "external_address": asset.external_address,
             "platform": asset.platform,
+            "db_type": asset.db_type,
             "organization_id": asset.organization_id,
             "organization_name": org_names.get(asset.organization_id) if asset.organization_id else None,
             "device_type": asset.device_type,
@@ -253,6 +254,8 @@ async def list_assets(
             "created_at": asset.created_at,
             "updated_at": asset.updated_at,
             "credentials": credentials,
+            "applicant": asset.applicant,
+            "namespace": asset.namespace,
         })
 
     return AssetListResponse(
@@ -289,6 +292,7 @@ async def create_asset(
         internal_address=data.internal_address,
         external_address=data.external_address,
         platform=data.platform,
+        db_type=data.db_type,
         organization_id=data.organization_id,
         device_type=data.device_type,
         vendor=data.vendor,
@@ -303,6 +307,8 @@ async def create_asset(
         external_url=data.external_url,
         notes=data.notes,
         extra_data=data.extra_data,
+        applicant=data.applicant,
+        namespace=data.namespace,
     )
 
     db.add(asset)
@@ -318,6 +324,7 @@ async def create_asset(
         internal_address=asset.internal_address,
         external_address=asset.external_address,
         platform=asset.platform,
+        db_type=asset.db_type,
         organization_id=asset.organization_id,
         device_type=asset.device_type,
         vendor=asset.vendor,
@@ -336,6 +343,8 @@ async def create_asset(
         created_at=asset.created_at,
         updated_at=asset.updated_at,
         credentials=[],
+        applicant=asset.applicant,
+        namespace=asset.namespace,
     )
 
 
@@ -650,6 +659,7 @@ async def export_assets(
             "internal_address": asset.internal_address,
             "external_address": asset.external_address,
             "platform": asset.platform,
+            "db_type": asset.db_type,
             "organization_id": asset.organization_id,
             "organization_name": org_names.get(asset.organization_id) if asset.organization_id else None,
             "device_type": asset.device_type,
@@ -666,6 +676,8 @@ async def export_assets(
             "extra_data": asset.extra_data,
             "is_active": asset.is_active,
             "created_at": asset.created_at,
+            "applicant": asset.applicant,
+            "namespace": asset.namespace,
         })
 
     # Generate file based on format
@@ -733,6 +745,7 @@ async def get_asset(
         internal_address=asset.internal_address,
         external_address=asset.external_address,
         platform=asset.platform,
+        db_type=asset.db_type,
         organization_id=asset.organization_id,
         organization_name=organization_name,
         device_type=asset.device_type,
@@ -752,6 +765,8 @@ async def get_asset(
         created_at=asset.created_at,
         updated_at=asset.updated_at,
         credentials=credentials,
+        applicant=asset.applicant,
+        namespace=asset.namespace,
     )
 
 
@@ -803,6 +818,7 @@ async def update_asset(
         internal_address=asset.internal_address,
         external_address=asset.external_address,
         platform=asset.platform,
+        db_type=asset.db_type,
         organization_id=asset.organization_id,
         device_type=asset.device_type,
         vendor=asset.vendor,
@@ -824,6 +840,8 @@ async def update_asset(
             {"id": c.id, "username": c.username, "credential_type": c.credential_type}
             for c in credentials
         ],
+        applicant=asset.applicant,
+        namespace=asset.namespace,
     )
 
 

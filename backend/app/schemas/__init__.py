@@ -115,12 +115,16 @@ class AssetBase(BaseModel):
     internal_address: Optional[str] = None  # 内网地址
     external_address: Optional[str] = None  # 外网地址
     platform: Optional[str] = Field(None, max_length=50)
+    db_type: Optional[str] = Field(None, max_length=50)  # 数据库类型
     organization_id: Optional[int] = None
     notes: Optional[str] = None
     # URL fields for cloud/web/gpt
     url: Optional[str] = Field(None, max_length=500)  # Legacy field for backward compatibility
     internal_url: Optional[str] = None  # 内网 URL
     external_url: Optional[str] = None  # 外网 URL
+    # Additional fields
+    applicant: Optional[str] = Field(None, max_length=100)  # 申请人
+    namespace: Optional[str] = Field(None, max_length=100)  # 命名空间
 
 
 class AssetCreate(AssetBase):
@@ -134,6 +138,9 @@ class AssetCreate(AssetBase):
     memory: Optional[str] = None
     system_disk: Optional[str] = None
     data_disk: Optional[str] = None
+    db_type: Optional[str] = None
+    applicant: Optional[str] = None
+    namespace: Optional[str] = None
     extra_data: Optional[dict] = Field(None, serialization_alias="metadata")
 
 
