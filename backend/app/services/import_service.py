@@ -132,12 +132,10 @@ CLOUD_CREATE_FIELDS = [
     ("name", "*资产名称", True),
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
-    ("platform", "*云平台", True),  # AWS/阿里云/腾讯云/Azure
+    ("platform", "*平台", True),  # AWS/阿里云/腾讯云/Azure
     ("external_address", "外网地址", False),  # 多行，每行一个
     ("internal_address", "内网地址", False),  # 多行，每行一个
-    ("resource_id", "资源 ID", False),  # 云资源唯一标识
-    ("credentials", "*访问凭证", True),  # 格式：AKID:Secret 或 username:password
-    ("applicant", "申请人", False),
+    ("credentials", "*用户名密码", True),  # 格式：AKID:Secret 或 username:password，每行一个
     ("is_active", "状态", False),  # 启用/禁用 或 True/False 或 1/0
     ("notes", "描述", False),
 ]
@@ -147,12 +145,10 @@ CLOUD_UPDATE_FIELDS = [
     ("name", "资产名称", False),
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
-    ("platform", "云平台", False),
+    ("platform", "平台", False),
     ("external_address", "外网地址", False),
     ("internal_address", "内网地址", False),
-    ("resource_id", "资源 ID", False),
-    ("credentials", "访问凭证", False),
-    ("applicant", "申请人", False),
+    ("credentials", "用户名密码", False),
     ("is_active", "状态", False),
     ("notes", "描述", False),
 ]
@@ -401,10 +397,11 @@ def generate_cloud_create_template() -> BytesIO:
     """Generate XLSX template for cloud resource creation"""
     example_data = [
         "AWS-Prod-Account", "CL001", "研发部/云服务", "AWS",
-        "123456789012",
-        "AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-        "cn-north-1",
-        "生产环境 AWS 账号"
+        "https://aws.amazon.com",  # external_address - 外网地址
+        "10.0.0.1",  # internal_address - 内网地址
+        "AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",  # 用户名密码
+        "启用",  # 状态
+        "生产环境 AWS 账号"  # 描述
     ]
     return _generate_template("cloud", "create", "云服务导入模板", CLOUD_CREATE_FIELDS, example_data)
 
@@ -413,10 +410,11 @@ def generate_cloud_update_template() -> BytesIO:
     """Generate XLSX template for cloud resource update"""
     example_data = [
         "56c4d4cd-42ba-4397-abfa-36ecba64af13", "AWS-Prod-Account", "CL001", "研发部/云服务", "AWS",
-        "123456789012",
-        "AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-        "cn-north-1",
-        "生产环境 AWS 账号"
+        "https://aws.amazon.com",  # external_address - 外网地址
+        "10.0.0.1",  # internal_address - 内网地址
+        "AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",  # 用户名密码
+        "启用",  # 状态
+        "生产环境 AWS 账号"  # 描述
     ]
     return _generate_template("cloud", "update", "云服务更新模板", CLOUD_UPDATE_FIELDS, example_data)
 
@@ -540,12 +538,53 @@ async def parse_import_file(
     # Read header row to map columns by label (supports flexible column order)
     header_row = ws.iter_rows(min_row=1, max_row=1, values_only=True).__next__()
     # Create mapping from label (without * prefix) to column index (0-based)
+    # fields format: (field_name, "中文标签", is_required)
     header_map = {}
+    expected_labels = {field_label.lstrip('*').strip() for field_name, field_label, _ in fields}
+
     for col_idx, header in enumerate(header_row):
         if header:
             # Remove * and * (full/half-width) prefix and whitespace for comparison
             label_key = str(header).strip().replace('*', '').replace('*', '').strip()
             header_map[label_key] = col_idx
+
+    # Validate headers: check if all required fields are present in the Excel
+    missing_headers = []
+    unrecognized_headers = []
+
+    for label_key in expected_labels:
+        if label_key not in header_map:
+            missing_headers.append(label_key)
+
+    # Check for unrecognized headers (might indicate wrong template)
+    for label_key in header_map.keys():
+        if label_key not in expected_labels:
+            unrecognized_headers.append(label_key)
+
+    # If required fields are missing, return early with error
+    if missing_headers:
+        # Add * prefix back for required fields in error message
+        missing_display = []
+        for h in missing_headers:
+            for field_name, label, required in fields:
+                if label.lstrip('*') == h and required:
+                    missing_display.append(f"*{h}")
+                    break
+            else:
+                missing_display.append(h)
+
+        error_msg = f"表头缺失字段：{', '.join(missing_display)}"
+        if unrecognized_headers:
+            extra = ', '.join(unrecognized_headers[:3])
+            if len(unrecognized_headers) > 3:
+                extra += '...'
+            error_msg += f"（发现未识别列：{extra}）"
+
+        return [], [{
+            "row": 1,
+            "errors": [error_msg],
+            "data": {"提示": f"请检查是否使用了正确的{CATEGORY_NAMES.get(category, category)}{'创建' if mode == 'create' else '更新'}模板"}
+        }]
 
     # Skip header row, process data rows
     for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
@@ -636,10 +675,18 @@ async def parse_import_file(
                 record[field_name] = value
 
         if errors:
+            # Collect non-empty fields for better error context
+            context = {k: v for k, v in record.items() if v is not None and k in ['name', 'id', 'asset_code']}
+            if len(row) > 0 and any(row):
+                # Add first few non-empty cell values for reference
+                first_non_empty = next((str(v) for v in row if v), None)
+                if first_non_empty:
+                    context['row_data_preview'] = first_non_empty[:50]
+
             error_records.append({
                 "row": row_num,
                 "errors": errors,
-                "data": {"name": record.get("name"), "id": record.get("id")}
+                "data": context or {"row_content": " | ".join(str(v) for v in row[:5] if v)}
             })
         else:
             valid_records.append(record)
@@ -1059,12 +1106,8 @@ async def batch_create_clouds(
                 platform=record.get("platform"),
                 external_address=record.get("external_address"),
                 internal_address=record.get("internal_address"),
-                applicant=record.get("applicant"),
                 organization_id=record.get("organization_id"),
                 notes=record.get("notes"),
-                extra_data={
-                    "resource_id": record.get("resource_id")
-                } if record.get("resource_id") else None,
             )
             db.add(asset)
             await db.flush()
@@ -1117,7 +1160,7 @@ async def batch_update_clouds(
                 failed_records.append({"id": record.get("id"), "error": "资产不存在"})
                 continue
 
-            for field in ["name", "asset_code", "platform", "external_address", "internal_address", "applicant", "notes"]:
+            for field in ["name", "asset_code", "platform", "external_address", "internal_address", "notes"]:
                 if record.get(field):
                     setattr(asset, field, record[field])
 
@@ -1134,10 +1177,6 @@ async def batch_update_clouds(
                 elif isinstance(is_active, (int, float)):
                     is_active = bool(is_active)
                 asset.is_active = is_active
-
-            if record.get("resource_id"):
-                current_extra = asset.extra_data or {}
-                asset.extra_data = {**current_extra, "resource_id": record["resource_id"]}
 
             if "credentials" in record:
                 await db.execute(delete(Credential).where(Credential.asset_id == asset.id))
