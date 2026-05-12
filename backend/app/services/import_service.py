@@ -450,9 +450,11 @@ def generate_gpt_create_template() -> BytesIO:
     """Generate XLSX template for GPT/AI service creation"""
     example_data = [
         "OpenAI-API", "AI001", "研发部/AI 服务", "OpenAI",
-        "https://api.openai.com/v1",
+        "https://api.openai.com/v1", "",  # external_address, internal_address
         "sk-key:sk-abc123xyz\nclue-key:sk-clue456",
-        "AI 服务 API"
+        "张三",  # applicant
+        "启用",  # is_active
+        "AI 服务 API"  # notes
     ]
     return _generate_template("gpt", "create", "AI 服务导入模板", GPT_CREATE_FIELDS, example_data)
 
@@ -461,9 +463,11 @@ def generate_gpt_update_template() -> BytesIO:
     """Generate XLSX template for GPT/AI service update"""
     example_data = [
         "56c4d4cd-42ba-4397-abfa-36ecba64af13", "OpenAI-API", "AI001", "研发部/AI 服务", "OpenAI",
-        "https://api.openai.com/v1",
+        "https://api.openai.com/v1", "",  # external_address, internal_address
         "sk-key:sk-abc123xyz\nclue-key:sk-clue456",
-        "AI 服务 API"
+        "张三",  # applicant
+        "启用",  # is_active
+        "AI 服务 API"  # notes
     ]
     return _generate_template("gpt", "update", "AI 服务更新模板", GPT_UPDATE_FIELDS, example_data)
 
@@ -1361,20 +1365,20 @@ async def batch_create_gpts(
                 applicant=record.get("applicant"),
                 organization_id=record.get("organization_id"),
                 notes=record.get("notes"),
+                is_active=True,  # Default to enabled
             )
             db.add(asset)
             await db.flush()
 
-            # Handle is_active (status)
-            if record.get("is_active") is not None:
-                is_active = record["is_active"]
-                if isinstance(is_active, str):
-                    is_active = is_active.lower().strip() in ("true", "1", "yes", "启用", "是")
-                elif isinstance(is_active, bool):
-                    pass
-                elif isinstance(is_active, (int, float)):
-                    is_active = bool(is_active)
-                asset.is_active = is_active
+            # Handle is_active (status) - override default if specified
+            is_active_value = record.get("is_active")
+            if is_active_value is not None and is_active_value != "":
+                if isinstance(is_active_value, str):
+                    asset.is_active = is_active_value.lower().strip() in ("true", "1", "yes", "启用", "是")
+                elif isinstance(is_active_value, bool):
+                    asset.is_active = is_active_value
+                elif isinstance(is_active_value, (int, float)):
+                    asset.is_active = bool(is_active_value)
 
             if record.get("credentials"):
                 for cred in record["credentials"]:
@@ -1420,16 +1424,15 @@ async def batch_update_gpts(
             if record.get("organization_id"):
                 asset.organization_id = record["organization_id"]
 
-            # Handle is_active (status)
-            if record.get("is_active") is not None:
-                is_active = record["is_active"]
-                if isinstance(is_active, str):
-                    is_active = is_active.lower().strip() in ("true", "1", "yes", "启用", "是")
-                elif isinstance(is_active, bool):
-                    pass
-                elif isinstance(is_active, (int, float)):
-                    is_active = bool(is_active)
-                asset.is_active = is_active
+            # Handle is_active (status) - only update if explicitly specified
+            is_active_value = record.get("is_active")
+            if is_active_value is not None and is_active_value != "":
+                if isinstance(is_active_value, str):
+                    asset.is_active = is_active_value.lower().strip() in ("true", "1", "yes", "启用", "是")
+                elif isinstance(is_active_value, bool):
+                    asset.is_active = is_active_value
+                elif isinstance(is_active_value, (int, float)):
+                    asset.is_active = bool(is_active_value)
 
             if "credentials" in record:
                 await db.execute(delete(Credential).where(Credential.asset_id == asset.id))
