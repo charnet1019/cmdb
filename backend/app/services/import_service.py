@@ -183,13 +183,13 @@ WEB_UPDATE_FIELDS = [
 
 # GPT field definitions
 GPT_CREATE_FIELDS = [
-    ("name", "*资产名称", True),
+    ("name", "*名称", True),
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
-    ("platform", "*AI 平台", True),  # OpenAI/Claude/ChatGLM/通义千问
+    ("platform", "*平台", True),  # OpenAI/Claude/ChatGLM/通义千问
     ("external_address", "*外网地址", True),  # API 地址
     ("internal_address", "内网地址", False),
-    ("credentials", "*API Key", True),  # 格式：key_name:api_key，每行一个
+    ("credentials", "用户名密码", True),  # 格式：key_name:api_key，每行一个
     ("applicant", "申请人", False),
     ("is_active", "状态", False),  # 启用/禁用 或 True/False 或 1/0
     ("notes", "描述", False),
@@ -197,13 +197,13 @@ GPT_CREATE_FIELDS = [
 
 GPT_UPDATE_FIELDS = [
     ("id", "*ID", True),
-    ("name", "资产名称", False),
+    ("name", "名称", False),
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
-    ("platform", "AI 平台", False),
+    ("platform", "平台", False),
     ("external_address", "外网地址", False),
     ("internal_address", "内网地址", False),
-    ("credentials", "API Key", False),
+    ("credentials", "用户名密码", False),
     ("applicant", "申请人", False),
     ("is_active", "状态", False),
     ("notes", "描述", False),
