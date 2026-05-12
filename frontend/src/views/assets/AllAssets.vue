@@ -214,9 +214,13 @@ function isColVisible(key: string): boolean {
 }
 
 function thLabel(key: string): string {
-  if (key === 'platform') return activeCategory.value === 'network' ? '厂商/型号' : '平台'
+  // 动态列映射：通过表头名称匹配
   const col = allColumnsConfig.value.find((c: any) => c.key === key)
-  return col?.label ?? key
+  if (col) return col.label
+
+  // 降级处理：对于 platform 字段，根据资产类型返回不同标签
+  if (key === 'platform') return activeCategory.value === 'network' ? '厂商/型号' : '平台'
+  return key
 }
 
 const dragFromKey = ref('')
@@ -1061,7 +1065,7 @@ onMounted(async () => {
               </div>
               <div class="grid grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">厂商</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1.5">平台</label>
                   <select v-model="form.platform" class="input-field">
                     <option value="">请选择</option>
                     <option v-for="p in platformOptions[form.category]" :key="p" :value="p">{{ p }}</option>
