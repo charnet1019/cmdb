@@ -110,6 +110,7 @@ const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
     { key: 'address', label: '地址', fixed: true, defaultVisible: true },
     { key: 'asset_code', label: '资产编号', defaultVisible: false },
     { key: 'platform', label: '平台', defaultVisible: true },
+    { key: 'applicant', label: '申请人', defaultVisible: false },
     { key: 'organization', label: '节点', defaultVisible: false },
     { key: 'is_active', label: '状态', defaultVisible: true },
     { key: 'credentials', label: '用户名密码', defaultVisible: true },

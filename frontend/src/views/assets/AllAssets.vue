@@ -208,7 +208,7 @@ function isColVisible(key: string): boolean {
     case 'cpu': case 'memory': case 'system_disk': case 'data_disk':
     case 'oob': case 'oob_credentials': return cat === 'host' || cat === 'all'
     case 'db_type': case 'version': case 'namespace': return cat === 'database' || cat === 'all'
-    case 'applicant': return cat === 'host' || cat === 'database' || cat === 'all'
+    case 'applicant': return cat === 'host' || cat === 'database' || cat === 'web' || cat === 'all'
     default: return true
   }
 }
@@ -1252,6 +1252,14 @@ onMounted(async () => {
                 </div>
               </div>
             </div>
+
+            <!-- Web 专属字段 -->
+            <template v-if="form.category === 'web'">
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1.5">申请人</label>
+                <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />
+              </div>
+            </template>
 
             <!-- 数据库专属字段 -->
             <template v-if="form.category === 'database'">
