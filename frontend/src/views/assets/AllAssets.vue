@@ -868,7 +868,7 @@ onMounted(async () => {
         <!-- Table -->
         <div class="bg-white rounded-xl shadow-sm overflow-hidden relative">
           <div class="overflow-x-auto" :key="columnConfigVersion">
-            <table class="data-table min-w-[800px]">
+            <table class="data-table min-w-[1400px]">
               <thead>
                 <tr>
                   <template v-for="key in orderedColumns" :key="key">
