@@ -40,10 +40,6 @@ export interface Asset {
   memory: string | null
   system_disk: string | null
   data_disk: string | null
-  // URL fields for cloud/web/gpt categories
-  url: string | null  // Legacy field for backward compatibility
-  internal_url: string | null  // 内网 URL
-  external_url: string | null  // 外网 URL
   notes: string | null
   extra_data: Record<string, any> | null
   is_active: boolean

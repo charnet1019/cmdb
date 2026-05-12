@@ -192,7 +192,9 @@ const orderedColumns = computed(() => {
   const categoryKeys = new Set(allColumnsConfig.value.map((c: any) => c.key))
   const middle = columnOrder.value.filter(k => categoryKeys.has(k) && k !== 'id')
   const idCol = visibleColumnKeys['id'] ? ['id'] : []
-  return ['checkbox', ...idCol, 'name', ...middle, 'actions']
+  // address 是固定列但不在 FIXED_COLS 中，需要显式添加
+  const addressCol = visibleColumnKeys['address'] && categoryKeys.has('address') ? ['address'] : []
+  return ['checkbox', ...idCol, 'name', ...addressCol, ...middle, 'actions']
 })
 
 function isColVisible(key: string): boolean {
@@ -307,9 +309,6 @@ const form = ref({
   memory: '',
   system_disk: '',
   data_disk: '',
-  url: '',
-  internal_url: '',
-  external_url: '',
   version: '',
   namespace: '',
   db_type: activeCategory.value === 'database' ? 'MySQL' : '',
@@ -428,9 +427,6 @@ function openCreateModal() {
     memory: '',
     system_disk: '',
     data_disk: '',
-    url: '',
-    internal_url: '',
-    external_url: '',
     version: '',
     namespace: '',
     db_type: activeCategory.value === 'database' ? 'MySQL' : '',
@@ -473,9 +469,6 @@ function openEditModal(asset: Asset) {
     memory: asset.memory || '',
     system_disk: asset.system_disk || '',
     data_disk: asset.data_disk || '',
-    url: asset.url || '',
-    internal_url: asset.internal_url || '',
-    external_url: asset.external_url || '',
     version: asset.extra_data?.version || '',
     namespace: asset.namespace || '',
     db_type: asset.db_type || '',
@@ -535,8 +528,6 @@ async function handleSubmit() {
       memory: form.value.memory || undefined,
       system_disk: form.value.system_disk || undefined,
       data_disk: form.value.data_disk || undefined,
-      internal_url: form.value.internal_url || undefined,
-      external_url: form.value.external_url || undefined,
       // Independent fields for database assets
       db_type: form.value.db_type || undefined,
       applicant: form.value.applicant || undefined,
@@ -897,7 +888,7 @@ onMounted(async () => {
                   <tr v-for="asset in assets" :key="asset.id" :class="{ 'opacity-50 bg-slate-50': !asset.is_active }">
                     <template v-for="key in orderedColumns" :key="key">
                       <td v-if="isColVisible(key)"
-                          :class="{ 'text-right': key === 'actions', 'text-sm text-slate-600': key === 'applicant', 'whitespace-normal': key === 'notes' }">
+                          :class="{ 'text-right': key === 'actions', 'text-sm text-slate-600': key === 'applicant', 'whitespace-normal': key === 'notes', 'whitespace-pre-wrap': key === 'address' }">
                         <template v-if="key === 'checkbox'">
                           <input type="checkbox" class="rounded border-gray-300 w-3.5 h-3.5" v-model="asset.selected" @change="selectionChanged" />
                         </template>
@@ -905,33 +896,16 @@ onMounted(async () => {
                           <p class="font-medium text-slate-900">{{ asset.name }}</p>
                         </template>
                         <template v-else-if="key === 'address'">
-                          <!-- Cloud/Web/GPT assets show URLs -->
-                          <template v-if="['cloud', 'web', 'gpt'].includes(asset.category)">
-                            <div v-if="asset.external_url" class="text-sm text-slate-600 font-mono">
-                              <span class="text-[10px] text-blue-500 font-medium mr-1">外</span>
-                              <span>{{ asset.external_url }}</span>
-                            </div>
-                            <div v-if="asset.internal_url" class="text-sm text-slate-600 font-mono">
-                              <span class="text-[10px] text-green-500 font-medium mr-1">内</span>
-                              <span>{{ asset.internal_url }}</span>
-                            </div>
-                            <!-- Fallback to legacy url field -->
-                            <span v-if="!asset.external_url && !asset.internal_url && asset.url" class="text-sm text-slate-600 font-mono">{{ asset.url }}</span>
-                            <span v-if="!asset.external_url && !asset.internal_url && !asset.url" class="text-sm text-slate-400">-</span>
-                          </template>
-                          <!-- Other assets show addresses -->
-                          <template v-else>
-                            <div v-if="asset.external_address" class="text-sm text-slate-600 font-mono">
-                              <span class="text-[10px] text-blue-500 font-medium mr-1">外</span>
-                              <span>{{ asset.external_address }}</span>
-                            </div>
-                            <div v-if="asset.internal_address" class="text-sm text-slate-600 font-mono">
-                              <span class="text-[10px] text-green-500 font-medium mr-1">内</span>
-                              <span>{{ asset.internal_address }}</span>
-                            </div>
-                            <span v-if="!asset.external_address && !asset.internal_address && asset.address" class="text-sm text-slate-600 font-mono">{{ asset.address }}</span>
-                            <span v-if="!asset.external_address && !asset.internal_address && !asset.address" class="text-sm text-slate-400">-</span>
-                          </template>
+                          <!-- All assets show addresses -->
+                          <div v-if="asset.external_address" class="text-sm text-slate-600 font-mono">
+                            <span class="text-[10px] text-blue-500 font-medium mr-1">外</span>
+                            <span v-text="asset.external_address"></span>
+                          </div>
+                          <div v-if="asset.internal_address" class="text-sm text-slate-600 font-mono">
+                            <span class="text-[10px] text-green-500 font-medium mr-1">内</span>
+                            <span v-text="asset.internal_address"></span>
+                          </div>
+                          <span v-if="!asset.external_address && !asset.internal_address" class="text-sm text-slate-400">-</span>
                         </template>
                         <template v-else-if="key === 'asset_code'"><span class="text-sm text-slate-600 font-mono">{{ asset.asset_code || '' }}</span></template>
                         <template v-else-if="key === 'id'"><span class="text-sm text-slate-600 font-mono">{{ asset.id || '' }}</span></template>
@@ -1148,24 +1122,14 @@ onMounted(async () => {
                 <label class="block text-xs font-medium text-slate-600 mb-1.5">命名空间</label>
                 <input v-model="form.namespace" type="text" class="input-field" placeholder="命名空间" />
               </div>
-              <div v-if="['host', 'database', 'network'].includes(form.category)" class="grid grid-cols-2 gap-4">
+              <div class="grid grid-cols-2 gap-4">
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1.5">外网地址</label>
-                  <input v-model="form.external_address" type="text" class="input-field" placeholder="外网IP地址" />
+                  <input v-model="form.external_address" type="text" class="input-field" :placeholder="['cloud','web','gpt'].includes(form.category) ? 'https://example.com' : '外网 IP 地址'" />
                 </div>
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1.5">内网地址</label>
-                  <input v-model="form.internal_address" type="text" class="input-field" placeholder="内网IP地址" />
-                </div>
-              </div>
-              <div v-else-if="['cloud', 'web', 'gpt'].includes(form.category)" class="grid grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">外网 URL</label>
-                  <input v-model="form.external_url" type="text" class="input-field" placeholder="https://external.example.com" />
-                </div>
-                <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">内网 URL</label>
-                  <input v-model="form.internal_url" type="text" class="input-field" placeholder="https://internal.example.com" />
+                  <input v-model="form.internal_address" type="text" class="input-field" :placeholder="['cloud','web','gpt'].includes(form.category) ? 'https://internal.example.com' : '内网 IP 地址'" />
                 </div>
               </div>
             </template>

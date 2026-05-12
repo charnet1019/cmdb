@@ -29,9 +29,6 @@ EXPORT_COLUMNS = [
     ("memory", "内存"),
     ("system_disk", "系统盘"),
     ("data_disk", "数据盘"),
-    ("url", "URL"),  # Legacy field
-    ("external_url", "外网 URL"),
-    ("internal_url", "内网 URL"),
     ("credentials", "用户名密码"),  # Multiple credentials joined by newlines
     ("oob", "OOB 地址"),
     ("oob_username", "OOB 用户名"),
@@ -140,9 +137,6 @@ def export_assets_to_excel(data: List[Dict[str, Any]]) -> BytesIO:
         "memory": 12,
         "system_disk": 15,
         "data_disk": 15,
-        "url": 30,
-        "external_url": 40,
-        "internal_url": 40,
         "credentials": 25,
         "oob": 20,
         "oob_username": 15,

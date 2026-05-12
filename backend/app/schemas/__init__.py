@@ -117,10 +117,6 @@ class AssetBase(BaseModel):
     db_type: Optional[str] = Field(None, max_length=50)  # 数据库类型
     organization_id: Optional[int] = None
     notes: Optional[str] = None
-    # URL fields for cloud/web/gpt
-    url: Optional[str] = Field(None, max_length=500)  # Legacy field for backward compatibility
-    internal_url: Optional[str] = None  # 内网 URL
-    external_url: Optional[str] = None  # 外网 URL
     # Additional fields
     applicant: Optional[str] = Field(None, max_length=100)  # 申请人
     namespace: Optional[str] = Field(None, max_length=100)  # 命名空间
@@ -163,9 +159,6 @@ class AssetUpdate(BaseModel):
     notes: Optional[str] = None
     extra_data: Optional[dict] = None
     is_active: Optional[bool] = None
-    # URL fields
-    internal_url: Optional[str] = None
-    external_url: Optional[str] = None
     # Additional fields
     applicant: Optional[str] = Field(None, max_length=100)  # 申请人
     namespace: Optional[str] = Field(None, max_length=100)  # 命名空间

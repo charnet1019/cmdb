@@ -142,10 +142,6 @@ class Asset(Base):
     system_disk: Mapped[Optional[str]] = mapped_column(String(100))  # 如: 500GB SSD
     data_disk: Mapped[Optional[str]] = mapped_column(String(100))  # 如: 2TB HDD
 
-    # Cloud/Web specific fields
-    url: Mapped[Optional[str]] = mapped_column(String(500))  # Legacy field, kept for backward compatibility
-    internal_url: Mapped[Optional[str]] = mapped_column(Text)  # 内网 URL(多行)
-    external_url: Mapped[Optional[str]] = mapped_column(Text)  # 外网 URL(多行)
 
     # Notes field
     notes: Mapped[Optional[str]] = mapped_column(Text)

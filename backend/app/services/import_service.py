@@ -299,7 +299,7 @@ def _generate_template(
         col_letter = ws.cell(row=1, column=idx + 1).column_letter
         # Wider columns for specific field types
         field_name = fields[idx][0]
-        if field_name in ['id', 'url', 'external_url', 'internal_url', 'address', 'external_address', 'internal_address']:
+        if field_name in ['id', 'address', 'external_address', 'internal_address']:
             ws.column_dimensions[col_letter].width = 25
         elif field_name == 'credentials':
             ws.column_dimensions[col_letter].width = 20
