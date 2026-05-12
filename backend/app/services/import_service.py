@@ -158,6 +158,7 @@ WEB_CREATE_FIELDS = [
     ("name", "*资产名称", True),
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
+    ("platform", "*平台", True),  # Nginx/Apache/IIS/Tomcat 等
     ("external_address", "*外网地址", True),
     ("internal_address", "内网地址", False),
     ("credentials", "*用户名密码", True),  # 格式：username:password，每行一个
@@ -171,13 +172,14 @@ WEB_UPDATE_FIELDS = [
     ("name", "资产名称", False),
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
+    ("platform", "平台", False),
     ("external_address", "外网地址", False),
     ("internal_address", "内网地址", False),
     ("credentials", "用户名密码", False),
     ("applicant", "申请人", False),
     ("is_active", "状态", False),
     ("notes", "描述", False),
-]
+]}
 
 # GPT field definitions
 GPT_CREATE_FIELDS = [
@@ -423,7 +425,7 @@ def generate_cloud_update_template() -> BytesIO:
 def generate_web_create_template() -> BytesIO:
     """Generate XLSX template for web application creation"""
     example_data = [
-        "Jira", "WB001", "研发部/应用系统", "https://jira.example.com",
+        "Jira", "WB001", "研发部/应用系统", "Nginx", "https://jira.example.com",
         "http://192.168.1.100:8080",
         "admin:jiraadmin\nreadonly:readonly123",
         "项目管理平台"
@@ -434,7 +436,7 @@ def generate_web_create_template() -> BytesIO:
 def generate_web_update_template() -> BytesIO:
     """Generate XLSX template for web application update"""
     example_data = [
-        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "Jira", "WB001", "研发部/应用系统",
+        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "Jira", "WB001", "研发部/应用系统", "Nginx",
         "https://jira.example.com",
         "http://192.168.1.100:8080",
         "admin:jiraadmin\nreadonly:readonly123",
