@@ -218,8 +218,8 @@ function thLabel(key: string): string {
   const col = allColumnsConfig.value.find((c: any) => c.key === key)
   if (col) return col.label
 
-  // 降级处理：对于 platform 字段，根据资产类型返回不同标签
-  if (key === 'platform') return activeCategory.value === 'network' ? '厂商/型号' : '平台'
+  // 降级处理：对于 platform 字段，统一返回'平台'
+  if (key === 'platform') return '平台'
   return key
 }
 
