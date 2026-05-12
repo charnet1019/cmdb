@@ -179,7 +179,7 @@ WEB_UPDATE_FIELDS = [
     ("applicant", "申请人", False),
     ("is_active", "状态", False),
     ("notes", "描述", False),
-]}
+]
 
 # GPT field definitions
 GPT_CREATE_FIELDS = [
