@@ -21,18 +21,18 @@ HOST_CREATE_FIELDS = [
     ("platform", "*平台", True),
     ("external_address", "外网地址", False),
     ("internal_address", "*内网地址", True),
-    ("model", "型号", False),
-    ("serial_number", "序列号", False),
+    ("credentials", "*用户名密码", True),  # 格式：username:password，每行一个
     ("cpu", "CPU", False),
     ("memory", "内存", False),
     ("system_disk", "系统盘", False),
     ("data_disk", "数据盘", False),
+    ("model", "型号", False),
+    ("serial_number", "序列号", False),
     ("oob", "OOB 地址", False),
     ("oob_username", "OOB 用户名", False),
     ("oob_password", "OOB 密码", False),
     ("applicant", "申请人", False),
     ("is_active", "状态", False),  # 启用/禁用 或 True/False 或 1/0
-    ("credentials", "*用户名密码", True),  # 格式：username:password，每行一个
     ("notes", "描述", False),
 ]
 
@@ -44,18 +44,18 @@ HOST_UPDATE_FIELDS = [
     ("platform", "平台", False),
     ("external_address", "外网地址", False),
     ("internal_address", "内网地址", False),
-    ("model", "型号", False),
-    ("serial_number", "序列号", False),
+    ("credentials", "用户名密码", False),  # 格式：username:password，每行一个
     ("cpu", "CPU", False),
     ("memory", "内存", False),
     ("system_disk", "系统盘", False),
     ("data_disk", "数据盘", False),
+    ("model", "型号", False),
+    ("serial_number", "序列号", False),
     ("oob", "OOB 地址", False),
     ("oob_username", "OOB 用户名", False),
     ("oob_password", "OOB 密码", False),
     ("applicant", "申请人", False),
     ("is_active", "状态", False),  # 启用/禁用 或 True/False 或 1/0
-    ("credentials", "用户名密码", False),  # 格式：username:password，每行一个
     ("notes", "描述", False),
 ]
 
@@ -233,12 +233,25 @@ CATEGORY_NAMES = {
 def generate_host_create_template() -> BytesIO:
     """Generate XLSX template for host creation"""
     example_data = [
-        "test-server-01", "CI001", "研发部/服务器组", "Linux",
-        "192.168.1.100", "10.0.0.100", "Dell R740",
-        "SN123456", "8 核", "16GB", "500GB SSD", "2TB HDD",
-        "192.168.1.100", "admin", "password", "张三",
-        "admin:password123\nroot:rootpass",
-        "测试服务器"
+        "test-server-01",      # 资产名称
+        "CI001",               # 资产编号
+        "研发部/服务器组",     # 节点
+        "Linux",               # 平台
+        "192.168.1.100",       # 外网地址
+        "10.0.0.100",          # 内网地址
+        "admin:123456",        # 用户名密码 (格式：username:password，多行表示多个)
+        "8 核",                 # CPU
+        "16GB",                # 内存
+        "500GB SSD",           # 系统盘
+        "2TB HDD",             # 数据盘
+        "Dell R740",           # 型号
+        "SN123456",            # 序列号
+        "192.168.1.200",       # OOB 地址
+        "admin",               # OOB 用户名
+        "admin123",            # OOB 密码
+        "张三",                 # 申请人
+        "启用",                # 状态 (启用/禁用 或 True/False 或 1/0)
+        "测试服务器 - 开发环境"  # 描述
     ]
     return _generate_template("host", "create", "主机导入模板", HOST_CREATE_FIELDS, example_data)
 
@@ -323,11 +336,26 @@ def _generate_template(
 def generate_host_update_template() -> BytesIO:
     """Generate XLSX template for host update"""
     example_data = [
-        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "test-server-01", "CI001", "研发部/服务器组", "Linux",
-        "192.168.1.100", "10.0.0.100", "Dell R740", "SN123456", "8 核", "16GB", "500GB SSD", "2TB HDD",
-        "192.168.1.100", "admin", "password", "张三",
-        "admin:password123\nroot:rootpass",
-        "测试服务器"
+        "56c4d4cd-42ba-4397-abfa-36ecba64af13",  # ID
+        "test-server-01",        # 资产名称
+        "CI001",                 # 资产编号
+        "研发部/服务器组",       # 节点
+        "Linux",                 # 平台
+        "192.168.1.100",         # 外网地址
+        "10.0.0.100",            # 内网地址
+        "admin:123456",          # 用户名密码 (格式：username:password，多行表示多个)
+        "8 核",                  # CPU
+        "16GB",                  # 内存
+        "500GB SSD",             # 系统盘
+        "2TB HDD",               # 数据盘
+        "Dell R740",             # 型号
+        "SN123456",              # 序列号
+        "192.168.1.200",         # OOB 地址
+        "admin",                 # OOB 用户名
+        "admin123",              # OOB 密码
+        "张三",                  # 申请人
+        "启用",                  # 状态 (启用/禁用 或 True/False 或 1/0)
+        "测试服务器 - 开发环境"   # 描述
     ]
     return _generate_template("host", "update", "主机更新模板", HOST_UPDATE_FIELDS, example_data)
 
@@ -336,13 +364,19 @@ def generate_host_update_template() -> BytesIO:
 def generate_network_create_template() -> BytesIO:
     """Generate XLSX template for network device creation"""
     example_data = [
-        "Core-SW-01", "NW001", "研发部/网络设备", "交换机", "Cisco",
-        "C9300-48P", "FCW1234D001",
-        "10.0.0.1",  # 外网地址
-        "192.168.1.1",  # 内网地址
-        "admin:ciscopass\nnetadmin:netpass",  # 用户名密码 (多行)
-        "启用",  # 状态 (支持：启用/禁用，True/False，1/0)
-        "核心交换机"
+        "Core-SW-01",        # 资产名称
+        "NW001",             # 资产编号
+        "研发部/网络设备",   # 节点
+        "交换机",            # 设备类型
+        "Cisco",             # 厂商
+        "C9300-48P",         # 型号
+        "FCW1234D001",       # 序列号
+        "10.0.0.1",          # 外网地址
+        "192.168.1.1",       # 内网地址
+        "张三",              # 申请人
+        "admin:ciscopass\nnetadmin:netpass",  # 用户名密码 (格式：username:password，多行多个)
+        "True",              # 状态 (True/False 或 1/0 或 启用/禁用)
+        "核心交换机 - 生产环境"  # 描述
     ]
     return _generate_template("network", "create", "网络设备导入模板", NETWORK_CREATE_FIELDS, example_data)
 
@@ -365,15 +399,19 @@ def generate_network_update_template() -> BytesIO:
 def generate_database_create_template() -> BytesIO:
     """Generate XLSX template for database creation"""
     example_data = [
-        "MySQL-Prod-01", "DB001", "研发部/数据库", "RDS", "MySQL",
-        "",  # external_address - 外网地址
-        "192.168.1.100:3306",  # internal_address - 内网地址
-        "root:mysqlroot123\napp:apppass",
-        "8.0.32",
-        "main",  # namespace
-        "张三",  # applicant
-        "启用",  # is_active
-        "生产环境主数据库"
+        "MySQL-Prod-01",     # 资产名称
+        "DB001",             # 资产编号
+        "研发部/数据库",     # 节点
+        "RDS",               # 平台
+        "MySQL",             # 数据库类型
+        "",                  # 外网地址
+        "192.168.1.100:3306",  # 内网地址
+        "root:mysqlroot123\napp:apppass",  # 用户名密码 (格式：username:password，多行多个)
+        "8.0.32",            # 版本
+        "main",              # 命名空间
+        "张三",              # 申请人
+        "True",              # 状态 (True/False 或 1/0 或 启用/禁用)
+        "生产环境主数据库"    # 描述
     ]
     return _generate_template("database", "create", "数据库导入模板", DATABASE_CREATE_FIELDS, example_data)
 
@@ -398,12 +436,15 @@ def generate_database_update_template() -> BytesIO:
 def generate_cloud_create_template() -> BytesIO:
     """Generate XLSX template for cloud resource creation"""
     example_data = [
-        "AWS-Prod-Account", "CL001", "研发部/云服务", "AWS",
-        "https://aws.amazon.com",  # external_address - 外网地址
-        "10.0.0.1",  # internal_address - 内网地址
-        "AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",  # 用户名密码
-        "启用",  # 状态
-        "生产环境 AWS 账号"  # 描述
+        "AWS-Prod-Account",  # 资产名称
+        "CL001",             # 资产编号
+        "研发部/云服务",     # 节点
+        "AWS",               # 平台
+        "https://aws.amazon.com",  # 外网地址
+        "10.0.0.1",          # 内网地址
+        "AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",  # 用户名密码 (格式：AKID:Secret)
+        "True",              # 状态 (True/False 或 1/0 或 启用/禁用)
+        "生产环境 AWS 账号"   # 描述
     ]
     return _generate_template("cloud", "create", "云服务导入模板", CLOUD_CREATE_FIELDS, example_data)
 
@@ -425,10 +466,16 @@ def generate_cloud_update_template() -> BytesIO:
 def generate_web_create_template() -> BytesIO:
     """Generate XLSX template for web application creation"""
     example_data = [
-        "Jira", "WB001", "研发部/应用系统", "Nginx", "https://jira.example.com",
-        "http://192.168.1.100:8080",
-        "admin:jiraadmin\nreadonly:readonly123",
-        "项目管理平台"
+        "Jira",                        # 资产名称
+        "WB001",                       # 资产编号
+        "研发部/应用系统",             # 节点
+        "Nginx",                       # 平台
+        "https://jira.example.com",    # 外网地址
+        "http://192.168.1.100:8080",   # 内网地址
+        "admin:jiraadmin\nreadonly:readonly123",  # 用户名密码 (格式：username:password，多行多个)
+        "张三",                        # 申请人
+        "True",                        # 状态 (True/False 或 1/0 或 启用/禁用)
+        "项目管理平台"                 # 描述
     ]
     return _generate_template("web", "create", "网站服务导入模板", WEB_CREATE_FIELDS, example_data)
 
@@ -449,12 +496,16 @@ def generate_web_update_template() -> BytesIO:
 def generate_gpt_create_template() -> BytesIO:
     """Generate XLSX template for GPT/AI service creation"""
     example_data = [
-        "OpenAI-API", "AI001", "研发部/AI 服务", "OpenAI",
-        "https://api.openai.com/v1", "",  # external_address, internal_address
-        "sk-key:sk-abc123xyz\nclue-key:sk-clue456",
-        "张三",  # applicant
-        "启用",  # is_active
-        "AI 服务 API"  # notes
+        "OpenAI-API",              # 名称
+        "AI001",                   # 资产编号
+        "研发部/AI 服务",          # 节点
+        "OpenAI",                  # 平台
+        "https://api.openai.com/v1",  # 外网地址
+        "",                        # 内网地址
+        "sk-key:sk-abc123xyz\nclue-key:sk-clue456",  # 用户名密码 (格式：key_name:api_key，多行多个)
+        "张三",                    # 申请人
+        "True",                    # 状态 (True/False 或 1/0 或 启用/禁用)
+        "AI 服务 API"               # 描述
     ]
     return _generate_template("gpt", "create", "AI 服务导入模板", GPT_CREATE_FIELDS, example_data)
 
