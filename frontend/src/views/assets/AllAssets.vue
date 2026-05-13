@@ -690,7 +690,7 @@ onMounted(async () => {
       <div class="hidden lg:block w-60 flex-shrink-0">
         <div class="card">
           <!-- Tab Controls -->
-          <div class="flex border-b border-slate-100 mb-4">
+          <div class="flex border-b border-slate-100 mb-1">
             <button
               @click="switchTreeView('asset')"
               class="flex-1 py-2 text-xs font-medium text-center"
@@ -775,7 +775,7 @@ onMounted(async () => {
               >
                 <div
                   @click.stop="openCreateOrgModal(orgContextMenuTarget?.id || null)"
-                  class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2"
+                  class="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2"
                 >
                   <FolderAddOutlined class="text-sm" />
                   创建节点
@@ -783,7 +783,7 @@ onMounted(async () => {
                 <template v-if="orgContextMenuTarget && !orgContextMenuTarget.isRoot">
                   <div
                     @click.stop="openRenameOrgModal(orgContextMenuTarget)"
-                    class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2"
+                    class="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2"
                   >
                     <EditOutlined class="text-sm" />
                     重命名节点
@@ -791,7 +791,7 @@ onMounted(async () => {
                   <div class="border-t border-slate-100 my-1"></div>
                   <div
                     @click.stop="handleDeleteOrg(orgContextMenuTarget)"
-                    class="px-4 py-2 text-sm text-red-500 hover:bg-red-50 cursor-pointer flex items-center gap-2"
+                    class="px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 cursor-pointer flex items-center gap-2"
                   >
                     <DeleteOutlined class="text-sm" />
                     删除节点
@@ -828,7 +828,7 @@ onMounted(async () => {
       <!-- Asset Table (Right Panel) -->
       <div class="flex-1">
         <!-- Action Bar -->
-        <div class="bg-white rounded-xl shadow-sm p-3 mb-4">
+        <div class="bg-white rounded-xl shadow-sm p-3 mb-1">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <button @click="openCreateModal" class="btn-primary text-xs px-3 py-1.5">创建</button>
@@ -838,16 +838,16 @@ onMounted(async () => {
                 </button>
                 <template #overlay>
                   <div class="bg-white rounded-lg shadow-lg border border-slate-200 py-1 min-w-[140px]">
-                    <div @click="canDisable && bulkDisable(fetchData)" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2" :class="!canDisable ? 'opacity-50 cursor-not-allowed' : ''">
+                    <div @click="canDisable && bulkDisable(fetchData)" class="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2" :class="!canDisable ? 'opacity-50 cursor-not-allowed' : ''">
                       <StopOutlined class="text-sm" />批量禁用
                       <span v-if="selectedActiveCount > 0" class="text-xs text-slate-400 ml-auto">({{ selectedActiveCount }})</span>
                     </div>
-                    <div @click="canActivate && bulkActivate(fetchData)" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2" :class="!canActivate ? 'opacity-50 cursor-not-allowed' : ''">
+                    <div @click="canActivate && bulkActivate(fetchData)" class="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2" :class="!canActivate ? 'opacity-50 cursor-not-allowed' : ''">
                       <CheckCircleOutlined class="text-sm" />批量激活
                       <span v-if="selectedInactiveCount > 0" class="text-xs text-slate-400 ml-auto">({{ selectedInactiveCount }})</span>
                     </div>
                     <div class="border-t border-slate-100 my-1"></div>
-                    <div @click="selectedCount > 0 && bulkDelete(fetchData, fetchOrganizations)" class="px-4 py-2 text-sm text-red-500 hover:bg-red-50 cursor-pointer flex items-center gap-2">
+                    <div @click="selectedCount > 0 && bulkDelete(fetchData, fetchOrganizations)" class="px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 cursor-pointer flex items-center gap-2">
                       <DeleteOutlined class="text-sm" />批量删除
                       <span v-if="selectedCount > 0" class="text-xs text-slate-400 ml-auto">({{ selectedCount }})</span>
                     </div>
@@ -1018,30 +1018,30 @@ onMounted(async () => {
     <!-- Create/Edit Modal -->
     <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showModal = false"></div>
-      <div class="relative bg-white w-full max-w-2xl rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto">
-        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h2 class="text-lg font-bold text-slate-900">{{ modalTitle }}</h2>
-          <button @click="showModal = false" class="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
+      <div class="relative bg-white w-full max-w-xl rounded-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="text-base font-semibold text-slate-900">{{ modalTitle }}</h2>
+          <button @click="showModal = false" class="p-1 hover:bg-slate-100 rounded transition-colors">
             <CloseOutlined class="text-slate-400" />
           </button>
         </div>
-        <div class="p-6">
-          <form @submit.prevent="handleSubmit" class="space-y-5">
+        <div class="p-3">
+          <form @submit.prevent="handleSubmit" class="space-y-3">
             <!-- Row 1: 资产名称、资产编号 -->
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1.5">资产名称 <span class="text-red-500">*</span></label>
+                <label class="block text-xs font-medium text-slate-600 mb-1">资产名称 <span class="text-red-500">*</span></label>
                 <input v-model="form.name" type="text" class="input-field" placeholder="请输入资产名称" />
               </div>
               <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1.5">资产编号</label>
+                <label class="block text-xs font-medium text-slate-600 mb-1">资产编号</label>
                 <input v-model="form.asset_code" type="text" class="input-field" placeholder="CI编号" />
               </div>
             </div>
 
             <!-- Row 2: 节点路径 -->
             <div>
-              <label class="block text-xs font-medium text-slate-600 mb-1.5">节点</label>
+              <label class="block text-xs font-medium text-slate-600 mb-1">节点</label>
               <select v-model="formSelectedOrgId" class="input-field">
                 <option v-for="org in allOrgsForSelect" :key="org.id ?? 'default'" :value="org.id">
                   {{ org.path }}
@@ -1051,45 +1051,45 @@ onMounted(async () => {
 
             <!-- Network设备专用布局 -->
             <template v-if="form.category === 'network'">
-              <div class="grid grid-cols-2 gap-4">
+              <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">资产类型 <span class="text-red-500">*</span></label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">资产类型 <span class="text-red-500">*</span></label>
                   <select v-model="form.category" class="input-field">
                     <option v-for="cat in categoryOptions" :key="cat.key" :value="cat.key">{{ cat.label }}</option>
                   </select>
                 </div>
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">设备类型</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">设备类型</label>
                   <select v-model="form.device_type" class="input-field">
                     <option value="">请选择</option>
                     <option v-for="t in localDeviceTypeOptions" :key="t" :value="t">{{ t }}</option>
                   </select>
                 </div>
               </div>
-              <div class="grid grid-cols-2 gap-4">
+              <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">平台</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">平台</label>
                   <select v-model="form.platform" class="input-field">
                     <option value="">请选择</option>
                     <option v-for="p in platformOptions[form.category]" :key="p" :value="p">{{ p }}</option>
                   </select>
                 </div>
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">型号</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">型号</label>
                   <input v-model="form.model" type="text" class="input-field" placeholder="如: C9300-48P" />
                 </div>
               </div>
               <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1.5">序列号</label>
+                <label class="block text-xs font-medium text-slate-600 mb-1">序列号</label>
                 <input v-model="form.serial_number" type="text" class="input-field" placeholder="设备序列号" />
               </div>
-              <div class="grid grid-cols-2 gap-4">
+              <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">外网地址</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">外网地址</label>
                   <input v-model="form.external_address" type="text" class="input-field" placeholder="外网 IP 地址" />
                 </div>
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">内网地址</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">内网地址</label>
                   <input v-model="form.internal_address" type="text" class="input-field" placeholder="内网 IP 地址" />
                 </div>
               </div>
@@ -1097,45 +1097,45 @@ onMounted(async () => {
 
             <!-- 其他类别布局 -->
             <template v-else>
-              <div class="grid grid-cols-2 gap-4">
+              <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">资产类型 <span class="text-red-500">*</span></label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">资产类型 <span class="text-red-500">*</span></label>
                   <select v-model="form.category" class="input-field">
                     <option v-for="cat in categoryOptions" :key="cat.key" :value="cat.key">{{ cat.label }}</option>
                   </select>
                 </div>
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">平台</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">平台</label>
                   <select v-model="form.platform" class="input-field">
                     <option value="">请选择</option>
                     <option v-for="p in platformOptions[form.category]" :key="p" :value="p">{{ p }}</option>
                   </select>
                 </div>
               </div>
-              <div v-if="form.category === 'database'" class="grid grid-cols-2 gap-4">
+              <div v-if="form.category === 'database'" class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">数据库类型</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">数据库类型</label>
                   <select v-model="form.db_type" class="input-field">
                     <option value="">请选择</option>
                     <option v-for="t in dbTypeOptions" :key="t" :value="t">{{ t }}</option>
                   </select>
                 </div>
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">版本</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">版本</label>
                   <input v-model="form.version" type="text" class="input-field" placeholder="数据库版本" />
                 </div>
               </div>
               <div v-if="form.category === 'database'">
-                <label class="block text-xs font-medium text-slate-600 mb-1.5">命名空间</label>
+                <label class="block text-xs font-medium text-slate-600 mb-1">命名空间</label>
                 <input v-model="form.namespace" type="text" class="input-field" placeholder="命名空间" />
               </div>
-              <div class="grid grid-cols-2 gap-4">
+              <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">外网地址</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">外网地址</label>
                   <input v-model="form.external_address" type="text" class="input-field" :placeholder="['cloud','web','gpt'].includes(form.category) ? 'https://example.com' : '外网 IP 地址'" />
                 </div>
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">内网地址</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">内网地址</label>
                   <input v-model="form.internal_address" type="text" class="input-field" :placeholder="['cloud','web','gpt'].includes(form.category) ? 'https://internal.example.com' : '内网 IP 地址'" />
                 </div>
               </div>
@@ -1143,12 +1143,12 @@ onMounted(async () => {
 
             <!-- 用户名密码区域 -->
             <div class="bg-slate-50 rounded-lg">
-              <div class="px-4 py-2.5 border-b border-slate-200">
+              <div class="px-3 py-2 border-b border-slate-200">
                 <span class="text-xs font-medium text-slate-600">用户名密码</span>
               </div>
-              <div class="p-4">
+              <div class="p-3">
                 <!-- 已有凭证列表 -->
-                <div v-if="formCredentials.length > 0" class="space-y-2 mb-4">
+                <div v-if="formCredentials.length > 0" class="space-y-1 mb-1">
                   <div v-for="(cred, index) in formCredentials" :key="index" class="bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
                     <div class="flex items-center gap-3">
                       <!-- 用户名字段 -->
@@ -1159,7 +1159,7 @@ onMounted(async () => {
                           :ref="(el: any) => { if (el) credentialInputRefs.set(`${index}-username`, el) }"
                           v-model="cred.username"
                           type="text"
-                          class="input-field text-sm flex-1"
+                          class="input-field text-xs flex-1"
                           autocomplete="off"
                           @blur="stopFieldEdit"
                           @keyup.enter.prevent="stopFieldEdit"
@@ -1179,7 +1179,7 @@ onMounted(async () => {
                           :ref="(el: any) => { if (el) credentialInputRefs.set(`${index}-password`, el) }"
                           v-model="cred.password"
                           type="text"
-                          class="input-field text-sm flex-1"
+                          class="input-field text-xs flex-1"
                           autocomplete="off"
                           @blur="stopFieldEdit"
                           @keyup.enter.prevent="stopFieldEdit"
@@ -1222,7 +1222,7 @@ onMounted(async () => {
                   </div>
                 </div>
                 <!-- 添加新凭证 -->
-                <div class="flex items-end gap-3">
+                <div class="flex items-end gap-2">
                   <div class="flex-1">
                     <label class="block text-xs text-slate-500 mb-1">用户名</label>
                     <input
@@ -1252,7 +1252,7 @@ onMounted(async () => {
                   <button
                     type="button"
                     @click="addCredentialToForm"
-                    class="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-blue-600 transition-colors h-[38px]"
+                    class="bg-primary text-white px-3 py-1.5 rounded text-sm hover:bg-blue-600 transition-colors h-8"
                   >
                     <PlusCircleOutlined class="mr-1" /> 添加
                   </button>
@@ -1263,7 +1263,7 @@ onMounted(async () => {
             <!-- Web 专属字段 -->
             <template v-if="form.category === 'web'">
               <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1.5">申请人</label>
+                <label class="block text-xs font-medium text-slate-600 mb-1">申请人</label>
                 <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />
               </div>
             </template>
@@ -1271,54 +1271,54 @@ onMounted(async () => {
             <!-- 数据库专属字段 -->
             <template v-if="form.category === 'database'">
               <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1.5">申请人</label>
+                <label class="block text-xs font-medium text-slate-600 mb-1">申请人</label>
                 <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />
               </div>
             </template>
 
             <!-- 主机专属字段 -->
             <template v-if="form.category === 'host'">
-              <div class="grid grid-cols-2 gap-4">
+              <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">型号</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">型号</label>
                   <input v-model="form.model" type="text" class="input-field" placeholder="设备型号" />
                 </div>
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">序列号</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">序列号</label>
                   <input v-model="form.serial_number" type="text" class="input-field" placeholder="序列号" />
                 </div>
               </div>
-              <div class="grid grid-cols-2 gap-4">
+              <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">CPU</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">CPU</label>
                   <input v-model="form.cpu" type="text" class="input-field" placeholder="如: 8核" />
                 </div>
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">内存</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">内存</label>
                   <input v-model="form.memory" type="text" class="input-field" placeholder="如: 16GB" />
                 </div>
               </div>
-              <div class="grid grid-cols-2 gap-4">
+              <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">系统盘</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">系统盘</label>
                   <input v-model="form.system_disk" type="text" class="input-field" placeholder="如: 500GB SSD" />
                 </div>
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">数据盘</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">数据盘</label>
                   <input v-model="form.data_disk" type="text" class="input-field" placeholder="如: 2TB HDD" />
                 </div>
               </div>
               <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1.5">OOB</label>
+                <label class="block text-xs font-medium text-slate-600 mb-1">OOB</label>
                 <input v-model="form.oob" type="text" class="input-field" placeholder="带外管理地址" />
               </div>
-              <div class="grid grid-cols-2 gap-4">
+              <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">OOB用户名</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">OOB用户名</label>
                   <input v-model="form.oob_username" type="text" class="input-field" placeholder="OOB用户名" autocomplete="off" />
                 </div>
                 <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1.5">OOB密码</label>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">OOB密码</label>
                   <div class="relative">
                     <input v-model="form.oob_password" :type="showOobPassword ? 'text' : 'password'" class="input-field pr-8" placeholder="OOB 密码" autocomplete="off" />
                     <button type="button" @click="showOobPassword = !showOobPassword" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -1329,20 +1329,20 @@ onMounted(async () => {
                 </div>
               </div>
               <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1.5">申请人</label>
+                <label class="block text-xs font-medium text-slate-600 mb-1">申请人</label>
                 <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />
               </div>
             </template>
 
             <!-- 描述 -->
             <div>
-              <label class="block text-xs font-medium text-slate-600 mb-1.5">描述</label>
+              <label class="block text-xs font-medium text-slate-600 mb-1">描述</label>
               <textarea v-model="form.notes" class="input-field h-20 resize-none" placeholder="资产描述或备注"></textarea>
             </div>
 
             <!-- 操作按钮 -->
-            <div class="flex justify-end gap-3 pt-2 border-t border-slate-100">
-              <button type="button" @click="showModal = false" class="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors">
+            <div class="flex justify-end gap-3 pt-1.5 border-t border-slate-100">
+              <button type="button" @click="showModal = false" class="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors">
                 取消
               </button>
               <button type="submit" :disabled="modalLoading" class="btn-primary">
@@ -1364,9 +1364,9 @@ onMounted(async () => {
         </div>
         <div class="p-6">
           <div class="space-y-4">
-            <div><label class="block text-xs font-medium text-slate-600 mb-1.5">节点名称 <span class="text-red-500">*</span></label><input v-model="orgForm.name" type="text" class="input-field" placeholder="请输入节点名称" autofocus @keydown.enter="handleOrgModalSubmit" /></div>
-            <div class="flex justify-end gap-3 pt-2 border-t border-slate-100">
-              <button type="button" @click="showOrgModal = false" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">取消</button>
+            <div><label class="block text-xs font-medium text-slate-600 mb-1">节点名称 <span class="text-red-500">*</span></label><input v-model="orgForm.name" type="text" class="input-field" placeholder="请输入节点名称" autofocus @keydown.enter="handleOrgModalSubmit" /></div>
+            <div class="flex justify-end gap-3 pt-1.5 border-t border-slate-100">
+              <button type="button" @click="showOrgModal = false" class="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg">取消</button>
               <button type="button" @click="handleOrgModalSubmit" :disabled="orgModalLoading" class="btn-primary">{{ orgModalLoading ? '处理中...' : '确定' }}</button>
             </div>
           </div>
