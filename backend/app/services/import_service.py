@@ -70,7 +70,6 @@ NETWORK_CREATE_FIELDS = [
     ("serial_number", "序列号", False),
     ("external_address", "外网地址", False),  # 多行，每行一个
     ("internal_address", "内网地址", False),  # 多行，每行一个
-    ("applicant", "申请人", False),
     ("credentials", "*用户名密码", True),  # 格式：username:password，多行每行一个
     ("is_active", "*状态", True),  # 启用/禁用 或 True/False 或 1/0
     ("notes", "描述", False),
@@ -87,7 +86,6 @@ NETWORK_UPDATE_FIELDS = [
     ("serial_number", "序列号", False),
     ("external_address", "外网地址", False),
     ("internal_address", "内网地址", False),
-    ("applicant", "申请人", False),
     ("credentials", "用户名密码", False),
     ("is_active", "状态", False),  # 启用/禁用 或 True/False 或 1/0
     ("notes", "描述", False),
@@ -373,9 +371,8 @@ def generate_network_create_template() -> BytesIO:
         "FCW1234D001",       # 序列号
         "10.0.0.1",          # 外网地址
         "192.168.1.1",       # 内网地址
-        "张三",              # 申请人
-        "admin:ciscopass\nnetadmin:netpass",  # 用户名密码 (格式：username:password，多行多个)
-        "True",              # 状态 (True/False 或 1/0 或 启用/禁用)
+        "admin:cisco123\nnetadmin:netpass123",  # 用户名密码 (格式：username:password，多行多个)
+        "启用",              # 状态 (True/False 或 1/0 或 启用/禁用)
         "核心交换机 - 生产环境"  # 描述
     ]
     return _generate_template("network", "create", "网络设备导入模板", NETWORK_CREATE_FIELDS, example_data)
@@ -384,13 +381,19 @@ def generate_network_create_template() -> BytesIO:
 def generate_network_update_template() -> BytesIO:
     """Generate XLSX template for network device update"""
     example_data = [
-        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "Core-SW-01", "NW001", "研发部/网络设备", "交换机", "Cisco",
-        "C9300-48P", "FCW1234D001",
-        "10.0.0.1",  # 外网地址
-        "192.168.1.1",  # 内网地址
-        "admin:ciscopass\nnetadmin:netpass",  # 用户名密码 (多行)
-        "启用",  # 状态 (支持：启用/禁用，True/False，1/0)
-        "核心交换机"
+        "56c4d4cd-42ba-4397-abfa-36ecba64af13",  # ID
+        "Core-SW-01",      # 资产名称
+        "NW001",           # 资产编号
+        "研发部/网络设备", # 节点
+        "交换机",          # 设备类型
+        "Cisco",           # 厂商
+        "C9300-48P",       # 型号
+        "FCW1234D001",     # 序列号
+        "10.0.0.1",        # 外网地址
+        "192.168.1.1",     # 内网地址
+        "admin:cisco123\nnetadmin:netpass123",  # 用户名密码 (多行)
+        "启用",             # 状态 (支持：启用/禁用，True/False，1/0)
+        "核心交换机 - 生产环境"  # 描述
     ]
     return _generate_template("network", "update", "网络设备更新模板", NETWORK_UPDATE_FIELDS, example_data)
 
