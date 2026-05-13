@@ -13,6 +13,8 @@ class ResponseBase(BaseModel):
     code: int = 0
     message: str = "success"
 
+    model_config = ConfigDict(exclude_none=True)
+
 
 class PaginationMeta(BaseModel):
     """Pagination metadata"""
@@ -167,23 +169,25 @@ class AssetUpdate(BaseModel):
 class AssetResponse(AssetBase):
     """Asset response schema"""
     id: str
-    asset_code: Optional[str]
+    asset_code: Optional[str] = None
     organization_name: Optional[str] = None
-    device_type: Optional[str]
-    vendor: Optional[str]
-    model: Optional[str]
-    serial_number: Optional[str]
-    cpu: Optional[str]
-    memory: Optional[str]
-    system_disk: Optional[str]
-    data_disk: Optional[str]
+    device_type: Optional[str] = None
+    vendor: Optional[str] = None
+    model: Optional[str] = None
+    serial_number: Optional[str] = None
+    cpu: Optional[str] = None
+    memory: Optional[str] = None
+    system_disk: Optional[str] = None
+    data_disk: Optional[str] = None
     extra_data: Optional[dict] = None
-    is_active: bool
-    created_at: datetime
-    updated_at: datetime
+    is_active: bool = True
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     credentials: List["CredentialSimple"] = []
+    applicant: Optional[str] = None
+    namespace: Optional[str] = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, exclude_none=True)
 
 
 class AssetSimple(BaseModel):

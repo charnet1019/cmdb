@@ -6,7 +6,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from urllib.parse import quote
 from io import BytesIO
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, File, UploadFile, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,6 +76,104 @@ class ImportResponse(ResponseBase):
 
 
 router = APIRouter(prefix="/assets", tags=["资产管理"])
+
+
+# Asset type specific fields mapping
+# Fields that are specific to each asset category (not common fields)
+ASSET_TYPE_FIELDS: Dict[str, List[str]] = {
+    "host": [
+        "cpu", "memory", "system_disk", "data_disk", "model",
+        "serial_number", "vendor"
+    ],
+    "network": [
+        "device_type", "vendor", "model", "serial_number"
+    ],
+    "database": [
+        "db_type", "version", "namespace"
+    ],
+    "cloud": [],
+    "web": [],
+    "gpt": [],
+}
+
+# Common fields for all asset types
+COMMON_FIELDS = [
+    "id", "name", "asset_code", "category", "internal_address",
+    "external_address", "platform", "organization_id", "organization_name",
+    "is_active", "notes", "extra_data", "created_at", "updated_at",
+    "applicant", "credentials"
+]
+
+
+def build_asset_response(
+    asset: Asset,
+    org_name: Optional[str] = None,
+    include_credentials: bool = True,
+    credentials_data: Optional[List[Dict]] = None,
+    include_decrypted_passwords: bool = False
+) -> Dict[str, Any]:
+    """
+    Build asset response dictionary based on asset category.
+    Only includes fields relevant to the asset type to reduce payload size.
+
+    Args:
+        asset: Asset instance
+        org_name: Organization name (pre-fetched)
+        include_credentials: Whether to include credentials in response
+        credentials_data: Credentials data (pre-fetched and formatted)
+        include_decrypted_passwords: Whether credentials include decrypted passwords (for export)
+    """
+    category = asset.category
+    type_fields = ASSET_TYPE_FIELDS.get(category, [])
+
+    # Start with common fields (only non-None values)
+    data: Dict[str, Any] = {
+        "id": str(asset.id),
+        "name": asset.name,
+        "category": category,
+        "is_active": asset.is_active,
+    }
+
+    # Add optional common fields only if not None
+    if asset.asset_code:
+        data["asset_code"] = asset.asset_code
+    if asset.internal_address:
+        data["internal_address"] = asset.internal_address
+    if asset.external_address:
+        data["external_address"] = asset.external_address
+    if asset.platform:
+        data["platform"] = asset.platform
+    if asset.db_type:  # Keep for database category filter
+        data["db_type"] = asset.db_type
+    if asset.organization_id:
+        data["organization_id"] = asset.organization_id
+    if org_name:
+        data["organization_name"] = org_name
+    if asset.notes:
+        data["notes"] = asset.notes
+    if asset.extra_data:
+        data["extra_data"] = asset.extra_data
+    if asset.created_at:
+        data["created_at"] = asset.created_at.isoformat()
+    if asset.updated_at:
+        data["updated_at"] = asset.updated_at.isoformat()
+    if asset.applicant:
+        data["applicant"] = asset.applicant
+    if asset.namespace:  # For database assets
+        data["namespace"] = asset.namespace
+
+    # Add type-specific fields only
+    for field in type_fields:
+        value = getattr(asset, field, None)
+        # Only include if not None (to reduce payload)
+        if value is not None:
+            data[field] = value
+
+    # Add credentials if requested
+    if include_credentials:
+        data["credentials"] = credentials_data or []
+
+    return data
 
 
 # Helper function to get all descendant organization IDs
@@ -159,8 +257,10 @@ async def get_asset_stats(
 
 
 # ============== Asset APIs ==============
-@router.get("", response_model=AssetListResponse)
+@router.get("")
 async def list_assets(
+    response: Response,
+
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     category: Optional[str] = None,
@@ -224,52 +324,34 @@ async def list_assets(
             for c in asset.credentials
         ]
 
-        asset_responses.append({
-            "id": asset.id,
-            "name": asset.name,
-            "asset_code": asset.asset_code,
-            "category": asset.category,
-            "internal_address": asset.internal_address,
-            "external_address": asset.external_address,
-            "platform": asset.platform,
-            "db_type": asset.db_type,
-            "organization_id": asset.organization_id,
-            "organization_name": org_names.get(asset.organization_id) if asset.organization_id else None,
-            "device_type": asset.device_type,
-            "vendor": asset.vendor,
-            "model": asset.model,
-            "serial_number": asset.serial_number,
-            "cpu": asset.cpu,
-            "memory": asset.memory,
-            "system_disk": asset.system_disk,
-            "data_disk": asset.data_disk,
-            "notes": asset.notes,
-            "extra_data": asset.extra_data,
-            "is_active": asset.is_active,
-            "created_at": asset.created_at,
-            "updated_at": asset.updated_at,
-            "credentials": credentials,
-            "applicant": asset.applicant,
-            "namespace": asset.namespace,
-        })
+        asset_responses.append(build_asset_response(
+            asset,
+            org_name=org_names.get(asset.organization_id),
+            include_credentials=True,
+            credentials_data=credentials
+        ))
 
-    return AssetListResponse(
-        data=asset_responses,
-        meta=PaginationMeta(
-            total=total,
-            page=page,
-            limit=limit,
-            pages=(total + limit - 1) // limit,
-        )
-    )
+    pages = (total + limit - 1) // limit if total > 0 else 0
+
+    return {
+        "code": 0,
+        "message": "success",
+        "data": asset_responses,
+        "meta": {
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "pages": pages
+        }
+    }
 
 
-@router.post("", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED)
 async def create_asset(
     data: AssetCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
+) -> Dict[str, Any]:
     """Create a new asset"""
     # Validate category
     valid_categories = ["host", "network", "database", "cloud", "web", "gpt"]
@@ -306,32 +388,11 @@ async def create_asset(
     await db.commit()
     await db.refresh(asset)
 
-    return AssetResponse(
-        id=asset.id,
-        name=asset.name,
-        asset_code=asset.asset_code,
-        category=asset.category,
-        internal_address=asset.internal_address,
-        external_address=asset.external_address,
-        platform=asset.platform,
-        db_type=asset.db_type,
-        organization_id=asset.organization_id,
-        device_type=asset.device_type,
-        vendor=asset.vendor,
-        model=asset.model,
-        serial_number=asset.serial_number,
-        cpu=asset.cpu,
-        memory=asset.memory,
-        system_disk=asset.system_disk,
-        data_disk=asset.data_disk,
-        notes=asset.notes,
-        extra_data=asset.extra_data,
-        is_active=asset.is_active,
-        created_at=asset.created_at,
-        updated_at=asset.updated_at,
-        credentials=[],
-        applicant=asset.applicant,
-        namespace=asset.namespace,
+    return build_asset_response(
+        asset,
+        org_name=None,
+        include_credentials=True,
+        credentials_data=[]
     )
 
 
@@ -636,33 +697,13 @@ async def export_assets(
                     "password": ""  # Empty password if decryption fails
                 })
 
-        asset_data.append({
-            "id": asset.id,
-            "name": asset.name,
-            "asset_code": asset.asset_code,
-            "category": asset.category,
-            "internal_address": asset.internal_address,
-            "external_address": asset.external_address,
-            "platform": asset.platform,
-            "db_type": asset.db_type,
-            "organization_id": asset.organization_id,
-            "organization_name": org_names.get(asset.organization_id) if asset.organization_id else None,
-            "device_type": asset.device_type,
-            "vendor": asset.vendor,
-            "model": asset.model,
-            "serial_number": asset.serial_number,
-            "cpu": asset.cpu,
-            "memory": asset.memory,
-            "system_disk": asset.system_disk,
-            "data_disk": asset.data_disk,
-            "credentials": credentials,
-            "notes": asset.notes,
-            "extra_data": asset.extra_data,
-            "is_active": asset.is_active,
-            "created_at": asset.created_at,
-            "applicant": asset.applicant,
-            "namespace": asset.namespace,
-        })
+        asset_data.append(build_asset_response(
+            asset,
+            org_name=org_names.get(asset.organization_id),
+            include_credentials=True,
+            credentials_data=credentials,
+            include_decrypted_passwords=True  # For export, include decrypted passwords
+        ))
 
     # Generate file based on format
     if format == "csv":
@@ -683,12 +724,12 @@ async def export_assets(
         )
 
 
-@router.get("/{asset_id}", response_model=AssetResponse)
+@router.get("/{asset_id}")
 async def get_asset(
     asset_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
+) -> Dict[str, Any]:
     """Get asset by ID"""
     result = await db.execute(
         select(Asset)
@@ -720,43 +761,21 @@ async def get_asset(
         for c in asset.credentials
     ]
 
-    return AssetResponse(
-        id=asset.id,
-        name=asset.name,
-        asset_code=asset.asset_code,
-        category=asset.category,
-        internal_address=asset.internal_address,
-        external_address=asset.external_address,
-        platform=asset.platform,
-        db_type=asset.db_type,
-        organization_id=asset.organization_id,
-        organization_name=organization_name,
-        device_type=asset.device_type,
-        vendor=asset.vendor,
-        model=asset.model,
-        serial_number=asset.serial_number,
-        cpu=asset.cpu,
-        memory=asset.memory,
-        system_disk=asset.system_disk,
-        data_disk=asset.data_disk,
-        notes=asset.notes,
-        extra_data=asset.extra_data,
-        is_active=asset.is_active,
-        created_at=asset.created_at,
-        updated_at=asset.updated_at,
-        credentials=credentials,
-        applicant=asset.applicant,
-        namespace=asset.namespace,
+    return build_asset_response(
+        asset,
+        org_name=organization_name,
+        include_credentials=True,
+        credentials_data=credentials
     )
 
 
-@router.put("/{asset_id}", response_model=AssetResponse)
+@router.put("/{asset_id}")
 async def update_asset(
     asset_id: str,
     data: AssetUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-):
+) -> Dict[str, Any]:
     """Update asset information"""
     result = await db.execute(
         select(Asset).where(Asset.id == asset_id)
@@ -789,35 +808,16 @@ async def update_asset(
     )
     credentials = cred_result.scalars().all()
 
-    return AssetResponse(
-        id=asset.id,
-        name=asset.name,
-        asset_code=asset.asset_code,
-        category=asset.category,
-        internal_address=asset.internal_address,
-        external_address=asset.external_address,
-        platform=asset.platform,
-        db_type=asset.db_type,
-        organization_id=asset.organization_id,
-        device_type=asset.device_type,
-        vendor=asset.vendor,
-        model=asset.model,
-        serial_number=asset.serial_number,
-        cpu=asset.cpu,
-        memory=asset.memory,
-        system_disk=asset.system_disk,
-        data_disk=asset.data_disk,
-        notes=asset.notes,
-        extra_data=asset.extra_data,
-        is_active=asset.is_active,
-        created_at=asset.created_at,
-        updated_at=asset.updated_at,
-        credentials=[
-            {"id": c.id, "username": c.username, "credential_type": c.credential_type}
-            for c in credentials
-        ],
-        applicant=asset.applicant,
-        namespace=asset.namespace,
+    credentials_data = [
+        {"id": c.id, "username": c.username, "credential_type": c.credential_type}
+        for c in credentials
+    ]
+
+    return build_asset_response(
+        asset,
+        org_name=None,
+        include_credentials=True,
+        credentials_data=credentials_data
     )
 
 
