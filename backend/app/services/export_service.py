@@ -5,7 +5,7 @@ Handles Excel and CSV export functionality
 from io import BytesIO
 import csv
 from typing import List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
@@ -16,7 +16,6 @@ EXPORT_COLUMNS = [
     ("name", "资产名称"),
     ("asset_code", "资产编号"),
     ("category", "资产类型"),
-    ("address", "地址"),
     ("internal_address", "内网地址"),
     ("external_address", "外网地址"),
     ("platform", "平台"),
@@ -39,6 +38,9 @@ EXPORT_COLUMNS = [
     ("created_at", "创建时间"),
     ("updated_at", "更新时间"),
 ]
+
+# UTC+8 timezone offset
+UTC8_OFFSET_HOURS = 8
 
 CATEGORY_LABELS = {
     "host": "主机",
@@ -94,11 +96,27 @@ def export_assets_to_excel(data: List[Dict[str, Any]]) -> BytesIO:
                 value = CATEGORY_LABELS.get(value, value)
             elif field == "is_active":
                 value = "启用" if value else "禁用"
-            elif field == "created_at" and value:
+            elif field in ["created_at", "updated_at"] and value:
+                # Convert to UTC+8 and format as "年 - 月-日 时：分:秒"
                 if isinstance(value, datetime):
+                    # If naive datetime, assume UTC and add 8 hours
+                    if value.tzinfo is None:
+                        value = value + timedelta(hours=UTC8_OFFSET_HOURS)
+                    else:
+                        # Convert to UTC+8
+                        value = value.astimezone(timezone(timedelta(hours=UTC8_OFFSET_HOURS)))
                     value = value.strftime("%Y-%m-%d %H:%M:%S")
-                else:
-                    value = str(value)
+                elif isinstance(value, str):
+                    # Parse ISO format string and convert
+                    try:
+                        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                        if dt.tzinfo is None:
+                            dt = dt + timedelta(hours=UTC8_OFFSET_HOURS)
+                        else:
+                            dt = dt.astimezone(timezone(timedelta(hours=UTC8_OFFSET_HOURS)))
+                        value = dt.strftime("%Y-%m-%d %H:%M:%S")
+                    except:
+                        value = str(value)
             elif field == "credentials":
                 # Join multiple credentials as "username:password" lines
                 creds = asset.get("credentials", [])
@@ -106,7 +124,7 @@ def export_assets_to_excel(data: List[Dict[str, Any]]) -> BytesIO:
                     value = "\n".join([f"{c.get('username')}:{c.get('password', '')}" for c in creds if c.get('username')])
                 else:
                     value = ""
-            elif field in ["oob", "oob_username", "oob_password", "applicant"]:
+            elif field in ["oob", "oob_username", "oob_password"]:
                 # Extract from extra_data (metadata)
                 extra_data = asset.get("extra_data") or {}
                 value = extra_data.get(field)
@@ -124,7 +142,6 @@ def export_assets_to_excel(data: List[Dict[str, Any]]) -> BytesIO:
         "name": 20,
         "asset_code": 15,
         "category": 12,
-        "address": 20,
         "internal_address": 20,
         "external_address": 20,
         "platform": 15,
@@ -187,11 +204,27 @@ def export_assets_to_csv(data: List[Dict[str, Any]]) -> BytesIO:
                 value = CATEGORY_LABELS.get(value, value)
             elif field == "is_active":
                 value = "启用" if value else "禁用"
-            elif field == "created_at" and value:
+            elif field in ["created_at", "updated_at"] and value:
+                # Convert to UTC+8 and format as "年 - 月-日 时：分:秒"
                 if isinstance(value, datetime):
+                    # If naive datetime, assume UTC and add 8 hours
+                    if value.tzinfo is None:
+                        value = value + timedelta(hours=UTC8_OFFSET_HOURS)
+                    else:
+                        # Convert to UTC+8
+                        value = value.astimezone(timezone(timedelta(hours=UTC8_OFFSET_HOURS)))
                     value = value.strftime("%Y-%m-%d %H:%M:%S")
-                else:
-                    value = str(value)
+                elif isinstance(value, str):
+                    # Parse ISO format string and convert
+                    try:
+                        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                        if dt.tzinfo is None:
+                            dt = dt + timedelta(hours=UTC8_OFFSET_HOURS)
+                        else:
+                            dt = dt.astimezone(timezone(timedelta(hours=UTC8_OFFSET_HOURS)))
+                        value = dt.strftime("%Y-%m-%d %H:%M:%S")
+                    except:
+                        value = str(value)
             elif field == "credentials":
                 # Join multiple credentials as "username:password" lines
                 creds = asset.get("credentials", [])
@@ -199,7 +232,7 @@ def export_assets_to_csv(data: List[Dict[str, Any]]) -> BytesIO:
                     value = "\n".join([f"{c.get('username')}:{c.get('password', '')}" for c in creds if c.get('username')])
                 else:
                     value = ""
-            elif field in ["oob", "oob_username", "oob_password", "applicant"]:
+            elif field in ["oob", "oob_username", "oob_password"]:
                 # Extract from extra_data (metadata)
                 extra_data = asset.get("extra_data") or {}
                 value = extra_data.get(field)
