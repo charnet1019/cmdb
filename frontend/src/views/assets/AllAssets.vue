@@ -914,7 +914,7 @@ onMounted(async () => {
                         <template v-else-if="key === 'asset_code'"><span class="text-sm text-slate-600 font-mono">{{ asset.asset_code || '' }}</span></template>
                         <template v-else-if="key === 'id'"><span class="text-sm text-slate-600 font-mono">{{ asset.id || '' }}</span></template>
                         <template v-else-if="key === 'category'"><span class="text-sm text-slate-600">{{ categoryOptions.find(c => c.key === asset.category)?.label || asset.category }}</span></template>
-                        <template v-else-if="key === 'platform'"><span class="text-sm text-slate-600">{{ activeCategory === 'network' ? (asset.platform && asset.model ? `${asset.platform}/${asset.model}` : (asset.platform || asset.model || '-')) : (asset.platform || asset.device_type || '-') }}</span></template>
+                        <template v-else-if="key === 'platform'"><span class="text-sm text-slate-600">{{ activeCategory === 'network' ? ((asset.vendor || asset.platform) && asset.model ? `${asset.vendor || asset.platform}/${asset.model}` : (asset.vendor || asset.platform || asset.model || '-')) : (asset.platform || asset.device_type || '-') }}</span></template>
                         <template v-else-if="key === 'device_type'"><span class="text-sm text-slate-600">{{ asset.device_type || '-' }}</span></template>
                         <template v-else-if="key === 'model'"><span class="text-sm text-slate-600">{{ asset.model || '' }}</span></template>
                         <template v-else-if="key === 'serial_number'"><span class="text-sm text-slate-600 font-mono">{{ asset.serial_number || '' }}</span></template>
