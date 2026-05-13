@@ -753,7 +753,8 @@ async def parse_import_file(
 
 async def batch_create_hosts(
     records: List[Dict[str, Any]],
-    db: AsyncSession
+    db: AsyncSession,
+    user_id: Optional[int] = None
 ) -> Tuple[int, List[Dict[str, Any]]]:
     """
     Batch create host assets
@@ -784,6 +785,7 @@ async def batch_create_hosts(
                 name=record["name"],
                 asset_code=record.get("asset_code"),
                 category="host",
+                created_by_id=user_id,
                 platform=record.get("platform"),
                 external_address=record.get("external_address"),
                 internal_address=record.get("internal_address"),
@@ -838,7 +840,8 @@ async def batch_create_hosts(
 
 async def batch_create_networks(
     records: List[Dict[str, Any]],
-    db: AsyncSession
+    db: AsyncSession,
+    user_id: Optional[int] = None
 ) -> Tuple[int, List[Dict[str, Any]]]:
     """
     Batch create network assets
@@ -880,6 +883,7 @@ async def batch_create_networks(
                 name=record["name"],
                 asset_code=record.get("asset_code"),
                 category="network",
+                created_by_id=user_id,
                 device_type=record.get("device_type"),
                 vendor=record.get("vendor"),
                 model=record.get("model"),
@@ -997,7 +1001,8 @@ async def batch_update_networks(
 # Database batch operations
 async def batch_create_databases(
     records: List[Dict[str, Any]],
-    db: AsyncSession
+    db: AsyncSession,
+    user_id: Optional[int] = None
 ) -> Tuple[int, List[Dict[str, Any]]]:
     from app.models import Credential
 
@@ -1024,6 +1029,7 @@ async def batch_create_databases(
                 name=record["name"],
                 asset_code=record.get("asset_code"),
                 category="database",
+                created_by_id=user_id,
                 platform=record.get("platform"),
                 db_type=record.get("db_type"),
                 external_address=record.get("external_address"),
@@ -1133,7 +1139,8 @@ async def batch_update_databases(
 # Cloud batch operations
 async def batch_create_clouds(
     records: List[Dict[str, Any]],
-    db: AsyncSession
+    db: AsyncSession,
+    user_id: Optional[int] = None
 ) -> Tuple[int, List[Dict[str, Any]]]:
     from app.models import Credential
 
@@ -1160,6 +1167,7 @@ async def batch_create_clouds(
                 name=record["name"],
                 asset_code=record.get("asset_code"),
                 category="cloud",
+                created_by_id=user_id,
                 platform=record.get("platform"),
                 external_address=record.get("external_address"),
                 internal_address=record.get("internal_address"),
@@ -1258,7 +1266,8 @@ async def batch_update_clouds(
 # Web batch operations
 async def batch_create_webs(
     records: List[Dict[str, Any]],
-    db: AsyncSession
+    db: AsyncSession,
+    user_id: Optional[int] = None
 ) -> Tuple[int, List[Dict[str, Any]]]:
     from app.models import Credential
 
@@ -1285,6 +1294,7 @@ async def batch_create_webs(
                 name=record["name"],
                 asset_code=record.get("asset_code"),
                 category="web",
+                created_by_id=user_id,
                 platform=record.get("platform"),
                 external_address=record.get("external_address"),
                 internal_address=record.get("internal_address"),
@@ -1383,7 +1393,8 @@ async def batch_update_webs(
 # GPT batch operations
 async def batch_create_gpts(
     records: List[Dict[str, Any]],
-    db: AsyncSession
+    db: AsyncSession,
+    user_id: Optional[int] = None
 ) -> Tuple[int, List[Dict[str, Any]]]:
     from app.models import Credential
 
@@ -1410,6 +1421,7 @@ async def batch_create_gpts(
                 name=record["name"],
                 asset_code=record.get("asset_code"),
                 category="gpt",
+                created_by_id=user_id,
                 platform=record.get("platform"),
                 external_address=record.get("external_address"),
                 internal_address=record.get("internal_address"),

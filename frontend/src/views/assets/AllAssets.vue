@@ -954,6 +954,9 @@ onMounted(async () => {
                           </div>
                         </template>
                         <template v-else-if="key === 'notes'"><span class="text-sm text-slate-600">{{ asset.notes || '' }}</span></template>
+                        <template v-else-if="key === 'creator'">
+                          <span class="text-sm text-slate-600">{{ asset.creator_name || '-' }}</span>
+                        </template>
                         <template v-else-if="key === 'created_at'">
                           <span class="text-sm text-slate-600">{{ formatDateTime(asset.created_at) }}</span>
                         </template>

@@ -124,6 +124,7 @@ class Asset(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     asset_code: Mapped[Optional[str]] = mapped_column(String(50), unique=True)  # CI编号
     category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # AssetCategory
+    created_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), index=True)  # 创建者 ID
     internal_address: Mapped[Optional[str]] = mapped_column(Text)  # 内网地址(多行)
     external_address: Mapped[Optional[str]] = mapped_column(Text)  # 外网地址(多行)
     platform: Mapped[Optional[str]] = mapped_column(String(50))  # 物理机/虚拟机/RDS/Docker/Kubernetes
@@ -162,6 +163,7 @@ class Asset(Base):
         "Credential", back_populates="asset", cascade="all, delete-orphan"
     )
     organization: Mapped[Optional["Organization"]] = relationship("Organization")
+    created_by: Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by_id])
 
     __table_args__ = (
         Index("idx_assets_category", "category"),

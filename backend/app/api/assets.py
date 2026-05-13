@@ -110,7 +110,8 @@ def build_asset_response(
     org_name: Optional[str] = None,
     include_credentials: bool = True,
     credentials_data: Optional[List[Dict]] = None,
-    include_decrypted_passwords: bool = False
+    include_decrypted_passwords: bool = False,
+    creator_name: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Build asset response dictionary based on asset category.
@@ -161,6 +162,8 @@ def build_asset_response(
         data["applicant"] = asset.applicant
     if asset.namespace:  # For database assets
         data["namespace"] = asset.namespace
+    if creator_name:
+        data["creator_name"] = creator_name
 
     # Add type-specific fields only
     for field in type_fields:
@@ -271,7 +274,7 @@ async def list_assets(
     current_user: User = Depends(get_current_user),
 ):
     """List all assets with pagination and filters"""
-    query = select(Asset).options(selectinload(Asset.credentials))
+    query = select(Asset).options(selectinload(Asset.credentials), selectinload(Asset.created_by))
 
     # Apply filters
     if category:
@@ -312,6 +315,13 @@ async def list_assets(
         org_result = await db.execute(select(Organization.id, Organization.name).where(Organization.id.in_(org_ids)))
         org_names = {row.id: row.name for row in org_result}
 
+    # Get creator names
+    creator_ids = set(a.created_by_id for a in assets if a.created_by_id)
+    creator_names = {}
+    if creator_ids:
+        creator_result = await db.execute(select(User.id, User.username).where(User.id.in_(creator_ids)))
+        creator_names = {row.id: row.username for row in creator_result}
+
     # Build response
     asset_responses = []
     for asset in assets:
@@ -328,7 +338,8 @@ async def list_assets(
             asset,
             org_name=org_names.get(asset.organization_id),
             include_credentials=True,
-            credentials_data=credentials
+            credentials_data=credentials,
+            creator_name=creator_names.get(asset.created_by_id)
         ))
 
     pages = (total + limit - 1) // limit if total > 0 else 0
@@ -365,6 +376,7 @@ async def create_asset(
         name=data.name,
         asset_code=data.asset_code,
         category=data.category,
+        created_by_id=current_user.id,
         internal_address=data.internal_address,
         external_address=data.external_address,
         platform=data.platform,
@@ -392,7 +404,8 @@ async def create_asset(
         asset,
         org_name=None,
         include_credentials=True,
-        credentials_data=[]
+        credentials_data=[],
+        creator_name=current_user.username
     )
 
 
@@ -568,32 +581,32 @@ async def import_assets(
         # Process valid records based on category
         if category == "host":
             if mode == "create":
-                success_count, process_errors = await batch_create_hosts(valid_records, db)
+                success_count, process_errors = await batch_create_hosts(valid_records, db, current_user.id)
             else:
                 success_count, process_errors = await batch_update_hosts(valid_records, db)
         elif category == "network":
             if mode == "create":
-                success_count, process_errors = await batch_create_networks(valid_records, db)
+                success_count, process_errors = await batch_create_networks(valid_records, db, current_user.id)
             else:
                 success_count, process_errors = await batch_update_networks(valid_records, db)
         elif category == "database":
             if mode == "create":
-                success_count, process_errors = await batch_create_databases(valid_records, db)
+                success_count, process_errors = await batch_create_databases(valid_records, db, current_user.id)
             else:
                 success_count, process_errors = await batch_update_databases(valid_records, db)
         elif category == "cloud":
             if mode == "create":
-                success_count, process_errors = await batch_create_clouds(valid_records, db)
+                success_count, process_errors = await batch_create_clouds(valid_records, db, current_user.id)
             else:
                 success_count, process_errors = await batch_update_clouds(valid_records, db)
         elif category == "web":
             if mode == "create":
-                success_count, process_errors = await batch_create_webs(valid_records, db)
+                success_count, process_errors = await batch_create_webs(valid_records, db, current_user.id)
             else:
                 success_count, process_errors = await batch_update_webs(valid_records, db)
         elif category == "gpt":
             if mode == "create":
-                success_count, process_errors = await batch_create_gpts(valid_records, db)
+                success_count, process_errors = await batch_create_gpts(valid_records, db, current_user.id)
             else:
                 success_count, process_errors = await batch_update_gpts(valid_records, db)
         else:

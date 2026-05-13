@@ -29,6 +29,7 @@ const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
     { key: 'is_active', label: '状态', defaultVisible: true },
     { key: 'credentials', label: '用户名密码', defaultVisible: true },
     { key: 'notes', label: '描述', defaultVisible: false },
+    { key: 'creator', label: '创建者', defaultVisible: false },
     { key: 'created_at', label: '创建时间', defaultVisible: false },
     { key: 'updated_at', label: '更新时间', defaultVisible: false },
     { key: 'actions', label: '操作', fixed: true, defaultVisible: true }
@@ -52,6 +53,7 @@ const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
     { key: 'is_active', label: '状态', defaultVisible: true },
     { key: 'credentials', label: '用户名密码', defaultVisible: true },
     { key: 'notes', label: '描述', defaultVisible: false },
+    { key: 'creator', label: '创建者', defaultVisible: false },
     { key: 'created_at', label: '创建时间', defaultVisible: false },
     { key: 'updated_at', label: '更新时间', defaultVisible: false },
     { key: 'actions', label: '操作', fixed: true, defaultVisible: true }
@@ -68,6 +70,7 @@ const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
     { key: 'is_active', label: '状态', defaultVisible: true },
     { key: 'credentials', label: '用户名密码', defaultVisible: true },
     { key: 'notes', label: '描述', defaultVisible: false },
+    { key: 'creator', label: '创建者', defaultVisible: false },
     { key: 'created_at', label: '创建时间', defaultVisible: false },
     { key: 'updated_at', label: '更新时间', defaultVisible: false },
     { key: 'actions', label: '操作', fixed: true, defaultVisible: true }
@@ -86,6 +89,7 @@ const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
     { key: 'is_active', label: '状态', defaultVisible: true },
     { key: 'credentials', label: '用户名密码', defaultVisible: true },
     { key: 'notes', label: '描述', defaultVisible: false },
+    { key: 'creator', label: '创建者', defaultVisible: false },
     { key: 'created_at', label: '创建时间', defaultVisible: false },
     { key: 'updated_at', label: '更新时间', defaultVisible: false },
     { key: 'actions', label: '操作', fixed: true, defaultVisible: true }
@@ -100,6 +104,7 @@ const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
     { key: 'is_active', label: '状态', defaultVisible: true },
     { key: 'credentials', label: '用户名密码', defaultVisible: true },
     { key: 'notes', label: '描述', defaultVisible: false },
+    { key: 'creator', label: '创建者', defaultVisible: false },
     { key: 'created_at', label: '创建时间', defaultVisible: false },
     { key: 'updated_at', label: '更新时间', defaultVisible: false },
     { key: 'actions', label: '操作', fixed: true, defaultVisible: true }
@@ -115,6 +120,7 @@ const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
     { key: 'is_active', label: '状态', defaultVisible: true },
     { key: 'credentials', label: '用户名密码', defaultVisible: true },
     { key: 'notes', label: '描述', defaultVisible: false },
+    { key: 'creator', label: '创建者', defaultVisible: false },
     { key: 'created_at', label: '创建时间', defaultVisible: false },
     { key: 'updated_at', label: '更新时间', defaultVisible: false },
     { key: 'actions', label: '操作', fixed: true, defaultVisible: true }
@@ -129,6 +135,7 @@ const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
     { key: 'is_active', label: '状态', defaultVisible: true },
     { key: 'credentials', label: '用户名密码', defaultVisible: true },
     { key: 'notes', label: '描述', defaultVisible: false },
+    { key: 'creator', label: '创建者', defaultVisible: false },
     { key: 'created_at', label: '创建时间', defaultVisible: false },
     { key: 'updated_at', label: '更新时间', defaultVisible: false },
     { key: 'actions', label: '操作', fixed: true, defaultVisible: true }
