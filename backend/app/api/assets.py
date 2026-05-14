@@ -722,8 +722,11 @@ async def export_assets(
         ))
 
     # Generate file based on format
+    # Determine category for column filtering
+    export_category = category if category else None
+
     if format == "csv":
-        buffer = export_assets_to_csv(asset_data)
+        buffer = export_assets_to_csv(asset_data, category=export_category)
         filename = f"资产导出_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         return StreamingResponse(
             BytesIO(buffer.getvalue()),
@@ -731,7 +734,7 @@ async def export_assets(
             headers={"Content-Disposition": f'attachment; filename="{quote(filename)}"'}
         )
     else:
-        buffer = export_assets_to_excel(asset_data)
+        buffer = export_assets_to_excel(asset_data, category=export_category)
         filename = f"资产导出_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         return StreamingResponse(
             BytesIO(buffer.getvalue()),

@@ -4,30 +4,137 @@ Handles Excel and CSV export functionality
 """
 from io import BytesIO
 import csv
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta, timezone
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
 
-# Column definitions for export
-EXPORT_COLUMNS = [
+# Column definitions for export by asset category
+# Each category exports only its relevant fields
+CATEGORY_COLUMNS: Dict[str, List[tuple]] = {
+    "host": [
+        ("id", "ID"),
+        ("name", "资产名称"),
+        ("asset_code", "资产编号"),
+        ("internal_address", "内网地址"),
+        ("external_address", "外网地址"),
+        ("platform", "平台"),
+        ("organization_name", "节点"),
+        ("model", "型号"),
+        ("serial_number", "序列号"),
+        ("cpu", "CPU"),
+        ("memory", "内存"),
+        ("system_disk", "系统盘"),
+        ("data_disk", "数据盘"),
+        ("credentials", "用户名密码"),
+        ("oob", "OOB 地址"),
+        ("oob_username", "OOB 用户名"),
+        ("oob_password", "OOB 密码"),
+        ("applicant", "申请人"),
+        ("notes", "描述"),
+        ("is_active", "状态"),
+        ("created_at", "创建时间"),
+        ("updated_at", "更新时间"),
+    ],
+    "network": [
+        ("id", "ID"),
+        ("name", "资产名称"),
+        ("asset_code", "资产编号"),
+        ("internal_address", "内网地址"),
+        ("external_address", "外网地址"),
+        ("device_type", "设备类型"),
+        ("vendor", "厂商"),
+        ("model", "型号"),
+        ("serial_number", "序列号"),
+        ("organization_name", "节点"),
+        ("credentials", "用户名密码"),
+        ("notes", "描述"),
+        ("is_active", "状态"),
+        ("created_at", "创建时间"),
+        ("updated_at", "更新时间"),
+    ],
+    "database": [
+        ("id", "ID"),
+        ("name", "资产名称"),
+        ("asset_code", "资产编号"),
+        ("internal_address", "内网地址"),
+        ("external_address", "外网地址"),
+        ("platform", "平台"),
+        ("db_type", "数据库类型"),
+        ("version", "版本"),
+        ("namespace", "命名空间"),
+        ("organization_name", "节点"),
+        ("applicant", "申请人"),
+        ("credentials", "用户名密码"),
+        ("notes", "描述"),
+        ("is_active", "状态"),
+        ("created_at", "创建时间"),
+        ("updated_at", "更新时间"),
+    ],
+    "cloud": [
+        ("id", "ID"),
+        ("name", "资产名称"),
+        ("asset_code", "资产编号"),
+        ("internal_address", "内网地址"),
+        ("external_address", "外网地址"),
+        ("platform", "平台"),
+        ("organization_name", "节点"),
+        ("credentials", "用户名密码"),
+        ("notes", "描述"),
+        ("is_active", "状态"),
+        ("created_at", "创建时间"),
+        ("updated_at", "更新时间"),
+    ],
+    "web": [
+        ("id", "ID"),
+        ("name", "资产名称"),
+        ("asset_code", "资产编号"),
+        ("external_address", "外网地址"),
+        ("platform", "平台"),
+        ("organization_name", "节点"),
+        ("applicant", "申请人"),
+        ("credentials", "用户名密码"),
+        ("notes", "描述"),
+        ("is_active", "状态"),
+        ("created_at", "创建时间"),
+        ("updated_at", "更新时间"),
+    ],
+    "gpt": [
+        ("id", "ID"),
+        ("name", "资产名称"),
+        ("asset_code", "资产编号"),
+        ("external_address", "外网地址"),
+        ("platform", "平台"),
+        ("organization_name", "节点"),
+        ("credentials", "用户名密码"),
+        ("notes", "描述"),
+        ("is_active", "状态"),
+        ("created_at", "创建时间"),
+        ("updated_at", "更新时间"),
+    ],
+}
+
+# Default columns for mixed exports (all categories)
+DEFAULT_COLUMNS = [
     ("id", "ID"),
     ("name", "资产名称"),
     ("asset_code", "资产编号"),
     ("category", "资产类型"),
     ("internal_address", "内网地址"),
     ("external_address", "外网地址"),
+    ("platform", "平台"),
     ("organization_name", "节点"),
     ("device_type", "设备类型"),
     ("vendor", "厂商"),
+    ("db_type", "数据库类型"),
     ("model", "型号"),
     ("serial_number", "序列号"),
     ("cpu", "CPU"),
     ("memory", "内存"),
     ("system_disk", "系统盘"),
     ("data_disk", "数据盘"),
-    ("credentials", "用户名密码"),  # Multiple credentials joined by newlines
+    ("credentials", "用户名密码"),
     ("oob", "OOB 地址"),
     ("oob_username", "OOB 用户名"),
     ("oob_password", "OOB 密码"),
@@ -51,13 +158,23 @@ CATEGORY_LABELS = {
 }
 
 
-def export_assets_to_excel(data: List[Dict[str, Any]]) -> BytesIO:
+def export_assets_to_excel(data: List[Dict[str, Any]], category: Optional[str] = None) -> BytesIO:
     """
     Export assets to Excel format
+
+    Args:
+        data: List of asset dictionaries
+        category: Asset category (host/network/database/cloud/web/gpt). If None, uses all columns.
     """
     wb = Workbook()
     ws = wb.active
     ws.title = "资产导出"
+
+    # Determine columns based on category
+    if category and category in CATEGORY_COLUMNS:
+        export_columns = CATEGORY_COLUMNS[category]
+    else:
+        export_columns = DEFAULT_COLUMNS
 
     # Header styles
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
@@ -71,7 +188,7 @@ def export_assets_to_excel(data: List[Dict[str, Any]]) -> BytesIO:
     )
 
     # Write headers
-    for col, (field, label) in enumerate(EXPORT_COLUMNS, 1):
+    for col, (field, label) in enumerate(export_columns, 1):
         cell = ws.cell(row=1, column=col, value=label)
         cell.fill = header_fill
         cell.font = header_font
@@ -87,7 +204,7 @@ def export_assets_to_excel(data: List[Dict[str, Any]]) -> BytesIO:
     )
 
     for row_idx, asset in enumerate(data, 2):
-        for col_idx, (field, _) in enumerate(EXPORT_COLUMNS, 1):
+        for col_idx, (field, _) in enumerate(export_columns, 1):
             value = asset.get(field)
 
             # Format specific fields
@@ -166,7 +283,7 @@ def export_assets_to_excel(data: List[Dict[str, Any]]) -> BytesIO:
         "updated_at": 20,
     }
 
-    for col_idx, (field, _) in enumerate(EXPORT_COLUMNS, 1):
+    for col_idx, (field, _) in enumerate(export_columns, 1):
         col_letter = ws.cell(row=1, column=col_idx).column_letter
         ws.column_dimensions[col_letter].width = column_widths.get(field, 15)
 
@@ -179,9 +296,13 @@ def export_assets_to_excel(data: List[Dict[str, Any]]) -> BytesIO:
     return buffer
 
 
-def export_assets_to_csv(data: List[Dict[str, Any]]) -> BytesIO:
+def export_assets_to_csv(data: List[Dict[str, Any]], category: Optional[str] = None) -> BytesIO:
     """
     Export assets to CSV format
+
+    Args:
+        data: List of asset dictionaries
+        category: Asset category (host/network/database/cloud/web/gpt). If None, uses all columns.
     """
     buffer = BytesIO()
 
@@ -190,14 +311,20 @@ def export_assets_to_csv(data: List[Dict[str, Any]]) -> BytesIO:
 
     writer = csv.writer(buffer, lineterminator='\n')
 
+    # Determine columns based on category
+    if category and category in CATEGORY_COLUMNS:
+        export_columns = CATEGORY_COLUMNS[category]
+    else:
+        export_columns = DEFAULT_COLUMNS
+
     # Write header
-    header = [label for _, label in EXPORT_COLUMNS]
+    header = [label for _, label in export_columns]
     writer.writerow(header)
 
     # Write data
     for asset in data:
         row = []
-        for field, _ in EXPORT_COLUMNS:
+        for field, _ in export_columns:
             value = asset.get(field)
 
             # Format specific fields
