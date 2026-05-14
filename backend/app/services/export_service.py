@@ -18,7 +18,6 @@ EXPORT_COLUMNS = [
     ("category", "资产类型"),
     ("internal_address", "内网地址"),
     ("external_address", "外网地址"),
-    ("platform", "平台"),
     ("organization_name", "节点"),
     ("device_type", "设备类型"),
     ("vendor", "厂商"),
@@ -96,10 +95,9 @@ def export_assets_to_excel(data: List[Dict[str, Any]]) -> BytesIO:
                 value = CATEGORY_LABELS.get(value, value)
             elif field == "is_active":
                 value = "启用" if value else "禁用"
-            elif field == "platform" and value is None:
-                # For network assets, map vendor to platform if platform is empty
-                if asset.get("category") == "network":
-                    value = asset.get("vendor")
+            elif field == "vendor" and value is None:
+                # If vendor is empty, use platform value (for host/database assets)
+                value = asset.get("platform")
             elif field in ["created_at", "updated_at"] and value:
                 # Convert to UTC+8 and format as "年 - 月-日 时：分:秒"
                 if isinstance(value, datetime):
@@ -148,7 +146,6 @@ def export_assets_to_excel(data: List[Dict[str, Any]]) -> BytesIO:
         "category": 12,
         "internal_address": 20,
         "external_address": 20,
-        "platform": 15,
         "organization_name": 20,
         "device_type": 12,
         "vendor": 15,
@@ -208,10 +205,9 @@ def export_assets_to_csv(data: List[Dict[str, Any]]) -> BytesIO:
                 value = CATEGORY_LABELS.get(value, value)
             elif field == "is_active":
                 value = "启用" if value else "禁用"
-            elif field == "platform" and value is None:
-                # For network assets, map vendor to platform if platform is empty
-                if asset.get("category") == "network":
-                    value = asset.get("vendor")
+            elif field == "vendor" and value is None:
+                # If vendor is empty, use platform value (for host/database assets)
+                value = asset.get("platform")
             elif field in ["created_at", "updated_at"] and value:
                 # Convert to UTC+8 and format as "年 - 月-日 时：分:秒"
                 if isinstance(value, datetime):
