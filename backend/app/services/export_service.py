@@ -375,7 +375,5 @@ def export_assets_to_csv(data: List[Dict[str, Any]], category: Optional[str] = N
     # Add BOM for Excel compatibility with Chinese characters
     buffer.seek(0)
     content = b'\xef\xbb\xbf' + buffer.read()
-    buffer.seek(0)
-    buffer.write(content)
-    buffer.seek(0)
+    buffer = BytesIO(content)
     return buffer
