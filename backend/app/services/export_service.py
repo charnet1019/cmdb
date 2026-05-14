@@ -2,7 +2,7 @@
 Asset Export Service
 Handles Excel and CSV export functionality
 """
-from io import BytesIO
+from io import BytesIO, StringIO
 import csv
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta, timezone
@@ -306,7 +306,8 @@ def export_assets_to_csv(data: List[Dict[str, Any]], category: Optional[str] = N
         data: List of asset dictionaries
         category: Asset category (host/network/database/cloud/web/gpt). If None, uses all columns.
     """
-    buffer = BytesIO()
+    # Use StringIO for text-based CSV writing, then encode to UTF-8
+    string_buffer = StringIO()
 
     # Determine columns based on category
     if category and category in CATEGORY_COLUMNS:
@@ -314,7 +315,7 @@ def export_assets_to_csv(data: List[Dict[str, Any]], category: Optional[str] = N
     else:
         export_columns = DEFAULT_COLUMNS
 
-    writer = csv.writer(buffer, lineterminator='\n')
+    writer = csv.writer(string_buffer, lineterminator='\n')
 
     # Write header
     header = [label for _, label in export_columns]
@@ -372,8 +373,11 @@ def export_assets_to_csv(data: List[Dict[str, Any]], category: Optional[str] = N
             row.append(value if value else "")
         writer.writerow(row)
 
-    # Add BOM for Excel compatibility with Chinese characters
-    buffer.seek(0)
-    content = b'\xef\xbb\xbf' + buffer.read()
+    # Convert to BytesIO with BOM for Excel compatibility with Chinese characters
+    csv_content = string_buffer.getvalue()
+    string_buffer.close()
+
+    # Add UTF-8 BOM and encode
+    content = b'\xef\xbb\xbf' + csv_content.encode('utf-8')
     buffer = BytesIO(content)
     return buffer
