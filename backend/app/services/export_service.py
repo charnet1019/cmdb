@@ -308,16 +308,13 @@ def export_assets_to_csv(data: List[Dict[str, Any]], category: Optional[str] = N
     """
     buffer = BytesIO()
 
-    # Add BOM for Excel compatibility with Chinese characters
-    buffer.write(b'\xef\xbb\xbf')
-
-    writer = csv.writer(buffer, lineterminator='\n')
-
     # Determine columns based on category
     if category and category in CATEGORY_COLUMNS:
         export_columns = CATEGORY_COLUMNS[category]
     else:
         export_columns = DEFAULT_COLUMNS
+
+    writer = csv.writer(buffer, lineterminator='\n')
 
     # Write header
     header = [label for _, label in export_columns]
@@ -375,5 +372,10 @@ def export_assets_to_csv(data: List[Dict[str, Any]], category: Optional[str] = N
             row.append(value if value else "")
         writer.writerow(row)
 
+    # Add BOM for Excel compatibility with Chinese characters
+    buffer.seek(0)
+    content = b'\xef\xbb\xbf' + buffer.read()
+    buffer.seek(0)
+    buffer.write(content)
     buffer.seek(0)
     return buffer
