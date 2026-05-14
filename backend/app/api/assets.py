@@ -685,7 +685,7 @@ async def export_assets(
         )
 
     # Get organization names
-    org_ids = set(a.organization_id for a in assets if a.organization_id)
+    org_ids = set(a.organization_id for a in assets if a.organization_id is not None)
     org_names = {}
     if org_ids:
         org_result = await db.execute(select(Organization.id, Organization.name).where(Organization.id.in_(org_ids)))
@@ -710,9 +710,12 @@ async def export_assets(
                     "password": ""  # Empty password if decryption fails
                 })
 
+        # Get organization name, default to "Default" for null organization_id
+        org_name = org_names.get(asset.organization_id) if asset.organization_id is not None else "Default"
+
         asset_data.append(build_asset_response(
             asset,
-            org_name=org_names.get(asset.organization_id),
+            org_name=org_name,
             include_credentials=True,
             credentials_data=credentials,
             include_decrypted_passwords=True  # For export, include decrypted passwords
