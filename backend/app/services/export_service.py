@@ -243,7 +243,7 @@ def export_assets_to_excel(data: List[Dict[str, Any]], category: Optional[str] =
                     value = "\n".join([f"{c.get('username')}:{c.get('password', '')}" for c in creds if c.get('username')])
                 else:
                     value = ""
-            elif field in ["oob", "oob_username", "oob_password"]:
+            elif field in ["oob", "oob_username", "oob_password", "version"]:
                 # Extract from extra_data (metadata)
                 extra_data = asset.get("extra_data") or {}
                 value = extra_data.get(field)
@@ -363,7 +363,7 @@ def export_assets_to_csv(data: List[Dict[str, Any]], category: Optional[str] = N
                     value = "\n".join([f"{c.get('username')}:{c.get('password', '')}" for c in creds if c.get('username')])
                 else:
                     value = ""
-            elif field in ["oob", "oob_username", "oob_password"]:
+            elif field in ["oob", "oob_username", "oob_password", "version"]:
                 # Extract from extra_data (metadata)
                 extra_data = asset.get("extra_data") or {}
                 value = extra_data.get(field)

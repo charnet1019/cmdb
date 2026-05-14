@@ -162,6 +162,9 @@ def build_asset_response(
         data["applicant"] = asset.applicant
     if asset.namespace:  # For database assets
         data["namespace"] = asset.namespace
+    # Extract version from extra_data (metadata) for database assets
+    if asset.extra_data and "version" in asset.extra_data:
+        data["version"] = asset.extra_data["version"]
     if creator_name:
         data["creator_name"] = creator_name
 
