@@ -90,6 +90,7 @@ CATEGORY_COLUMNS: Dict[str, List[tuple]] = {
         ("id", "ID"),
         ("name", "资产名称"),
         ("asset_code", "资产编号"),
+        ("internal_address", "内网地址"),
         ("external_address", "外网地址"),
         ("platform", "平台"),
         ("organization_name", "节点"),
