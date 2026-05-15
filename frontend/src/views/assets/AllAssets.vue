@@ -1211,7 +1211,7 @@ onMounted(async () => {
                           v-model="cred.password"
                           type="text"
                           class="input-field text-xs flex-1"
-                          autocomplete="off"
+                          autocomplete="new-password"
                           @blur="stopFieldEdit"
                           @keyup.enter.prevent="stopFieldEdit"
                           placeholder="输入新密码"
@@ -1261,7 +1261,7 @@ onMounted(async () => {
                       type="text"
                       class="input-field text-sm"
                       placeholder="输入用户名"
-                      autocomplete="off"
+                      autocomplete="new-username"
                       @keyup.enter.prevent="addCredentialToForm"
                     />
                   </div>
@@ -1272,7 +1272,7 @@ onMounted(async () => {
                       :type="showPassword ? 'text' : 'password'"
                       class="input-field text-sm w-full pr-8"
                       placeholder="输入密码"
-                      autocomplete="off"
+                      autocomplete="new-password"
                       @keyup.enter.prevent="addCredentialToForm"
                     />
                     <button type="button" @click="showPassword = !showPassword" class="absolute right-2 top-[calc(50%+10px)] -translate-y-1/2 text-slate-400 hover:text-slate-600">
