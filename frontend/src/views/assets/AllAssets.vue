@@ -1448,7 +1448,7 @@ onMounted(async () => {
               <button type="button" @click="showModal = false" class="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors">
                 取消
               </button>
-              <button type="submit" :disabled="modalLoading" class="btn-primary">
+              <button type="submit" :disabled="modalLoading" class="btn-primary" autocomplete="off">
                 {{ modalLoading ? '处理中...' : '保存' }}
               </button>
             </div>
