@@ -1407,12 +1407,12 @@ onMounted(async () => {
               <div class="grid grid-cols-2 gap-3">
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1">OOB用户名</label>
-                  <input v-model="form.oob_username" type="text" class="input-field" placeholder="OOB用户名" autocomplete="off" />
+                  <input v-model="form.oob_username" type="text" class="input-field" placeholder="OOB 用户名" autocomplete="new-username" />
                 </div>
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1">OOB密码</label>
                   <div class="relative">
-                    <input v-model="form.oob_password" :type="showOobPassword ? 'text' : 'password'" class="input-field pr-8" placeholder="OOB 密码" autocomplete="off" />
+                    <input v-model="form.oob_password" :type="showOobPassword ? 'text' : 'password'" class="input-field pr-8" placeholder="OOB 密码" autocomplete="new-password" />
                     <button type="button" @click="showOobPassword = !showOobPassword" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                       <EyeOutlined v-if="!showOobPassword" class="text-sm" />
                       <EyeInvisibleOutlined v-else class="text-sm" />
