@@ -122,6 +122,8 @@ class AssetBase(BaseModel):
     # Additional fields
     applicant: Optional[str] = Field(None, max_length=100)  # 申请人
     namespace: Optional[str] = Field(None, max_length=100)  # 命名空间
+    owner_id: Optional[int] = None  # 负责人 ID
+    owner_name: Optional[str] = Field(None, max_length=100)  # 负责人姓名
 
 
 class AssetCreate(AssetBase):
@@ -164,6 +166,8 @@ class AssetUpdate(BaseModel):
     # Additional fields
     applicant: Optional[str] = Field(None, max_length=100)  # 申请人
     namespace: Optional[str] = Field(None, max_length=100)  # 命名空间
+    owner_id: Optional[int] = None  # 负责人 ID
+    owner_name: Optional[str] = Field(None, max_length=100)  # 负责人姓名
 
 
 class AssetResponse(AssetBase):
@@ -186,6 +190,8 @@ class AssetResponse(AssetBase):
     credentials: List["CredentialSimple"] = []
     applicant: Optional[str] = None
     namespace: Optional[str] = None
+    owner_id: Optional[int] = None  # 负责人 ID
+    owner_name: Optional[str] = Field(None, max_length=100)  # 负责人姓名
 
     model_config = ConfigDict(from_attributes=True, exclude_none=True)
 

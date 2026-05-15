@@ -153,6 +153,8 @@ class Asset(Base):
     # Additional fields
     applicant: Mapped[Optional[str]] = mapped_column(String(100))  # 申请人
     namespace: Mapped[Optional[str]] = mapped_column(String(100))  # 命名空间（数据库 Schema 等）
+    owner_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), index=True)  # 负责人 ID
+    owner_name: Mapped[Optional[str]] = mapped_column(String(100))  # 负责人姓名（冗余字段）
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
@@ -164,6 +166,7 @@ class Asset(Base):
     )
     organization: Mapped[Optional["Organization"]] = relationship("Organization")
     created_by: Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by_id])
+    owner: Mapped[Optional["User"]] = relationship("User", foreign_keys=[owner_id])
 
     __table_args__ = (
         Index("idx_assets_category", "category"),

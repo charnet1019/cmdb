@@ -111,7 +111,8 @@ def build_asset_response(
     include_credentials: bool = True,
     credentials_data: Optional[List[Dict]] = None,
     include_decrypted_passwords: bool = False,
-    creator_name: Optional[str] = None
+    creator_name: Optional[str] = None,
+    owner_name: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Build asset response dictionary based on asset category.
@@ -167,6 +168,10 @@ def build_asset_response(
         data["version"] = asset.extra_data["version"]
     if creator_name:
         data["creator_name"] = creator_name
+    if asset.owner_id:
+        data["owner_id"] = asset.owner_id
+    if owner_name or asset.owner_name:
+        data["owner_name"] = owner_name or asset.owner_name
 
     # Add type-specific fields only
     for field in type_fields:
@@ -271,13 +276,15 @@ async def list_assets(
     limit: int = Query(20, ge=1, le=100),
     category: Optional[str] = None,
     organization_id: Optional[int] = None,
+    owner_id: Optional[int] = None,
+    owner_name: Optional[str] = None,
     search: Optional[str] = None,
     is_active: Optional[bool] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """List all assets with pagination and filters"""
-    query = select(Asset).options(selectinload(Asset.credentials), selectinload(Asset.created_by))
+    query = select(Asset).options(selectinload(Asset.credentials), selectinload(Asset.created_by), selectinload(Asset.owner))
 
     # Apply filters
     if category:
@@ -287,6 +294,12 @@ async def list_assets(
         # Get all descendant organization IDs and filter by them
         org_ids = await get_descendant_org_ids(db, organization_id)
         query = query.where(Asset.organization_id.in_(org_ids))
+
+    if owner_id is not None:
+        query = query.where(Asset.owner_id == owner_id)
+
+    if owner_name:
+        query = query.where(Asset.owner_name.ilike(f"%{owner_name}%"))
 
     if search:
         query = query.where(
@@ -325,6 +338,13 @@ async def list_assets(
         creator_result = await db.execute(select(User.id, User.username).where(User.id.in_(creator_ids)))
         creator_names = {row.id: row.username for row in creator_result}
 
+    # Get owner names (for assets without owner_name cached)
+    owner_ids = set(a.owner_id for a in assets if a.owner_id and not a.owner_name)
+    owner_names = {}
+    if owner_ids:
+        owner_result = await db.execute(select(User.id, User.username).where(User.id.in_(owner_ids)))
+        owner_names = {row.id: row.username for row in owner_result}
+
     # Build response
     asset_responses = []
     for asset in assets:
@@ -337,12 +357,16 @@ async def list_assets(
             for c in asset.credentials
         ]
 
+        # Determine owner name
+        owner_name_val = asset.owner_name or owner_names.get(asset.owner_id) if asset.owner_id else None
+
         asset_responses.append(build_asset_response(
             asset,
             org_name=org_names.get(asset.organization_id),
             include_credentials=True,
             credentials_data=credentials,
-            creator_name=creator_names.get(asset.created_by_id)
+            creator_name=creator_names.get(asset.created_by_id),
+            owner_name=owner_name_val
         ))
 
     pages = (total + limit - 1) // limit if total > 0 else 0
@@ -375,6 +399,32 @@ async def create_asset(
             detail=f"无效的资产类型: {data.category}"
         )
 
+    # Validate and get owner info
+    owner_id = data.owner_id
+    owner_name = data.owner_name
+    if owner_id and not owner_name:
+        # Fetch owner name from database
+        result = await db.execute(select(User.username).where(User.id == owner_id))
+        owner_result = result.scalar_one_or_none()
+        if owner_result:
+            owner_name = owner_result
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="负责人 ID 不存在"
+            )
+    elif owner_name and not owner_id:
+        # Try to find user by username
+        result = await db.execute(select(User.id, User.username).where(User.username == owner_name))
+        owner_result = result.first()
+        if owner_result:
+            owner_id = owner_result[0]
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="负责人不存在"
+            )
+
     asset = Asset(
         name=data.name,
         asset_code=data.asset_code,
@@ -397,6 +447,8 @@ async def create_asset(
         extra_data=data.extra_data,
         applicant=data.applicant,
         namespace=data.namespace,
+        owner_id=owner_id,
+        owner_name=owner_name,
     )
 
     db.add(asset)
@@ -408,7 +460,8 @@ async def create_asset(
         org_name=None,
         include_credentials=True,
         credentials_data=[],
-        creator_name=current_user.username
+        creator_name=current_user.username,
+        owner_name=owner_name
     )
 
 
@@ -813,6 +866,35 @@ async def update_asset(
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
     print(f"DEBUG: update_data for asset {asset_id}: {update_data}")
+
+    # Handle owner validation
+    if "owner_id" in update_data or "owner_name" in update_data:
+        owner_id = update_data.get("owner_id")
+        owner_name = update_data.get("owner_name")
+
+        if owner_id is not None and owner_name is None:
+            # Fetch owner name from database
+            result = await db.execute(select(User.username).where(User.id == owner_id))
+            owner_result = result.scalar_one_or_none()
+            if owner_result:
+                update_data["owner_name"] = owner_result
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="负责人 ID 不存在"
+                )
+        elif owner_name is not None and owner_id is None:
+            # Try to find user by username
+            result = await db.execute(select(User.id).where(User.username == owner_name))
+            owner_result = result.scalar_one_or_none()
+            if owner_result:
+                update_data["owner_id"] = owner_result
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="负责人不存在"
+                )
+
     for field, value in update_data.items():
         # Map schema 'extra_data' to model 'extra_data'
         if field == "extra_data":

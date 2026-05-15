@@ -31,6 +31,7 @@ import { useCredentials } from './composables/useCredentials'
 import { useTypeTree, categories, platformOptions, categoryOptions, dbTypeOptions } from './composables/useTypeTree'
 import { useColumnConfig } from './composables/useColumnConfig'
 import { createAsset, updateAsset, createCredential, updateCredential } from '@/api/assets'
+import { getUsers } from '@/api/users'
 import ColumnCustomizer from './components/ColumnCustomizer.vue'
 import ImportModal from './components/ImportModal.vue'
 import ExportModal from './components/ExportModal.vue'
@@ -209,6 +210,7 @@ function isColVisible(key: string): boolean {
     case 'oob': case 'oob_credentials': return cat === 'host' || cat === 'all'
     case 'db_type': case 'version': case 'namespace': return cat === 'database' || cat === 'all'
     case 'applicant': return cat === 'host' || cat === 'database' || cat === 'web' || cat === 'all'
+    case 'owner': return true // 负责人所有类别都显示
     default: return true
   }
 }
@@ -298,6 +300,28 @@ const formSelectedOrgId = ref<number | null>(null)
 // Device type options for network
 const localDeviceTypeOptions = ['交换机', '路由器', '防火墙', '负载均衡', '无线控制器']
 
+// User list for owner selection
+const userOptions = ref<Array<{ id: number; username: string; full_name: string | null }>>([])
+const loadingUsers = ref(false)
+
+// Load users for owner dropdown
+async function loadUsers() {
+  if (userOptions.value.length > 0) return
+  loadingUsers.value = true
+  try {
+    const result = await getUsers({ page: 1, limit: 100 })
+    userOptions.value = (result.items || []).map(u => ({
+      id: u.id,
+      username: u.username,
+      full_name: u.full_name
+    }))
+  } catch (error) {
+    console.error('Failed to load users:', error)
+  } finally {
+    loadingUsers.value = false
+  }
+}
+
 // Form
 const form = ref({
   name: '',
@@ -320,6 +344,7 @@ const form = ref({
   oob_username: '',
   oob_password: '',
   applicant: '',
+  owner_id: null as number | null,
   notes: ''
 })
 
@@ -414,7 +439,7 @@ function handleSelectType(node: any) {
 }
 
 // Open create modal
-function openCreateModal() {
+async function openCreateModal() {
   editingAsset.value = null
   const defaultCategory = activeCategory.value !== 'all' ? activeCategory.value : 'host'
   form.value = {
@@ -438,6 +463,7 @@ function openCreateModal() {
     oob_username: '',
     oob_password: '',
     applicant: '',
+    owner_id: null,
     notes: ''
   }
   if (selectedTypeNode.value && selectedTypeNode.value.category) {
@@ -452,12 +478,13 @@ function openCreateModal() {
     }
   }
 
+  await loadUsers()
   resetFormCredentials()
   showModal.value = true
 }
 
 // Open edit modal
-function openEditModal(asset: Asset) {
+async function openEditModal(asset: Asset) {
   editingAsset.value = asset
   form.value = {
     name: asset.name,
@@ -480,6 +507,7 @@ function openEditModal(asset: Asset) {
     oob_username: asset.extra_data?.oob_username || '',
     oob_password: asset.extra_data?.oob_password || '',
     applicant: asset.applicant || '',
+    owner_id: asset.owner_id || null,
     notes: asset.notes || ''
   }
   formSelectedOrgId.value = asset.organization_id || null
@@ -488,6 +516,7 @@ function openEditModal(asset: Asset) {
     username: c.username,
     password: ''
   }))
+  await loadUsers()
   showModal.value = true
 }
 
@@ -536,6 +565,7 @@ async function handleSubmit() {
       db_type: form.value.db_type || undefined,
       applicant: form.value.applicant || undefined,
       namespace: form.value.namespace || undefined,
+      owner_id: form.value.owner_id || undefined,
       extra_data: extraData,
       notes: form.value.notes || undefined,
       organization_id: formSelectedOrgId.value || undefined
@@ -941,6 +971,7 @@ onMounted(async () => {
                           <span v-else class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">禁用</span>
                         </template>
                         <template v-else-if="key === 'applicant'">{{ asset.applicant || '' }}</template>
+                        <template v-else-if="key === 'owner'"><span class="text-sm text-slate-600">{{ asset.owner_name || '' }}</span></template>
                         <template v-else-if="key === 'credentials'">
                           <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
                             <span class="font-medium shrink-0">{{ cred.username }}</span>
@@ -1260,19 +1291,80 @@ onMounted(async () => {
               </div>
             </div>
 
+            <!-- Network 专属字段 -->
+            <template v-if="form.category === 'network'">
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
+                <select v-model="form.owner_id" class="input-field">
+                  <option value="">请选择</option>
+                  <option v-for="user in userOptions" :key="user.id" :value="user.id">
+                    {{ user.username }}
+                  </option>
+                </select>
+              </div>
+            </template>
+
             <!-- Web 专属字段 -->
             <template v-if="form.category === 'web'">
-              <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1">申请人</label>
-                <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">申请人</label>
+                  <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
+                  <select v-model="form.owner_id" class="input-field">
+                    <option value="">请选择</option>
+                    <option v-for="user in userOptions" :key="user.id" :value="user.id">
+                      {{ user.username }}
+                    </option>
+                  </select>
+                </div>
               </div>
             </template>
 
             <!-- 数据库专属字段 -->
             <template v-if="form.category === 'database'">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">申请人</label>
+                  <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
+                  <select v-model="form.owner_id" class="input-field">
+                    <option value="">请选择</option>
+                    <option v-for="user in userOptions" :key="user.id" :value="user.id">
+                      {{ user.username }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+            </template>
+
+            <!-- Cloud 专属字段 -->
+            <template v-if="form.category === 'cloud'">
               <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1">申请人</label>
-                <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />
+                <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
+                <select v-model="form.owner_id" class="input-field">
+                  <option value="">请选择</option>
+                  <option v-for="user in userOptions" :key="user.id" :value="user.id">
+                    {{ user.username }}
+                  </option>
+                </select>
+              </div>
+            </template>
+
+            <!-- GPT 专属字段 -->
+            <template v-if="form.category === 'gpt'">
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
+                <select v-model="form.owner_id" class="input-field">
+                  <option value="">请选择</option>
+                  <option v-for="user in userOptions" :key="user.id" :value="user.id">
+                    {{ user.username }}
+                  </option>
+                </select>
               </div>
             </template>
 
@@ -1328,9 +1420,20 @@ onMounted(async () => {
                   </div>
                 </div>
               </div>
-              <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1">申请人</label>
-                <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">申请人</label>
+                  <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
+                  <select v-model="form.owner_id" class="input-field">
+                    <option value="">请选择</option>
+                    <option v-for="user in userOptions" :key="user.id" :value="user.id">
+                      {{ user.username }}
+                    </option>
+                  </select>
+                </div>
               </div>
             </template>
 

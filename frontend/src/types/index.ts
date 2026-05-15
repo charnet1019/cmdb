@@ -45,6 +45,9 @@ export interface Asset {
   is_active: boolean
   applicant: string | null  // 申请人
   namespace: string | null  // 命名空间（数据库 Schema 等）
+  owner_id: number | null  // 负责人 ID
+  owner_name: string | null  // 负责人姓名
+  version: string | null  // 版本（数据库）
   created_at: string
   updated_at: string
   credentials: CredentialSimple[]
