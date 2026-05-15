@@ -154,7 +154,13 @@ def build_asset_response(
     if asset.notes:
         data["notes"] = asset.notes
     if asset.extra_data:
-        data["extra_data"] = asset.extra_data
+        # Filter out sensitive fields (oob_password) from extra_data
+        filtered_extra_data = {
+            k: v for k, v in asset.extra_data.items()
+            if k not in ("oob_password",)
+        }
+        if filtered_extra_data:
+            data["extra_data"] = filtered_extra_data
     if asset.created_at:
         data["created_at"] = asset.created_at.isoformat()
     if asset.updated_at:
@@ -1231,6 +1237,72 @@ async def create_credential(
         credential_type=credential.credential_type,
         created_at=credential.created_at,
     )
+
+
+class EncryptRequest(BaseModel):
+    """Encryption request"""
+    value: str
+
+
+class EncryptResponse(ResponseBase):
+    """Encryption response"""
+    data: dict
+
+
+class OOBDecryptResponse(BaseModel):
+    """OOB password decrypt response"""
+    oob_password: str
+
+
+@router.post("/encrypt", response_model=EncryptResponse)
+async def encrypt_value_endpoint(
+    request: EncryptRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Encrypt a value (for OOB password)"""
+    try:
+        encrypted = encrypt_value(request.value)
+        return EncryptResponse(data={"encrypted_value": encrypted})
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"加密失败：{str(e)}"
+        )
+
+
+@router.post("/{asset_id}/decrypt-oob", response_model=OOBDecryptResponse)
+async def decrypt_oob_password(
+    asset_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(PermissionChecker("view_pwd")),
+):
+    """Decrypt OOB password for host asset (requires view_pwd permission)"""
+    result = await db.execute(
+        select(Asset).where(Asset.id == asset_id)
+    )
+    asset = result.scalar_one_or_none()
+
+    if not asset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="资产不存在"
+        )
+
+    if not asset.extra_data or not asset.extra_data.get("oob_password"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="未找到 OOB 密码"
+        )
+
+    try:
+        decrypted_password = decrypt_value(asset.extra_data["oob_password"])
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="解密失败"
+        )
+
+    return OOBDecryptResponse(oob_password=decrypted_password)
 
 
 @cred_router.post("/{credential_id}/decrypt", response_model=CredentialDecryptResponse)

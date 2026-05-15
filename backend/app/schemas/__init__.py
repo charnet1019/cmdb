@@ -4,7 +4,7 @@ Request/Response models for API
 """
 from datetime import datetime
 from typing import Optional, List, Any
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
 
 
 # ============== Common ==============
@@ -194,6 +194,16 @@ class AssetResponse(AssetBase):
     owner_name: Optional[str] = Field(None, max_length=100)  # 负责人姓名
 
     model_config = ConfigDict(from_attributes=True, exclude_none=True)
+
+    @field_validator("extra_data", mode="before")
+    @classmethod
+    def filter_sensitive_data(cls, v):
+        """Filter out sensitive data from extra_data (e.g., oob_password)"""
+        if not v:
+            return v
+        # Return a copy without sensitive fields
+        filtered = {k: v for k, v in v.items() if k not in ("oob_password",)}
+        return filtered if filtered else None
 
 
 class AssetSimple(BaseModel):

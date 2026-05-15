@@ -150,6 +150,7 @@ const {
   credentialInputRefs,
   copyUsername,
   copyPassword,
+  copyOobPassword,
   viewPassword,
   viewFormCredentialPassword,
   addCredentialToForm,
@@ -272,15 +273,31 @@ function closePasswordPopover() {
   passwordPopover.value = null
 }
 
-function showOobPasswordPopover(asset: any, event: MouseEvent) {
-  const password = asset.extra_data?.oob_password
-  if (!password) return
+async function showOobPasswordPopover(asset: any, event: MouseEvent) {
+  if (!asset.extra_data?.oob_username) return
   if (passwordPopover.value?.credId === -asset.id) {
     passwordPopover.value = null
     return
   }
-  const rect = (event.target as HTMLElement).getBoundingClientRect()
-  passwordPopover.value = { credId: -asset.id, password, x: rect.left, y: rect.top }
+  // Call decrypt API to get plain text password
+  try {
+    const token = localStorage.getItem('token')
+    const response = await fetch(`/api/v1/assets/${asset.id}/decrypt-oob`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    })
+    if (!response.ok) {
+      throw new Error('解密失败')
+    }
+    const data = await response.json()
+    const rect = (event.target as HTMLElement).getBoundingClientRect()
+    passwordPopover.value = { credId: -asset.id, password: data.oob_password, x: rect.left, y: rect.top }
+  } catch (error: any) {
+    message.error(error.message || '解密失败')
+  }
 }
 
 // Tree view mode
@@ -537,7 +554,19 @@ async function handleSubmit() {
       if (form.value.category === 'host') {
         if (form.value.oob) extraFields.oob = form.value.oob
         if (form.value.oob_username) extraFields.oob_username = form.value.oob_username
-        if (form.value.oob_password) extraFields.oob_password = form.value.oob_password
+        // Encrypt OOB password before saving
+        if (form.value.oob_password) {
+          const encryptResponse = await fetch('/api/v1/assets/encrypt', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({ value: form.value.oob_password })
+          })
+          const encryptData = await encryptResponse.json()
+          extraFields.oob_password = encryptData.data.encrypted_value
+        }
       }
       // Database version field (db_type, namespace, applicant now go to independent columns)
       if (form.value.category === 'database') {
@@ -958,8 +987,8 @@ onMounted(async () => {
                             <span class="font-medium shrink-0">{{ asset.extra_data.oob_username }}</span>
                             <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(asset.extra_data.oob_username)" />
                             <span class="text-slate-400 font-mono ml-1 shrink-0">********</span>
-                            <CopyOutlined v-if="asset.is_active && asset.extra_data?.oob_password" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(asset.extra_data.oob_password)" />
-                            <EyeOutlined v-if="asset.is_active && asset.extra_data?.oob_password" class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showOobPasswordPopover(asset, $event)" />
+                            <CopyOutlined v-if="asset.is_active && asset.extra_data?.oob_username" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyOobPassword(asset)" />
+                            <EyeOutlined v-if="asset.is_active && asset.extra_data?.oob_username" class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showOobPasswordPopover(asset, $event)" />
                           </div>
                         </template>
                         <template v-else-if="key === 'db_type'"><span class="text-sm text-slate-600">{{ asset.db_type || '' }}</span></template>

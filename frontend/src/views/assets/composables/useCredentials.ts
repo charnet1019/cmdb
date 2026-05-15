@@ -62,6 +62,29 @@ export function useCredentials() {
     copyToClipboard(username)
   }
 
+  // Copy OOB password - decrypt and copy
+  async function copyOobPassword(asset: { id: string }) {
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(`/api/v1/assets/${asset.id}/decrypt-oob`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      if (!response.ok) {
+        throw new Error('解密失败')
+      }
+      const data = await response.json()
+      if (data.oob_password) {
+        copyToClipboard(data.oob_password)
+      }
+    } catch (error: any) {
+      message.error(error.message || '解密失败')
+    }
+  }
+
   // Copy password - decrypt and copy
   async function copyPassword(credential: { id: number }) {
     const cachedPassword = decryptedPasswords.value.get(credential.id)
@@ -214,6 +237,7 @@ export function useCredentials() {
     copyToClipboard,
     copyUsername,
     copyPassword,
+    copyOobPassword,
     viewPassword,
     viewFormCredentialPassword,
     toggleNewPasswordVisibility,
