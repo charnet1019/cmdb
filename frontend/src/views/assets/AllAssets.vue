@@ -1057,7 +1057,7 @@ onMounted(async () => {
           </button>
         </div>
         <div class="p-3">
-          <form @submit.prevent="handleSubmit" class="space-y-3">
+          <form @submit.prevent="handleSubmit" autocomplete="off" class="space-y-3">
             <!-- Row 1: 资产名称、资产编号 -->
             <div class="grid grid-cols-2 gap-3">
               <div>
