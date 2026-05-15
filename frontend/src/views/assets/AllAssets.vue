@@ -1191,7 +1191,7 @@ onMounted(async () => {
                           v-model="cred.username"
                           type="text"
                           class="input-field text-xs flex-1"
-                          autocomplete="off"
+                          autocomplete="new-username"
                           @blur="stopFieldEdit"
                           @keyup.enter.prevent="stopFieldEdit"
                         />
