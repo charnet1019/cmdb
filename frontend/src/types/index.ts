@@ -48,6 +48,9 @@ export interface Asset {
   owner_id: number | null  // 负责人 ID
   owner_name: string | null  // 负责人姓名
   version: string | null  // 版本（数据库）
+  // OOB fields (for host category)
+  oob_address: string | null  // OOB 管理地址
+  oob_username: string | null  // OOB 用户名
   created_at: string
   updated_at: string
   credentials: CredentialSimple[]

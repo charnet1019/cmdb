@@ -141,6 +141,10 @@ class AssetCreate(AssetBase):
     applicant: Optional[str] = None
     namespace: Optional[str] = None
     extra_data: Optional[dict] = Field(None, serialization_alias="metadata")
+    # OOB fields (for host category)
+    oob_address: Optional[str] = Field(None, max_length=200)  # OOB 地址
+    oob_username: Optional[str] = Field(None, max_length=100)  # OOB 用户名
+    oob_password: Optional[str] = Field(None, max_length=255)  # OOB 密码（明文输入，后端加密）
 
 
 class AssetUpdate(BaseModel):
@@ -168,6 +172,10 @@ class AssetUpdate(BaseModel):
     namespace: Optional[str] = Field(None, max_length=100)  # 命名空间
     owner_id: Optional[int] = None  # 负责人 ID
     owner_name: Optional[str] = Field(None, max_length=100)  # 负责人姓名
+    # OOB fields (for host category)
+    oob_address: Optional[str] = Field(None, max_length=200)  # OOB 地址
+    oob_username: Optional[str] = Field(None, max_length=100)  # OOB 用户名
+    oob_password: Optional[str] = Field(None, max_length=255)  # OOB 密码（明文输入，后端加密）
 
 
 class AssetResponse(AssetBase):
@@ -192,6 +200,9 @@ class AssetResponse(AssetBase):
     namespace: Optional[str] = None
     owner_id: Optional[int] = None  # 负责人 ID
     owner_name: Optional[str] = Field(None, max_length=100)  # 负责人姓名
+    # OOB fields (for host category, password not included in response)
+    oob_address: Optional[str] = None
+    oob_username: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True, exclude_none=True)
 

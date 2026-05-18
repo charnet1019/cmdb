@@ -274,7 +274,7 @@ function closePasswordPopover() {
 }
 
 async function showOobPasswordPopover(asset: any, event: MouseEvent) {
-  if (!asset.extra_data?.oob_username) return
+  if (!asset.oob_username && !asset.extra_data?.oob_username) return
   if (passwordPopover.value?.credId === -asset.id) {
     passwordPopover.value = null
     return
@@ -520,9 +520,9 @@ async function openEditModal(asset: Asset) {
     version: asset.extra_data?.version || '',
     namespace: asset.namespace || '',
     db_type: asset.db_type || '',
-    oob: asset.extra_data?.oob || '',
-    oob_username: asset.extra_data?.oob_username || '',
-    oob_password: asset.extra_data?.oob_password || '',
+    oob: asset.oob_address || asset.extra_data?.oob || '',
+    oob_username: asset.oob_username || asset.extra_data?.oob_username || '',
+    oob_password: '', // Password not returned by backend
     applicant: asset.applicant || '',
     owner_id: asset.owner_id || null,
     notes: asset.notes || ''
@@ -546,32 +546,11 @@ async function handleSubmit() {
 
   modalLoading.value = true
   try {
-    // Prepare extra_data for host and database assets
+    // Prepare extra_data for database assets only (host OOB fields now use independent columns)
     let extraData: Record<string, any> | undefined
-    if (form.value.category === 'host' || form.value.category === 'database') {
+    if (form.value.category === 'database') {
       const extraFields: Record<string, any> = {}
-      // Host oob fields (applicant now goes to independent column)
-      if (form.value.category === 'host') {
-        if (form.value.oob) extraFields.oob = form.value.oob
-        if (form.value.oob_username) extraFields.oob_username = form.value.oob_username
-        // Encrypt OOB password before saving
-        if (form.value.oob_password) {
-          const encryptResponse = await fetch('/api/v1/assets/encrypt', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify({ value: form.value.oob_password })
-          })
-          const encryptData = await encryptResponse.json()
-          extraFields.oob_password = encryptData.data.encrypted_value
-        }
-      }
-      // Database version field (db_type, namespace, applicant now go to independent columns)
-      if (form.value.category === 'database') {
-        if (form.value.version) extraFields.version = form.value.version
-      }
+      if (form.value.version) extraFields.version = form.value.version
       extraData = Object.keys(extraFields).length > 0 ? extraFields : undefined
     }
 
@@ -595,6 +574,12 @@ async function handleSubmit() {
       applicant: form.value.applicant || undefined,
       namespace: form.value.namespace || undefined,
       owner_id: form.value.owner_id || undefined,
+      // Independent OOB fields for host assets
+      ...(form.value.category === 'host' && {
+        oob_address: form.value.oob || undefined,
+        oob_username: form.value.oob_username || undefined,
+        oob_password: form.value.oob_password || undefined
+      }),
       extra_data: extraData,
       notes: form.value.notes || undefined,
       organization_id: formSelectedOrgId.value || undefined
@@ -981,14 +966,16 @@ onMounted(async () => {
                         <template v-else-if="key === 'memory'"><span class="text-sm text-slate-600">{{ asset.memory || '' }}</span></template>
                         <template v-else-if="key === 'system_disk'"><span class="text-sm text-slate-600">{{ asset.system_disk || '' }}</span></template>
                         <template v-else-if="key === 'data_disk'"><span class="text-sm text-slate-600">{{ asset.data_disk || '' }}</span></template>
-                        <template v-else-if="key === 'oob'"><span class="text-sm text-slate-600 font-mono">{{ asset.extra_data?.oob || '' }}</span></template>
+                        <template v-else-if="key === 'oob'">
+                          <span class="text-sm text-slate-600 font-mono">{{ asset.oob_address || asset.extra_data?.oob || '' }}</span>
+                        </template>
                         <template v-else-if="key === 'oob_credentials'">
-                          <div v-if="asset.extra_data?.oob_username" class="flex items-center gap-1.5 text-slate-600">
-                            <span class="font-medium shrink-0">{{ asset.extra_data.oob_username }}</span>
-                            <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(asset.extra_data.oob_username)" />
+                          <div v-if="asset.oob_username || asset.extra_data?.oob_username" class="flex items-center gap-1.5 text-slate-600">
+                            <span class="font-medium shrink-0">{{ asset.oob_username || asset.extra_data?.oob_username }}</span>
+                            <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(asset.oob_username || asset.extra_data?.oob_username || '')" />
                             <span class="text-slate-400 font-mono ml-1 shrink-0">********</span>
-                            <CopyOutlined v-if="asset.is_active && asset.extra_data?.oob_username" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyOobPassword(asset)" />
-                            <EyeOutlined v-if="asset.is_active && asset.extra_data?.oob_username" class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showOobPasswordPopover(asset, $event)" />
+                            <CopyOutlined v-if="asset.is_active && (asset.oob_username || asset.extra_data?.oob_username)" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyOobPassword(asset)" />
+                            <EyeOutlined v-if="asset.is_active && (asset.oob_username || asset.extra_data?.oob_username)" class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showOobPasswordPopover(asset, $event)" />
                           </div>
                         </template>
                         <template v-else-if="key === 'db_type'"><span class="text-sm text-slate-600">{{ asset.db_type || '' }}</span></template>

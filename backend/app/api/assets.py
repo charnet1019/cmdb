@@ -178,6 +178,11 @@ def build_asset_response(
         data["owner_id"] = asset.owner_id
     if owner_name or asset.owner_name:
         data["owner_name"] = owner_name or asset.owner_name
+    # OOB fields (for host category)
+    if asset.oob_address:
+        data["oob_address"] = asset.oob_address
+    if asset.oob_username:
+        data["oob_username"] = asset.oob_username
 
     # Add type-specific fields only
     for field in type_fields:
@@ -431,6 +436,11 @@ async def create_asset(
                 detail="负责人不存在"
             )
 
+    # Encrypt OOB password if provided
+    oob_password_encrypted = None
+    if data.oob_password:
+        oob_password_encrypted = encrypt_value(data.oob_password)
+
     asset = Asset(
         name=data.name,
         asset_code=data.asset_code,
@@ -455,6 +465,10 @@ async def create_asset(
         namespace=data.namespace,
         owner_id=owner_id,
         owner_name=owner_name,
+        # OOB fields
+        oob_address=data.oob_address,
+        oob_username=data.oob_username,
+        oob_password_encrypted=oob_password_encrypted,
     )
 
     db.add(asset)
@@ -901,6 +915,14 @@ async def update_asset(
                     detail="负责人不存在"
                 )
 
+    # Handle OOB password encryption
+    if "oob_password" in update_data and update_data["oob_password"] is not None:
+        if update_data["oob_password"]:
+            asset.oob_password_encrypted = encrypt_value(update_data["oob_password"])
+        else:
+            asset.oob_password_encrypted = None
+        del update_data["oob_password"]
+
     for field, value in update_data.items():
         # Map schema 'extra_data' to model 'extra_data'
         if field == "extra_data":
@@ -1288,14 +1310,19 @@ async def decrypt_oob_password(
             detail="资产不存在"
         )
 
-    if not asset.extra_data or not asset.extra_data.get("oob_password"):
+    # Check new column first, fallback to extra_data for backward compatibility
+    oob_password_encrypted = asset.oob_password_encrypted
+    if not oob_password_encrypted and asset.extra_data:
+        oob_password_encrypted = asset.extra_data.get("oob_password")
+
+    if not oob_password_encrypted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="未找到 OOB 密码"
         )
 
     try:
-        decrypted_password = decrypt_value(asset.extra_data["oob_password"])
+        decrypted_password = decrypt_value(oob_password_encrypted)
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

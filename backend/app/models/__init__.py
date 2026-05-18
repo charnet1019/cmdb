@@ -142,6 +142,10 @@ class Asset(Base):
     memory: Mapped[Optional[str]] = mapped_column(String(100))  # 如: 16GB
     system_disk: Mapped[Optional[str]] = mapped_column(String(100))  # 如: 500GB SSD
     data_disk: Mapped[Optional[str]] = mapped_column(String(100))  # 如: 2TB HDD
+    # OOB fields (for host category)
+    oob_address: Mapped[Optional[str]] = mapped_column(String(200))  # OOB 管理地址
+    oob_username: Mapped[Optional[str]] = mapped_column(String(100))  # OOB 用户名
+    oob_password_encrypted: Mapped[Optional[str]] = mapped_column(Text)  # OOB 密码（加密）
 
 
     # Notes field
