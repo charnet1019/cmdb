@@ -712,12 +712,14 @@ async def parse_import_file(
                 if credentials_list:
                     record["credentials"] = credentials_list
 
-            # Map extra_data fields (oob related fields only)
+            # Map OOB fields to independent columns (not extra_data)
             elif field_name in ["oob", "oob_username", "oob_password"]:
                 if value:
-                    if "extra_data" not in record:
-                        record["extra_data"] = {}
-                    record["extra_data"][field_name] = value
+                    # Map 'oob' to 'oob_address' for the independent column
+                    if field_name == "oob":
+                        record["oob_address"] = value
+                    else:
+                        record[field_name] = value
             elif field_name not in ["organization"]:
                 # Field name is already clean
                 # Convert id to string for UUID format (update mode)
@@ -784,6 +786,11 @@ async def batch_create_hosts(
                 })
                 continue
 
+            # Encrypt OOB password if provided
+            oob_password_encrypted = None
+            if record.get("oob_password"):
+                oob_password_encrypted = encrypt_value(record["oob_password"])
+
             asset = Asset(
                 name=record["name"],
                 asset_code=record.get("asset_code"),
@@ -802,6 +809,10 @@ async def batch_create_hosts(
                 organization_id=record.get("organization_id"),
                 notes=record.get("notes"),
                 extra_data=record.get("extra_data"),
+                # OOB independent fields
+                oob_address=record.get("oob_address"),
+                oob_username=record.get("oob_username"),
+                oob_password_encrypted=oob_password_encrypted,
             )
             db.add(asset)
             await db.flush()  # Get asset ID
@@ -1557,6 +1568,17 @@ async def batch_update_hosts(
 
             if record.get("organization_id"):
                 asset.organization_id = record["organization_id"]
+
+            # Update OOB independent fields
+            if record.get("oob_address") is not None:
+                asset.oob_address = record["oob_address"] if record["oob_address"] else None
+            if record.get("oob_username") is not None:
+                asset.oob_username = record["oob_username"] if record["oob_username"] else None
+            if record.get("oob_password") is not None:
+                if record["oob_password"]:
+                    asset.oob_password_encrypted = encrypt_value(record["oob_password"])
+                else:
+                    asset.oob_password_encrypted = None
 
             # Handle is_active (status)
             if record.get("is_active") is not None:

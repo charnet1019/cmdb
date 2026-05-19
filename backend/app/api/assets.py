@@ -1311,22 +1311,40 @@ async def decrypt_oob_password(
         )
 
     # Check new column first, fallback to extra_data for backward compatibility
-    oob_password_encrypted = asset.oob_password_encrypted
-    if not oob_password_encrypted and asset.extra_data:
-        oob_password_encrypted = asset.extra_data.get("oob_password")
+    oob_password_value = asset.oob_password_encrypted
+    source = "column"
 
-    if not oob_password_encrypted:
+    if not oob_password_value and asset.extra_data:
+        oob_password_value = asset.extra_data.get("oob_password")
+        source = "metadata"
+
+    if not oob_password_value:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="未找到 OOB 密码"
         )
 
+    # Check if value is encrypted (Fernet encrypted strings start with 'gAAAA')
+    is_encrypted = oob_password_value.startswith('gAAAA') if oob_password_value else False
+
     try:
-        decrypted_password = decrypt_value(oob_password_encrypted)
-    except Exception:
+        if is_encrypted:
+            decrypted_password = decrypt_value(oob_password_value)
+        else:
+            # Password is in plaintext (legacy data from metadata), return as-is
+            # and migrate to encrypted column for security
+            decrypted_password = oob_password_value
+
+            # Migrate plaintext to encrypted column
+            if source == "metadata" and not asset.oob_password_encrypted:
+                from app.core.encryption import encrypt_value
+                encrypted = encrypt_value(oob_password_value)
+                asset.oob_password_encrypted = encrypted
+                await db.flush()
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="解密失败"
+            detail=f"解密失败：{str(e)}"
         )
 
     return OOBDecryptResponse(oob_password=decrypted_password)
