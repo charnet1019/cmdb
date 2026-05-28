@@ -324,6 +324,23 @@ const loadingUsers = ref(false)
 
 // Host list for runs_on selection in database asset forms
 const hostOptions = ref<Array<{ id: string; name: string; internal_address: string | null }>>([])
+const hostSearchQuery = ref('')
+
+// Filtered host options based on search input
+const filteredHostOptions = computed(() => {
+  const query = hostSearchQuery.value.trim().toLowerCase()
+  if (!query) return hostOptions.value
+  return hostOptions.value.filter(h => {
+    const nameMatch = h.name.toLowerCase().includes(query)
+    const address = (h.internal_address || '').toLowerCase()
+    const addressMatch = address.includes(query)
+    return nameMatch || addressMatch
+  })
+})
+
+function onHostSearch(value: string) {
+  hostSearchQuery.value = value
+}
 
 // Load users for owner dropdown
 async function loadUsers() {
@@ -1418,8 +1435,10 @@ onMounted(async () => {
                   mode="multiple"
                   :allow-clear="true"
                   :max-tag-count="2"
-                  :options="hostOptions.map(h => ({ label: `${h.name} (${h.internal_address || '无地址'})`, value: h.id }))"
-                  placeholder="选择主机"
+                  :options="filteredHostOptions.map(h => ({ label: `${h.name} (${h.internal_address || '无地址'})`, value: h.id }))"
+                  :filter-option="false"
+                  @search="onHostSearch"
+                  placeholder="搜索主机名或IP"
                   style="width: 100%"
                 />
               </div>
