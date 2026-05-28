@@ -12,6 +12,44 @@ from app.core.encryption import encrypt_value
 from app.models import Asset, Organization
 from sqlalchemy import select
 
+async def resolve_or_create_organization(db: AsyncSession, path_str: str) -> int:
+    """根据路径字符串解析或创建组织节点，返回 org_id。
+
+    路径格式: Default/研发部/服务器组 或 研发部/服务器组（自动补 Default）
+    不存在的节点会按层级自动创建。
+    """
+    parts = [p.strip() for p in path_str.split("/") if p.strip()]
+    if not parts:
+        raise ValueError("节点路径为空")
+    if parts[0] != "Default":
+        parts.insert(0, "Default")
+
+    current_parent_id = None
+    current_level = 0
+
+    for i, name in enumerate(parts[1:], 1):
+        result = await db.execute(
+            select(Organization).where(
+                Organization.name == name,
+                Organization.parent_id == current_parent_id,
+            )
+        )
+        org = result.scalar_one_or_none()
+        if not org:
+            org = Organization(
+                name=name,
+                parent_id=current_parent_id,
+                level=current_level,
+            )
+            db.add(org)
+            await db.flush()
+            org.path = f"{current_parent_id}/{org.id}" if current_parent_id else str(org.id)
+            await db.flush()
+        current_parent_id = org.id
+        current_level = org.level
+
+    return current_parent_id
+
 # Host field definitions for templates
 # Format: (field_name, display_label, is_required)
 HOST_CREATE_FIELDS = [
@@ -233,7 +271,7 @@ def generate_host_create_template() -> BytesIO:
     example_data = [
         "test-server-01",      # 资产名称
         "CI001",               # 资产编号
-        "研发部/服务器组",     # 节点
+        "Default/研发部/服务器组",     # 节点
         "Linux",               # 平台
         "192.168.1.100",       # 外网地址
         "10.0.0.100",          # 内网地址
@@ -295,9 +333,23 @@ def _generate_template(
         cell.alignment = header_alignment
         cell.border = header_border
 
+    # Hint row (below headers, above example data)
+    hint_font = Font(italic=True, color="666666", size=9)
+    for col, (field_name, label, required) in enumerate(fields, 1):
+        cell = ws.cell(row=2, column=col, value="")
+        cell.font = hint_font
+        cell.border = Border(
+            left=Side(style='thin', color='E7E6E6'),
+            right=Side(style='thin', color='E7E6E6'),
+            top=Side(style='thin', color='E7E6E6'),
+            bottom=Side(style='thin', color='E7E6E6')
+        )
+        if field_name == "organization":
+            cell.value = "（填写完整路径，节点不存在时会自动创建）"
+
     # Example row
     for col, value in enumerate(example_data, 1):
-        cell = ws.cell(row=2, column=col, value=value)
+        cell = ws.cell(row=3, column=col, value=value)
         cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
         cell.border = Border(
             left=Side(style='thin', color='E7E6E6'),
@@ -323,7 +375,8 @@ def _generate_template(
 
     # Set row heights
     ws.row_dimensions[1].height = 25
-    ws.row_dimensions[2].height = 20
+    ws.row_dimensions[2].height = 18  # hint row
+    ws.row_dimensions[3].height = 20  # example row
 
     buffer = BytesIO()
     wb.save(buffer)
@@ -337,7 +390,7 @@ def generate_host_update_template() -> BytesIO:
         "56c4d4cd-42ba-4397-abfa-36ecba64af13",  # ID
         "test-server-01",        # 资产名称
         "CI001",                 # 资产编号
-        "研发部/服务器组",       # 节点
+        "Default/研发部/服务器组",       # 节点
         "Linux",                 # 平台
         "192.168.1.100",         # 外网地址
         "10.0.0.100",            # 内网地址
@@ -364,7 +417,7 @@ def generate_network_create_template() -> BytesIO:
     example_data = [
         "Core-SW-01",        # 资产名称
         "NW001",             # 资产编号
-        "研发部/网络设备",   # 节点
+        "Default/研发部/网络设备",   # 节点
         "交换机",            # 设备类型
         "Cisco",             # 厂商
         "C9300-48P",         # 型号
@@ -384,7 +437,7 @@ def generate_network_update_template() -> BytesIO:
         "56c4d4cd-42ba-4397-abfa-36ecba64af13",  # ID
         "Core-SW-01",      # 资产名称
         "NW001",           # 资产编号
-        "研发部/网络设备", # 节点
+        "Default/研发部/网络设备", # 节点
         "交换机",          # 设备类型
         "Cisco",           # 厂商
         "C9300-48P",       # 型号
@@ -404,7 +457,7 @@ def generate_database_create_template() -> BytesIO:
     example_data = [
         "MySQL-Prod-01",     # 资产名称
         "DB001",             # 资产编号
-        "研发部/数据库",     # 节点
+        "Default/研发部/数据库",     # 节点
         "RDS",               # 平台
         "MySQL",             # 数据库类型
         "",                  # 外网地址
@@ -422,7 +475,7 @@ def generate_database_create_template() -> BytesIO:
 def generate_database_update_template() -> BytesIO:
     """Generate XLSX template for database update"""
     example_data = [
-        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "MySQL-Prod-01", "DB001", "研发部/数据库", "RDS", "MySQL",
+        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "MySQL-Prod-01", "DB001", "Default/研发部/数据库", "RDS", "MySQL",
         "",  # external_address
         "192.168.1.100:3306",  # internal_address
         "root:mysqlroot123\napp:apppass",
@@ -441,7 +494,7 @@ def generate_cloud_create_template() -> BytesIO:
     example_data = [
         "AWS-Prod-Account",  # 资产名称
         "CL001",             # 资产编号
-        "研发部/云服务",     # 节点
+        "Default/研发部/云服务",     # 节点
         "AWS",               # 平台
         "https://aws.amazon.com",  # 外网地址
         "10.0.0.1",          # 内网地址
@@ -455,7 +508,7 @@ def generate_cloud_create_template() -> BytesIO:
 def generate_cloud_update_template() -> BytesIO:
     """Generate XLSX template for cloud resource update"""
     example_data = [
-        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "AWS-Prod-Account", "CL001", "研发部/云服务", "AWS",
+        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "AWS-Prod-Account", "CL001", "Default/研发部/云服务", "AWS",
         "https://aws.amazon.com",  # external_address - 外网地址
         "10.0.0.1",  # internal_address - 内网地址
         "AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",  # 用户名密码
@@ -471,7 +524,7 @@ def generate_web_create_template() -> BytesIO:
     example_data = [
         "Jira",                        # 资产名称
         "WB001",                       # 资产编号
-        "研发部/应用系统",             # 节点
+        "Default/研发部/应用系统",             # 节点
         "Nginx",                       # 平台
         "https://jira.example.com",    # 外网地址
         "http://192.168.1.100:8080",   # 内网地址
@@ -486,7 +539,7 @@ def generate_web_create_template() -> BytesIO:
 def generate_web_update_template() -> BytesIO:
     """Generate XLSX template for web application update"""
     example_data = [
-        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "Jira", "WB001", "研发部/应用系统", "Nginx",
+        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "Jira", "WB001", "Default/研发部/应用系统", "Nginx",
         "https://jira.example.com",
         "http://192.168.1.100:8080",
         "admin:jiraadmin\nreadonly:readonly123",
@@ -501,7 +554,7 @@ def generate_gpt_create_template() -> BytesIO:
     example_data = [
         "OpenAI-API",              # 名称
         "AI001",                   # 资产编号
-        "研发部/AI 服务",          # 节点
+        "Default/研发部/AI 服务",          # 节点
         "OpenAI",                  # 平台
         "https://api.openai.com/v1",  # 外网地址
         "",                        # 内网地址
@@ -516,7 +569,7 @@ def generate_gpt_create_template() -> BytesIO:
 def generate_gpt_update_template() -> BytesIO:
     """Generate XLSX template for GPT/AI service update"""
     example_data = [
-        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "OpenAI-API", "AI001", "研发部/AI 服务", "OpenAI",
+        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "OpenAI-API", "AI001", "Default/研发部/AI 服务", "OpenAI",
         "https://api.openai.com/v1", "",  # external_address, internal_address
         "sk-key:sk-abc123xyz\nclue-key:sk-clue456",
         "张三",  # applicant
@@ -679,12 +732,17 @@ async def parse_import_file(
                 # Try: display path (name-based like "智昌集团/harvester"), ID path (like "7/9"), then simple name
                 org_id = org_display_path_map.get(value) or org_path_map.get(value) or org_name_map.get(value)
                 if not org_id:
-                    # Check if value looks like an asset code (e.g., NW00111, CI001) - user might have filled wrong column
-                    import re
-                    if re.match(r'^[A-Z]+\d+$', value):
-                        errors.append(f"组织节点'{value}'不存在（提示：该值看起来像资产编号，请检查是否误填至节点列）")
-                    else:
-                        errors.append(f"组织节点'{value}'不存在")
+                    # Try to auto-create the organization from the path
+                    try:
+                        org_id = await resolve_or_create_organization(db, value)
+                        record["organization_id"] = org_id
+                    except ValueError:
+                        # Check if value looks like an asset code (e.g., NW00111, CI001) - user might have filled wrong column
+                        import re
+                        if re.match(r'^[A-Z]+\d+$', value):
+                            errors.append(f"组织节点'{value}'不存在（提示：该值看起来像资产编号，请检查是否误填至节点列）")
+                        else:
+                            errors.append(f"组织节点'{value}'不存在且无法自动创建")
                 else:
                     record["organization_id"] = org_id
 

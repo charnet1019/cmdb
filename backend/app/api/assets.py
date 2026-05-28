@@ -782,6 +782,21 @@ async def import_assets(
 
 
 # ============== Export APIs ==============
+
+def build_org_full_path(org_id: int | None, org_map: Dict[int, tuple]) -> str:
+    """Build full organization path from org_id, e.g. 'Default / 研发部 / 服务器组'"""
+    if org_id is None:
+        return "Default"
+    parts = []
+    current_id = org_id
+    while current_id in org_map:
+        name, parent_id = org_map[current_id]
+        parts.append(name)
+        current_id = parent_id
+    parts.append("Default")
+    parts.reverse()
+    return " / ".join(parts)
+
 @router.get("/export")
 async def export_assets(
     format: str = Query("excel", description="excel or csv"),
@@ -835,12 +850,24 @@ async def export_assets(
             detail="未找到要导出的资产"
         )
 
-    # Get organization names
+    # Get organization data for full path building
     org_ids = set(a.organization_id for a in assets if a.organization_id is not None)
-    org_names = {}
+    org_map = {}  # id -> (name, parent_id)
     if org_ids:
-        org_result = await db.execute(select(Organization.id, Organization.name).where(Organization.id.in_(org_ids)))
-        org_names = {row.id: row.name for row in org_result}
+        # Collect all ancestor orgs so paths are complete
+        all_org_ids = set(org_ids)
+        while True:
+            org_result = await db.execute(
+                select(Organization.id, Organization.name, Organization.parent_id)
+                .where(Organization.id.in_(all_org_ids))
+            )
+            rows = org_result.fetchall()
+            for row in rows:
+                org_map[row.id] = (row.name, row.parent_id)
+                if row.parent_id and row.parent_id not in all_org_ids:
+                    all_org_ids.add(row.parent_id)
+            if not any(row.parent_id and row.parent_id not in org_map for row in rows):
+                break
 
     # Prepare asset data
     asset_data = []
@@ -861,8 +888,8 @@ async def export_assets(
                     "password": ""  # Empty password if decryption fails
                 })
 
-        # Get organization name, default to "Default" for null organization_id
-        org_name = org_names.get(asset.organization_id) if asset.organization_id is not None else "Default"
+        # Get full organization path for export
+        org_name = build_org_full_path(asset.organization_id, org_map)
 
         asset_data.append(build_asset_response(
             asset,

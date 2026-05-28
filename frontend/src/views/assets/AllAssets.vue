@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { message, Dropdown, Select } from 'ant-design-vue'
+import { message, Dropdown, Select, Tooltip } from 'ant-design-vue'
 import {
   DownOutlined,
   UpOutlined,
@@ -138,7 +138,8 @@ const {
   handleOrgDragOver,
   handleOrgDragLeave,
   handleOrgDrop,
-  handleOrgDragEnd
+  handleOrgDragEnd,
+  getOrgPath
 } = useOrganizations()
 
 const {
@@ -1053,7 +1054,7 @@ onMounted(async () => {
                           </div>
                           <span v-else class="text-sm text-slate-400">-</span>
                         </template>
-                        <template v-else-if="key === 'organization'"><span class="text-sm text-slate-600">{{ asset.organization_name || 'Default' }}</span></template>
+                        <template v-else-if="key === 'organization'"><a-tooltip :title="getOrgPath(asset.organization_id)"><span class="text-sm text-slate-600 cursor-help">{{ asset.organization_name || 'Default' }}</span></a-tooltip></template>
                         <template v-else-if="key === 'is_active'">
                           <span v-if="asset.is_active" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">启用</span>
                           <span v-else class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">禁用</span>
