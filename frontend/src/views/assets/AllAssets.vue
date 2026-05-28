@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { message, Dropdown } from 'ant-design-vue'
+import { message, Dropdown, Select } from 'ant-design-vue'
 import {
   DownOutlined,
   UpOutlined,
@@ -30,7 +30,7 @@ import { useOrganizations } from './composables/useOrganizations'
 import { useCredentials } from './composables/useCredentials'
 import { useTypeTree, categories, platformOptions, categoryOptions, dbTypeOptions } from './composables/useTypeTree'
 import { useColumnConfig } from './composables/useColumnConfig'
-import { createAsset, updateAsset, createCredential, updateCredential } from '@/api/assets'
+import { createAsset, updateAsset, createCredential, updateCredential, getAssets } from '@/api/assets'
 import { getUsers } from '@/api/users'
 import ColumnCustomizer from './components/ColumnCustomizer.vue'
 import ImportModal from './components/ImportModal.vue'
@@ -210,6 +210,7 @@ function isColVisible(key: string): boolean {
     case 'cpu': case 'memory': case 'system_disk': case 'data_disk':
     case 'oob': case 'oob_credentials': return cat === 'host' || cat === 'all'
     case 'db_type': case 'version': case 'namespace': return cat === 'database' || cat === 'all'
+    case 'runs_on': case 'storage_locations': return cat === 'database' || cat === 'all'
     case 'applicant': return cat === 'host' || cat === 'database' || cat === 'web' || cat === 'all'
     case 'owner': return true // 负责人所有类别都显示
     default: return true
@@ -321,6 +322,9 @@ const localDeviceTypeOptions = ['交换机', '路由器', '防火墙', '负载�
 const userOptions = ref<Array<{ id: number; username: string; full_name: string | null }>>([])
 const loadingUsers = ref(false)
 
+// Host list for runs_on selection in database asset forms
+const hostOptions = ref<Array<{ id: string; name: string; internal_address: string | null }>>([])
+
 // Load users for owner dropdown
 async function loadUsers() {
   if (userOptions.value.length > 0) return
@@ -336,6 +340,21 @@ async function loadUsers() {
     console.error('Failed to load users:', error)
   } finally {
     loadingUsers.value = false
+  }
+}
+
+// Load hosts for runs_on dropdown in database asset forms
+async function loadHostOptions() {
+  if (hostOptions.value.length > 0) return
+  try {
+    const result = await getAssets({ category: 'host', page: 1, limit: 100 })
+    hostOptions.value = (result.items || []).map(h => ({
+      id: String(h.id),
+      name: h.name,
+      internal_address: h.internal_address
+    }))
+  } catch (error) {
+    console.error('Failed to load hosts:', error)
   }
 }
 
@@ -362,7 +381,9 @@ const form = ref({
   oob_password: '',
   applicant: '',
   owner_id: null as number | null,
-  notes: ''
+  notes: '',
+  host_ids: [] as string[],
+  storage_locations: [] as { path: string; path_type: string; description: string }[]
 })
 
 // Modal title
@@ -481,7 +502,9 @@ async function openCreateModal() {
     oob_password: '',
     applicant: '',
     owner_id: null,
-    notes: ''
+    notes: '',
+    host_ids: [],
+    storage_locations: []
   }
   if (selectedTypeNode.value && selectedTypeNode.value.category) {
     const node = selectedTypeNode.value
@@ -497,6 +520,9 @@ async function openCreateModal() {
 
   await loadUsers()
   resetFormCredentials()
+  if (form.value.category === 'database') {
+    await loadHostOptions()
+  }
   showModal.value = true
 }
 
@@ -525,7 +551,13 @@ async function openEditModal(asset: Asset) {
     oob_password: '', // Password not returned by backend
     applicant: asset.applicant || '',
     owner_id: asset.owner_id || null,
-    notes: asset.notes || ''
+    notes: asset.notes || '',
+    host_ids: (asset.runs_on_hosts || []).map(h => h.id),
+    storage_locations: (asset.storage_locations || []).map(sl => ({
+      path: sl.path,
+      path_type: sl.path_type,
+      description: sl.description || ''
+    }))
   }
   formSelectedOrgId.value = asset.organization_id || null
   formCredentials.value = (asset.credentials || []).map(c => ({
@@ -534,6 +566,9 @@ async function openEditModal(asset: Asset) {
     password: ''
   }))
   await loadUsers()
+  if (asset.category === 'database') {
+    await loadHostOptions()
+  }
   showModal.value = true
 }
 
@@ -582,7 +617,11 @@ async function handleSubmit() {
       }),
       extra_data: extraData,
       notes: form.value.notes || undefined,
-      organization_id: formSelectedOrgId.value || undefined
+      organization_id: formSelectedOrgId.value || undefined,
+      ...(form.value.category === 'database' && {
+        host_ids: form.value.host_ids.length > 0 ? form.value.host_ids : undefined,
+        storage_locations: form.value.storage_locations.length > 0 ? form.value.storage_locations : undefined
+      })
     }
 
     if (editingAsset.value) {
@@ -981,6 +1020,22 @@ onMounted(async () => {
                         <template v-else-if="key === 'db_type'"><span class="text-sm text-slate-600">{{ asset.db_type || '' }}</span></template>
                         <template v-else-if="key === 'version'"><span class="text-sm text-slate-600">{{ asset.extra_data?.version || '' }}</span></template>
                         <template v-else-if="key === 'namespace'"><span class="text-sm text-slate-600">{{ asset.namespace || '' }}</span></template>
+                        <template v-else-if="key === 'runs_on'">
+                          <div v-if="asset.runs_on_hosts?.length" class="flex flex-wrap gap-1">
+                            <span v-for="host in asset.runs_on_hosts" :key="host.id" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">
+                              {{ host.name }}
+                            </span>
+                          </div>
+                          <span v-else class="text-sm text-slate-400">-</span>
+                        </template>
+                        <template v-else-if="key === 'storage_locations'">
+                          <div v-if="asset.storage_locations?.length" class="flex flex-wrap gap-1">
+                            <span v-for="loc in asset.storage_locations" :key="loc.id" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-purple-100 text-purple-700" :title="loc.description">
+                              <span class="mr-1 text-[9px] opacity-70">{{ loc.path_type }}</span>{{ loc.path }}
+                            </span>
+                          </div>
+                          <span v-else class="text-sm text-slate-400">-</span>
+                        </template>
                         <template v-else-if="key === 'organization'"><span class="text-sm text-slate-600">{{ asset.organization_name || 'Default' }}</span></template>
                         <template v-else-if="key === 'is_active'">
                           <span v-if="asset.is_active" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">启用</span>
@@ -1355,6 +1410,37 @@ onMounted(async () => {
                     </option>
                   </select>
                 </div>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">运行于主机</label>
+                <Select
+                  v-model:value="form.host_ids"
+                  mode="multiple"
+                  :allow-clear="true"
+                  :max-tag-count="2"
+                  :options="hostOptions.map(h => ({ label: `${h.name} (${h.internal_address || '无地址'})`, value: h.id }))"
+                  placeholder="选择主机"
+                  style="width: 100%"
+                />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-2">存储位置</label>
+                <div v-for="(loc, idx) in form.storage_locations" :key="idx" class="flex gap-2 mb-2 items-start">
+                  <input v-model="loc.path" type="text" class="input-field flex-1 text-xs" placeholder="路径" />
+                  <select v-model="loc.path_type" class="input-field w-24 text-xs">
+                    <option value="data">数据</option>
+                    <option value="log">日志</option>
+                    <option value="backup">备份</option>
+                    <option value="temp">临时</option>
+                  </select>
+                  <input v-model="loc.description" type="text" class="input-field flex-1 text-xs" placeholder="描述" />
+                  <button type="button" @click="form.storage_locations.splice(idx, 1)" class="p-1.5 text-slate-400 hover:text-red-500 rounded mt-0">
+                    <DeleteOutlined class="text-xs" />
+                  </button>
+                </div>
+                <button type="button" @click="form.storage_locations.push({ path: '', path_type: 'data', description: '' })" class="text-xs text-primary hover:underline flex items-center gap-1">
+                  <PlusCircleOutlined class="text-xs" /> 添加存储位置
+                </button>
               </div>
             </template>
 

@@ -10,11 +10,11 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, F
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, delete, inspect
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import Asset, Credential, Organization, User
+from app.models import Asset, Credential, Organization, User, AssetHostRelation, StorageLocation
 from app.schemas import (
     AssetCreate, AssetUpdate, AssetResponse, AssetSimple,
     AssetListResponse, PaginationMeta,
@@ -183,6 +183,36 @@ def build_asset_response(
         data["oob_address"] = asset.oob_address
     if asset.oob_username:
         data["oob_username"] = asset.oob_username
+    # Database asset fields (runs_on hosts and storage_locations)
+    # Only include if already loaded to avoid lazy-loading in async context
+    if asset.category == "database":
+        unloaded = inspect(asset).unloaded
+        if "database_hosts" not in unloaded:
+            hosts = asset.database_hosts
+            if hosts:
+                runs_on_list = []
+                for r in hosts:
+                    host = r.host_asset if r.host_asset else None
+                    if host:
+                        runs_on_list.append({
+                            "id": str(r.host_id),
+                            "name": getattr(host, 'name', ''),
+                            "internal_address": getattr(host, 'internal_address', '')
+                        })
+                data["runs_on_hosts"] = runs_on_list
+        if "storage_locations" not in unloaded:
+            locs = asset.storage_locations
+            if locs:
+                data["storage_locations"] = [
+                    {
+                        "id": sl.id,
+                        "path": sl.path,
+                        "path_type": sl.path_type,
+                        "description": sl.description,
+                        "created_at": sl.created_at.isoformat() if sl.created_at else None
+                    }
+                    for sl in locs
+                ]
 
     # Add type-specific fields only
     for field in type_fields:
@@ -295,7 +325,13 @@ async def list_assets(
     current_user: User = Depends(get_current_user),
 ):
     """List all assets with pagination and filters"""
-    query = select(Asset).options(selectinload(Asset.credentials), selectinload(Asset.created_by), selectinload(Asset.owner))
+    query = select(Asset).options(
+        selectinload(Asset.credentials),
+        selectinload(Asset.created_by),
+        selectinload(Asset.owner),
+        selectinload(Asset.database_hosts).selectinload(AssetHostRelation.host_asset),
+        selectinload(Asset.storage_locations),
+    )
 
     # Apply filters
     if category:
@@ -474,6 +510,45 @@ async def create_asset(
     db.add(asset)
     await db.commit()
     await db.refresh(asset)
+
+    # Handle database asset relations (runs_on hosts)
+    if data.host_ids and data.category == "database":
+        for host_id in data.host_ids:
+            # Validate host exists and is category='host'
+            host_result = await db.execute(
+                select(Asset).where(Asset.id == host_id, Asset.category == "host")
+            )
+            host_asset = host_result.scalar_one_or_none()
+            if host_asset:
+                relation = AssetHostRelation(asset_id=asset.id, host_id=host_id)
+                db.add(relation)
+        await db.commit()
+
+    # Handle storage locations for database assets
+    if data.storage_locations and data.category == "database":
+        for loc in data.storage_locations:
+            storage = StorageLocation(
+                asset_id=asset.id,
+                path=loc.path,
+                path_type=loc.path_type,
+                description=loc.description
+            )
+            db.add(storage)
+        await db.commit()
+
+    # Reload asset with relations
+    # For database assets, load database_hosts and storage_locations to include in response
+    if data.category == "database":
+        reload_result = await db.execute(
+            select(Asset).options(
+                selectinload(Asset.credentials),
+                selectinload(Asset.database_hosts).selectinload(AssetHostRelation.host_asset),
+                selectinload(Asset.storage_locations),
+            ).where(Asset.id == asset.id)
+        )
+        asset = reload_result.scalar_one()
+    else:
+        await db.refresh(asset)
 
     return build_asset_response(
         asset,
@@ -826,11 +901,14 @@ async def get_asset(
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Get asset by ID"""
-    result = await db.execute(
-        select(Asset)
-        .options(selectinload(Asset.credentials))
-        .where(Asset.id == asset_id)
+    # Build query with eager loading of all relations needed by build_asset_response
+    query = select(Asset).options(
+        selectinload(Asset.credentials),
+        selectinload(Asset.database_hosts).selectinload(AssetHostRelation.host_asset),
+        selectinload(Asset.storage_locations),
     )
+
+    result = await db.execute(query.where(Asset.id == asset_id))
     asset = result.scalar_one_or_none()
 
     if not asset:
@@ -885,8 +963,7 @@ async def update_asset(
 
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
-    print(f"DEBUG: update_data for asset {asset_id}: {update_data}")
-
+ 
     # Handle owner validation
     if "owner_id" in update_data or "owner_name" in update_data:
         owner_id = update_data.get("owner_id")
@@ -923,33 +1000,84 @@ async def update_asset(
             asset.oob_password_encrypted = None
         del update_data["oob_password"]
 
+    # Extract database-specific fields before generic update
+    host_ids = update_data.pop("host_ids", None)
+    storage_locations_data = update_data.pop("storage_locations", None)
+
     for field, value in update_data.items():
         # Map schema 'extra_data' to model 'extra_data'
         if field == "extra_data":
             setattr(asset, "extra_data", value)
         else:
             setattr(asset, field, value)
-    print(f"DEBUG: asset.asset_code after update: {asset.asset_code}")
-
+ 
     await db.commit()
+
+    # Handle database asset relations (runs_on hosts)
+    if host_ids is not None and asset.category == "database":
+        # Delete existing relations
+        await db.execute(
+            delete(AssetHostRelation).where(AssetHostRelation.asset_id == asset_id)
+        )
+        # Create new relations
+        if host_ids:
+            for host_id in host_ids:
+                host_result = await db.execute(
+                    select(Asset).where(Asset.id == host_id, Asset.category == "host")
+                )
+                host_asset = host_result.scalar_one_or_none()
+                if host_asset:
+                    relation = AssetHostRelation(asset_id=asset.id, host_id=host_id)
+                    db.add(relation)
+        await db.commit()
+
+    # Handle storage locations for database assets
+    if storage_locations_data is not None and asset.category == "database":
+        # Delete existing storage locations
+        await db.execute(
+            delete(StorageLocation).where(StorageLocation.asset_id == asset_id)
+        )
+        if storage_locations_data:
+            for loc in storage_locations_data:
+                if isinstance(loc, dict):
+                    storage = StorageLocation(
+                        asset_id=asset.id,
+                        path=loc.get("path"),
+                        path_type=loc.get("path_type"),
+                        description=loc.get("description")
+                    )
+                else:
+                    storage = StorageLocation(
+                        asset_id=asset.id,
+                        path=loc.path,
+                        path_type=loc.path_type,
+                        description=loc.description
+                    )
+                db.add(storage)
+        await db.commit()
+
     await db.refresh(asset)
 
-    # Get credentials
-    cred_result = await db.execute(
-        select(Credential).where(Credential.asset_id == asset.id)
+    # Reload asset with eagerly loaded relations to avoid lazy-load in async context
+    reload_result = await db.execute(
+        select(Asset).options(
+            selectinload(Asset.credentials),
+            selectinload(Asset.database_hosts).selectinload(AssetHostRelation.host_asset),
+            selectinload(Asset.storage_locations),
+        ).where(Asset.id == asset_id)
     )
-    credentials = cred_result.scalars().all()
+    asset = reload_result.scalar_one()
 
-    credentials_data = [
+    credentials = [
         {"id": c.id, "username": c.username, "credential_type": c.credential_type}
-        for c in credentials
+        for c in asset.credentials
     ]
 
     return build_asset_response(
         asset,
         org_name=None,
         include_credentials=True,
-        credentials_data=credentials_data
+        credentials_data=credentials
     )
 
 

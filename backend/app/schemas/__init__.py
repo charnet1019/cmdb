@@ -126,6 +126,24 @@ class AssetBase(BaseModel):
     owner_name: Optional[str] = Field(None, max_length=100)  # 负责人姓名
 
 
+class StorageLocationCreate(BaseModel):
+    """Storage location creation schema"""
+    path: str = Field(..., max_length=500)
+    path_type: str = Field(..., max_length=50)  # data, log, backup, temp
+    description: Optional[str] = Field(None, max_length=200)
+
+
+class StorageLocationResponse(BaseModel):
+    """Storage location response schema"""
+    id: int
+    path: str
+    path_type: str
+    description: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class AssetCreate(AssetBase):
     """Asset creation schema"""
     asset_code: Optional[str] = None
@@ -145,6 +163,9 @@ class AssetCreate(AssetBase):
     oob_address: Optional[str] = Field(None, max_length=200)  # OOB 地址
     oob_username: Optional[str] = Field(None, max_length=100)  # OOB 用户名
     oob_password: Optional[str] = Field(None, max_length=255)  # OOB 密码（明文输入，后端加密）
+    # Database asset fields
+    host_ids: Optional[List[str]] = None  # Runs on hosts (for database category)
+    storage_locations: Optional[List[StorageLocationCreate]] = None  # Storage paths (for database category)
 
 
 class AssetUpdate(BaseModel):
@@ -176,6 +197,9 @@ class AssetUpdate(BaseModel):
     oob_address: Optional[str] = Field(None, max_length=200)  # OOB 地址
     oob_username: Optional[str] = Field(None, max_length=100)  # OOB 用户名
     oob_password: Optional[str] = Field(None, max_length=255)  # OOB 密码（明文输入，后端加密）
+    # Database asset fields
+    host_ids: Optional[List[str]] = None  # Runs on hosts (for database category)
+    storage_locations: Optional[List[StorageLocationCreate]] = None  # Storage paths (for database category)
 
 
 class AssetResponse(AssetBase):
@@ -203,6 +227,9 @@ class AssetResponse(AssetBase):
     # OOB fields (for host category, password not included in response)
     oob_address: Optional[str] = None
     oob_username: Optional[str] = None
+    # Database asset fields
+    runs_on_hosts: List["AssetSimple"] = []  # Hosts this database runs on
+    storage_locations: List["StorageLocationResponse"] = []  # Storage paths
 
     model_config = ConfigDict(from_attributes=True, exclude_none=True)
 

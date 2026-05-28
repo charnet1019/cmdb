@@ -54,6 +54,8 @@ export interface Asset {
   created_at: string
   updated_at: string
   credentials: CredentialSimple[]
+  runs_on_hosts: AssetSimple[]
+  storage_locations: StorageLocation[]
 }
 
 export type AssetCategory = 'host' | 'network' | 'database' | 'cloud' | 'web' | 'gpt'
@@ -158,4 +160,18 @@ export interface UserSimple {
   username: string
   full_name: string | null
   email: string
+}
+
+export interface AssetSimple {
+  id: string
+  name: string
+  internal_address: string | null
+}
+
+export interface StorageLocation {
+  id: number
+  path: string
+  path_type: string  // data, log, backup, temp
+  description: string | null
+  created_at: string
 }

@@ -116,6 +116,49 @@ class Organization(Base):
         return f"<Organization {self.name}>"
 
 
+class AssetHostRelation(Base):
+    """Many-to-many relationship between database assets and host assets"""
+    __tablename__ = "asset_host_relations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True)  # Database asset
+    host_id: Mapped[str] = mapped_column(String(36), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True)  # Host asset
+    created_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    # Relationships
+    database_asset: Mapped["Asset"] = relationship("Asset", foreign_keys=[asset_id])
+    host_asset: Mapped["Asset"] = relationship("Asset", foreign_keys=[host_id])
+
+    __table_args__ = (
+        Index("idx_asset_host_unique", "asset_id", "host_id", unique=True),
+    )
+
+    def __repr__(self):
+        return f"<AssetHostRelation {self.asset_id} -> {self.host_id}>"
+
+
+class StorageLocation(Base):
+    """Storage locations for database assets"""
+    __tablename__ = "storage_locations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    path: Mapped[str] = mapped_column(String(500), nullable=False)  # e.g., /var/lib/mysql
+    path_type: Mapped[str] = mapped_column(String(50), nullable=False)  # data, log, backup, temp
+    description: Mapped[Optional[str]] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    # Relationships
+    asset: Mapped["Asset"] = relationship("Asset")
+
+    __table_args__ = (
+        Index("idx_storage_asset_type", "asset_id", "path_type"),
+    )
+
+    def __repr__(self):
+        return f"<StorageLocation {self.path_type}:{self.path}>"
+
+
 class Asset(Base):
     """Asset model"""
     __tablename__ = "assets"
@@ -171,6 +214,13 @@ class Asset(Base):
     organization: Mapped[Optional["Organization"]] = relationship("Organization")
     created_by: Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by_id])
     owner: Mapped[Optional["User"]] = relationship("User", foreign_keys=[owner_id])
+    # Database asset relationships
+    database_hosts: Mapped[List["AssetHostRelation"]] = relationship(
+        "AssetHostRelation", foreign_keys=[AssetHostRelation.asset_id], back_populates="database_asset", cascade="all, delete-orphan"
+    )
+    storage_locations: Mapped[List["StorageLocation"]] = relationship(
+        "StorageLocation", back_populates="asset", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         Index("idx_assets_category", "category"),
