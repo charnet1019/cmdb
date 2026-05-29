@@ -548,6 +548,7 @@ async function openCreateModal() {
 // Open edit modal
 async function openEditModal(asset: Asset) {
   editingAsset.value = asset
+  showOobPassword.value = false
   form.value = {
     name: asset.name,
     asset_code: asset.asset_code || '',
@@ -567,7 +568,7 @@ async function openEditModal(asset: Asset) {
     db_type: asset.db_type || '',
     oob: asset.oob_address || asset.extra_data?.oob || '',
     oob_username: asset.oob_username || asset.extra_data?.oob_username || '',
-    oob_password: '', // Password not returned by backend
+    oob_password: '', // Will be decrypted below if exists
     applicant: asset.applicant || '',
     owner_id: asset.owner_id || null,
     notes: asset.notes || '',
@@ -584,6 +585,27 @@ async function openEditModal(asset: Asset) {
     username: c.username,
     password: ''
   }))
+  // Decrypt OOB password for host assets when editing
+  if (asset.category === 'host' && (asset.oob_username || asset.oob_address)) {
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(`/api/v1/assets/${asset.id}/decrypt-oob`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      if (response.ok) {
+        const data = await response.json()
+        if (data.oob_password) {
+          form.value.oob_password = data.oob_password
+        }
+      }
+    } catch (error) {
+      console.error('Failed to decrypt OOB password:', error)
+    }
+  }
   await loadUsers()
   if (asset.category === 'database') {
     await loadHostOptions()
