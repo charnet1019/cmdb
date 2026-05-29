@@ -28,12 +28,12 @@ export const categoryOptions = categories.filter(c => c.key !== 'all')
 
 // Platform options by category
 export const platformOptions: Record<string, string[]> = {
-  host: ['Linux', 'Windows', 'Unix', 'MacOS', 'NAS'],
+  host: ['Linux', 'Windows', 'Unix', 'MacOS', 'NAS', 'SAN'],
   network: ['Cisco', 'Huawei', 'H3C', 'Ruijie', 'ZTE', 'TP-Link', 'Tenda', 'ASUS', 'MERCURY', 'Netgear', 'Juniper'],
   database: ['物理机', '虚拟机', 'RDS', 'Kubernetes', 'Docker'],
   cloud: ['Proxmox', 'Kubernetes', 'KubeSphere', 'Rancher', 'Harvester', 'OpenStack', 'ZStack', 'CloudStack', 'VMware', 'oVirt', 'KVM', 'AWS', 'Azure', 'GCP', '阿里云', '腾讯云', '青云', 'UCloud', '火山云', '天翼云', '移动云', '华为云'],
   web: ['Nginx', 'Apache', 'IIS', 'Tomcat', 'Nginx Ingress', 'Higress', 'Traefik', 'APISIX', 'Loadbalancer', 'F5'],
-  gpt: ['OpenAI', 'Claude', 'ChatGLM', '通义千问']
+  gpt: ['OpenAI', 'Claude', 'GLM', 'Qwen', 'DeepSeek', 'Gemini', 'MiMo', 'MiniMax', 'Kimi', 'Gemma', 'ERNIE']
 }
 
 // Device type options for network
@@ -43,12 +43,12 @@ export const deviceTypeOptions = ['交换机', '路由器', '防火墙', '无线
 export const dbTypeOptions = ['MySQL', 'MongoDB', 'Redis', 'PostgreSQL', 'Oracle', 'SQL Server', 'InfluxDB', 'Elasticsearch', 'RabbitMQ', 'RocketMQ', 'Kafka', 'ClickHouse', 'EMQ', '达梦', 'TiDB', 'IoTDB', 'TDengine', 'Prometheus', 'Neo4j', 'Milvus', 'Weaviate', 'Qdrant']
 
 // Subcategories for each type
-const hostSubCategories = ['Linux', 'Unix', 'Windows', 'MacOS', 'NAS']
+const hostSubCategories = ['Linux', 'Unix', 'Windows', 'MacOS', 'NAS', 'SAN']
 const networkSubCategories = ['交换机', '路由器', '防火墙', '负载均衡', '无线控制器']
 const databaseSubCategories = ['MySQL', 'MongoDB', 'Redis', 'PostgreSQL', 'Oracle', 'SQL Server', 'InfluxDB', 'Elasticsearch', 'RabbitMQ', 'RocketMQ', 'Kafka', 'ClickHouse', 'EMQ', '达梦', 'TiDB', 'IoTDB', 'TDengine', 'Prometheus', 'Neo4j', 'Milvus', 'Weaviate', 'Qdrant']
 const cloudSubCategories = ['Proxmox', 'Kubernetes', 'KubeSphere', 'Rancher', 'Harvester', 'OpenStack', 'ZStack', 'CloudStack', 'VMware', 'oVirt', 'KVM', 'AWS', 'Azure', 'GCP', '阿里云', '腾讯云', '青云', 'UCloud', '火山云', '天翼云', '移动云', '华为云']
 const webSubCategories = ['Nginx', 'Apache', 'IIS', 'Tomcat', 'Nginx Ingress', 'Higress', 'Traefik', 'APISIX', 'Loadbalancer', 'F5']
-const gptSubCategories = ['OpenAI', 'Claude', 'ChatGLM', '通义千问']
+const gptSubCategories = ['OpenAI', 'Claude', 'GLM', 'Qwen', 'DeepSeek', 'Gemini', 'MiMo', 'MiniMax', 'Kimi', 'Gemma', 'ERNIE']
 
 export interface AssetStats {
   total: number

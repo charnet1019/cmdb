@@ -226,7 +226,7 @@ GPT_CREATE_FIELDS = [
     ("name", "*名称", True),
     ("asset_code", "资产编号", False),
     ("organization", "节点", False),
-    ("platform", "*平台", True),  # OpenAI/Claude/ChatGLM/通义千问
+    ("platform", "*平台", True),  # OpenAI/Claude/GLM/Qwen/DeepSeek/Gemini/MiMo/MiniMax/Kimi/Gemma/ERNIE
     ("external_address", "*外网地址", True),  # API 地址
     ("internal_address", "内网地址", False),
     ("credentials", "用户名密码", True),  # 格式：key_name:api_key，每行一个
