@@ -352,6 +352,9 @@ async def list_assets(
         query = query.where(
             or_(
                 Asset.name.ilike(f"%{search}%"),
+                Asset.asset_code.ilike(f"%{search}%"),
+                Asset.internal_address.ilike(f"%{search}%"),
+                Asset.external_address.ilike(f"%{search}%"),
                 Asset.notes.ilike(f"%{search}%"),
             )
         )
@@ -835,6 +838,9 @@ async def export_assets(
             query = query.where(
                 or_(
                     Asset.name.ilike(f"%{search}%"),
+                    Asset.asset_code.ilike(f"%{search}%"),
+                    Asset.internal_address.ilike(f"%{search}%"),
+                    Asset.external_address.ilike(f"%{search}%"),
                     Asset.notes.ilike(f"%{search}%"),
                 )
             )

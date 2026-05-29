@@ -23,7 +23,8 @@ import {
   SettingOutlined,
   ExportOutlined,
   ReloadOutlined,
-  ImportOutlined
+  ImportOutlined,
+  SearchOutlined
 } from '@ant-design/icons-vue'
 import { useAssets } from './composables/useAssets'
 import { useOrganizations } from './composables/useOrganizations'
@@ -957,7 +958,13 @@ onMounted(async () => {
               </Dropdown>
             </div>
             <div class="flex items-center gap-2">
-              <input v-model="searchQuery" type="text" placeholder="搜索" class="border border-gray-200 rounded py-1.5 px-3 text-xs w-72" @keyup.enter="handleSearch" />
+              <a-input v-model:value="searchQuery" placeholder="搜索资产名称 / 地址 / 编号" size="small" style="width: 320px" @press-enter="handleSearch">
+                <template #prefix><SearchOutlined class="text-slate-400" /></template>
+                <template #suffix>
+                  <button @click="handleSearch" class="p-1 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="搜索"><SearchOutlined class="text-sm" /></button>
+                  <button @click="searchQuery = ''; handleSearch()" class="p-1 text-slate-400 hover:text-red-500 hover:bg-slate-100 rounded" title="清空"><CloseOutlined class="text-sm" /></button>
+                </template>
+              </a-input>
               <button @click="showColumnCustomizer = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="自定义列"><SettingOutlined class="text-sm" /></button>
               <button v-if="activeCategory !== 'all'" @click="showImportModal = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导入"><ImportOutlined class="text-sm" /></button>
               <button @click="showExportModal = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导出"><ExportOutlined class="text-sm" /></button>
