@@ -841,6 +841,14 @@ async def export_assets(
 
     # Execute query with credentials loaded
     query = query.options(selectinload(Asset.credentials))
+
+    # For database assets, also load runs_on hosts and storage locations
+    if category == "database":
+        query = query.options(
+            selectinload(Asset.database_hosts).selectinload(AssetHostRelation.host_asset),
+            selectinload(Asset.storage_locations),
+        )
+
     result = await db.execute(query)
     assets = result.scalars().all()
 

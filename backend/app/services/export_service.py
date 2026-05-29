@@ -66,6 +66,8 @@ CATEGORY_COLUMNS: Dict[str, List[tuple]] = {
         ("db_type", "数据库类型"),
         ("version", "版本"),
         ("namespace", "命名空间"),
+        ("runs_on", "运行于"),
+        ("storage_locations", "存储位置"),
         ("organization_name", "节点"),
         ("applicant", "申请人"),
         ("owner_name", "负责人"),
@@ -256,6 +258,18 @@ def export_assets_to_excel(data: List[Dict[str, Any]], category: Optional[str] =
                 # Extract from extra_data (metadata)
                 extra_data = asset.get("extra_data") or {}
                 value = extra_data.get(field)
+            elif field == "runs_on":
+                runs_on_hosts = asset.get("runs_on_hosts", [])
+                if runs_on_hosts:
+                    value = ", ".join([h.get("name", "") for h in runs_on_hosts])
+                else:
+                    value = ""
+            elif field == "storage_locations":
+                locs = asset.get("storage_locations", [])
+                if locs:
+                    value = "\n".join([f"{l.get('path_type', '')}:{l.get('path', '')}" for l in locs])
+                else:
+                    value = ""
             elif field == "extra_data":
                 # Skip extra_data as it's JSON
                 continue
@@ -286,6 +300,8 @@ def export_assets_to_excel(data: List[Dict[str, Any]], category: Optional[str] =
         "oob_username": 15,
         "oob_password": 15,
         "applicant": 12,
+        "runs_on": 20,
+        "storage_locations": 25,
         "owner_name": 15,
         "notes": 30,
         "is_active": 10,
@@ -375,6 +391,18 @@ def export_assets_to_csv(data: List[Dict[str, Any]], category: Optional[str] = N
                 # Extract from extra_data (metadata)
                 extra_data = asset.get("extra_data") or {}
                 value = extra_data.get(field)
+            elif field == "runs_on":
+                runs_on_hosts = asset.get("runs_on_hosts", [])
+                if runs_on_hosts:
+                    value = ", ".join([h.get("name", "") for h in runs_on_hosts])
+                else:
+                    value = ""
+            elif field == "storage_locations":
+                locs = asset.get("storage_locations", [])
+                if locs:
+                    value = "\n".join([f"{l.get('path_type', '')}:{l.get('path', '')}" for l in locs])
+                else:
+                    value = ""
             elif field == "extra_data":
                 value = ""
 

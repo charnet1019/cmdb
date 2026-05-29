@@ -9,7 +9,7 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.encryption import encrypt_value
 
-from app.models import Asset, Organization
+from app.models import Asset, Organization, AssetHostRelation, StorageLocation
 from sqlalchemy import select
 
 async def resolve_or_create_organization(db: AsyncSession, path_str: str) -> int:
@@ -139,6 +139,8 @@ DATABASE_CREATE_FIELDS = [
     ("external_address", "外网地址", False),  # 外网访问地址（可选，可带端口）
     ("internal_address", "内网地址", False),  # 内网访问地址（可选，可带端口）
     ("credentials", "*用户名密码", True),  # 格式：username:password，每行一个
+    ("runs_on", "运行于", False),  # 格式：主机名称，每行一个
+    ("storage_locations", "存储位置", False),  # 格式：路径|类型|描述，每行一个
     ("version", "版本", False),
     ("namespace", "命名空间", False),  # 数据库 Schema/命名空间
     ("applicant", "申请人", False),  # 申请人
@@ -156,6 +158,8 @@ DATABASE_UPDATE_FIELDS = [
     ("external_address", "外网地址", False),  # 外网访问地址（可带端口）
     ("internal_address", "内网地址", False),  # 内网访问地址（可带端口）
     ("credentials", "用户名密码", False),
+    ("runs_on", "运行于", False),  # 格式：主机名称，每行一个
+    ("storage_locations", "存储位置", False),  # 格式：路径|类型|描述，每行一个
     ("version", "版本", False),
     ("namespace", "命名空间", False),  # 数据库 Schema/命名空间
     ("applicant", "申请人", False),  # 申请人
@@ -346,6 +350,10 @@ def _generate_template(
         )
         if field_name == "organization":
             cell.value = "（填写完整路径，节点不存在时会自动创建）"
+        elif field_name == "runs_on":
+            cell.value = "（主机名称，每行一个）"
+        elif field_name == "storage_locations":
+            cell.value = "（路径|类型|描述，每行一个）"
 
     # Example row
     for col, value in enumerate(example_data, 1):
@@ -370,6 +378,8 @@ def _generate_template(
             ws.column_dimensions[col_letter].width = 20
         elif field_name == 'organization':
             ws.column_dimensions[col_letter].width = 18
+        elif field_name == 'storage_locations':
+            ws.column_dimensions[col_letter].width = 25
         else:
             ws.column_dimensions[col_letter].width = default_width
 
@@ -463,6 +473,8 @@ def generate_database_create_template() -> BytesIO:
         "",                  # 外网地址
         "192.168.1.100:3306",  # 内网地址
         "root:mysqlroot123\napp:apppass",  # 用户名密码 (格式：username:password，多行多个)
+        "web-server-01",           # 运行于 (格式：主机名称，每行一个)
+        "/var/lib/mysql|data|主数据目录",  # 存储位置 (格式：路径|类型|描述)
         "8.0.32",            # 版本
         "main",              # 命名空间
         "张三",              # 申请人
@@ -478,7 +490,9 @@ def generate_database_update_template() -> BytesIO:
         "56c4d4cd-42ba-4397-abfa-36ecba64af13", "MySQL-Prod-01", "DB001", "Default/研发部/数据库", "RDS", "MySQL",
         "",  # external_address
         "192.168.1.100:3306",  # internal_address
-        "root:mysqlroot123\napp:apppass",
+        "root:mysqlroot123\napp:apppass",  # credentials
+        "web-server-01",  # runs_on
+        "/var/lib/mysql|data|主数据目录",  # storage_locations
         "8.0.32",
         "main",  # namespace
         "张三",  # applicant
@@ -778,6 +792,41 @@ async def parse_import_file(
                         record["oob_address"] = value
                     else:
                         record[field_name] = value
+
+            # Special handling for runs_on field (format: host name, one per line)
+            elif field_name == "runs_on" and value:
+                host_names = [h.strip() for h in value.split('\n') if h.strip()]
+                if host_names:
+                    record["runs_on"] = host_names
+
+            # Special handling for storage_locations field (format: path|type|description, one per line)
+            elif field_name == "storage_locations" and value:
+                locations = []
+                for line_num, line in enumerate(value.split('\n'), 1):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    parts = line.split('|')
+                    if len(parts) < 2:
+                        errors.append(f"存储位置格式错误（第{line_num}行）：'{line}'，应为 路径|类型|描述 格式")
+                        continue
+                    path_val = parts[0].strip()
+                    path_type = parts[1].strip()
+                    description = parts[2].strip() if len(parts) > 2 else None
+                    if not path_val:
+                        errors.append(f"存储位置格式错误（第{line_num}行）：路径为空")
+                        continue
+                    if path_type not in ("data", "log", "backup", "temp"):
+                        errors.append(f"存储位置类型错误（第{line_num}行）：'{path_type}'，应为 data/log/backup/temp")
+                        continue
+                    locations.append({
+                        "path": path_val,
+                        "path_type": path_type,
+                        "description": description,
+                    })
+                if locations:
+                    record["storage_locations"] = locations
+
             elif field_name not in ["organization"]:
                 # Field name is already clean
                 # Convert id to string for UUID format (update mode)
@@ -1138,6 +1187,36 @@ async def batch_create_databases(
                     )
                     db.add(credential)
 
+            # Handle runs_on - resolve host names to host IDs
+            if record.get("runs_on"):
+                from app.models import AssetHostRelation
+                for host_name in record["runs_on"]:
+                    host_result = await db.execute(
+                        select(Asset).where(
+                            Asset.category == "host",
+                            Asset.name == host_name,
+                        )
+                    )
+                    host = host_result.scalar_one_or_none()
+                    if host:
+                        relation = AssetHostRelation(
+                            asset_id=asset.id,
+                            host_id=host.id,
+                        )
+                        db.add(relation)
+
+            # Handle storage_locations
+            if record.get("storage_locations"):
+                from app.models import StorageLocation
+                for loc in record["storage_locations"]:
+                    storage_loc = StorageLocation(
+                        asset_id=asset.id,
+                        path=loc["path"],
+                        path_type=loc["path_type"],
+                        description=loc.get("description"),
+                    )
+                    db.add(storage_loc)
+
             success_count += 1
         except Exception as e:
             failed_records.append({"name": record.get("name"), "error": str(e)})
@@ -1197,6 +1276,35 @@ async def batch_update_databases(
                             username=cred["username"],
                             password_encrypted=encrypt_value(cred["password"]),
                             credential_type="password"
+                        ))
+
+            # Handle runs_on - replace existing relations
+            if "runs_on" in record:
+                from app.models import AssetHostRelation
+                await db.execute(delete(AssetHostRelation).where(AssetHostRelation.asset_id == asset.id))
+                if record["runs_on"]:
+                    for host_name in record["runs_on"]:
+                        host_result = await db.execute(
+                            select(Asset).where(
+                                Asset.category == "host",
+                                Asset.name == host_name,
+                            )
+                        )
+                        host = host_result.scalar_one_or_none()
+                        if host:
+                            db.add(AssetHostRelation(asset_id=asset.id, host_id=host.id))
+
+            # Handle storage_locations - replace existing locations
+            if "storage_locations" in record:
+                from app.models import StorageLocation
+                await db.execute(delete(StorageLocation).where(StorageLocation.asset_id == asset.id))
+                if record["storage_locations"]:
+                    for loc in record["storage_locations"]:
+                        db.add(StorageLocation(
+                            asset_id=asset.id,
+                            path=loc["path"],
+                            path_type=loc["path_type"],
+                            description=loc.get("description"),
                         ))
 
             success_count += 1
