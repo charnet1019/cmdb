@@ -106,6 +106,7 @@ const {
   bulkDisable,
   bulkActivate,
   bulkDelete,
+  bulkUpdateStatus,
   handleDelete
 } = useAssets()
 
@@ -308,6 +309,7 @@ const treeViewMode = ref<'asset' | 'type'>('asset')
 
 // Search
 const searchQuery = ref('')
+const statusFilter = ref('')
 
 // Modal
 const showModal = ref(false)
@@ -319,6 +321,37 @@ const formSelectedOrgId = ref<number | null>(null)
 
 // Device type options for network
 const localDeviceTypeOptions = ['交换机', '路由器', '防火墙', '负载均衡', '无线控制器']
+
+// Asset status options
+const statusOptions = [
+  { key: '', label: '请选择' },
+  { key: 'inventory', label: '库存' },
+  { key: 'deploying', label: '部署中' },
+  { key: 'running', label: '运行中' },
+  { key: 'maintenance', label: '维护中' },
+  { key: 'deactivated', label: '停用' },
+  { key: 'pending_scrap', label: '待报废' },
+  { key: 'scrapped', label: '已报废' },
+  { key: 'returned', label: '已退还' }
+]
+
+function getStatusLabel(value: string) {
+  return statusOptions.find(s => s.key === value)?.label || value
+}
+
+function getStatusColor(value: string): string {
+  const colors: Record<string, string> = {
+    'inventory': 'bg-blue-100 text-blue-700',
+    'deploying': 'bg-yellow-100 text-yellow-700',
+    'running': 'bg-green-100 text-green-700',
+    'maintenance': 'bg-orange-100 text-orange-700',
+    'deactivated': 'bg-red-100 text-red-700',
+    'pending_scrap': 'bg-amber-100 text-amber-700',
+    'scrapped': 'bg-gray-200 text-gray-600',
+    'returned': 'bg-purple-100 text-purple-700'
+  }
+  return colors[value] || 'bg-slate-100 text-slate-600'
+}
 
 // User list for owner selection
 const userOptions = ref<Array<{ id: number; username: string; full_name: string | null }>>([])
@@ -385,6 +418,7 @@ const form = ref({
   internal_address: '',
   external_address: '',
   platform: '',
+  status: '',
   device_type: '',
   model: '',
   serial_number: '',
@@ -412,12 +446,18 @@ function fetchData() {
   fetchAssets({
     category: activeCategory.value,
     search: searchQuery.value,
-    organizationId: selectedOrgId.value
+    organizationId: selectedOrgId.value,
+    status: statusFilter.value || undefined
   })
 }
 
 // Handle search
 function handleSearch() {
+  page.value = 1
+  fetchData()
+}
+
+function onStatusFilterChange() {
   page.value = 1
   fetchData()
 }
@@ -506,6 +546,7 @@ async function openCreateModal() {
     internal_address: '',
     external_address: '',
     platform: defaultCategory === 'database' ? 'Kubernetes' : defaultCategory === 'cloud' ? 'Proxmox' : '',
+    status: '',
     device_type: '',
     model: '',
     serial_number: '',
@@ -556,6 +597,7 @@ async function openEditModal(asset: Asset) {
     internal_address: asset.internal_address || '',
     external_address: asset.external_address || '',
     platform: asset.platform || '',
+    status: asset.status || '',
     device_type: asset.device_type || '',
     model: asset.model || '',
     serial_number: asset.serial_number || '',
@@ -638,6 +680,7 @@ async function handleSubmit() {
       internal_address: form.value.internal_address || undefined,
       external_address: form.value.external_address || undefined,
       platform: form.value.platform || undefined,
+      status: form.value.status || undefined,
       device_type: form.value.device_type || undefined,
       model: form.value.model || undefined,
       serial_number: form.value.serial_number || undefined,
@@ -971,6 +1014,11 @@ onMounted(async () => {
                       <span v-if="selectedInactiveCount > 0" class="text-xs text-slate-400 ml-auto">({{ selectedInactiveCount }})</span>
                     </div>
                     <div class="border-t border-slate-100 my-1"></div>
+                    <div class="px-3 py-1 text-xs text-slate-400 font-medium">修改状态</div>
+                    <div v-for="s in statusOptions" :key="s.key" @click="s.key && bulkUpdateStatus(s.key, fetchData)" class="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2" :class="!s.key ? 'opacity-50 cursor-not-allowed' : ''">
+                      <span>{{ s.label }}</span>
+                    </div>
+                    <div class="border-t border-slate-100 my-1"></div>
                     <div @click="selectedCount > 0 && bulkDelete(fetchData, fetchOrganizations)" class="px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 cursor-pointer flex items-center gap-2">
                       <DeleteOutlined class="text-sm" />批量删除
                       <span v-if="selectedCount > 0" class="text-xs text-slate-400 ml-auto">({{ selectedCount }})</span>
@@ -987,6 +1035,10 @@ onMounted(async () => {
                   <button @click="searchQuery = ''; handleSearch()" class="p-1 text-slate-400 hover:text-red-500 hover:bg-slate-100 rounded" title="清空"><CloseOutlined class="text-sm" /></button>
                 </template>
               </a-input>
+              <select v-model="statusFilter" class="input-field" style="width: 130px; padding: 4px 8px; font-size: 12px" @change="onStatusFilterChange">
+                <option value="">全部状态</option>
+                <option v-for="s in statusOptions" :key="s.key" :value="s.key">{{ s.label }}</option>
+              </select>
               <button @click="showColumnCustomizer = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="自定义列"><SettingOutlined class="text-sm" /></button>
               <button v-if="activeCategory !== 'all'" @click="showImportModal = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导入"><ImportOutlined class="text-sm" /></button>
               <button @click="showExportModal = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导出"><ExportOutlined class="text-sm" /></button>
@@ -1087,6 +1139,12 @@ onMounted(async () => {
                         <template v-else-if="key === 'is_active'">
                           <span v-if="asset.is_active" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">启用</span>
                           <span v-else class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">禁用</span>
+                        </template>
+                        <template v-else-if="key === 'status'">
+                          <span v-if="asset.status" :class="`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(asset.status)}`">
+                            {{ getStatusLabel(asset.status) }}
+                          </span>
+                          <span v-else class="text-sm text-slate-400">-</span>
                         </template>
                         <template v-else-if="key === 'applicant'">{{ asset.applicant || '' }}</template>
                         <template v-else-if="key === 'owner'"><span class="text-sm text-slate-600">{{ asset.owner_name || '' }}</span></template>
@@ -1228,9 +1286,18 @@ onMounted(async () => {
                   <input v-model="form.model" type="text" class="input-field" placeholder="如: C9300-48P" />
                 </div>
               </div>
-              <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1">序列号</label>
-                <input v-model="form.serial_number" type="text" class="input-field" placeholder="设备序列号" />
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">序列号</label>
+                  <input v-model="form.serial_number" type="text" class="input-field" placeholder="设备序列号" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">状态</label>
+                  <select v-model="form.status" class="input-field">
+                    <option value="">无</option>
+                    <option v-for="s in statusOptions" :key="s.key" :value="s.key">{{ s.label }}</option>
+                  </select>
+                </div>
               </div>
               <div class="grid grid-cols-2 gap-3">
                 <div>
@@ -1259,6 +1326,19 @@ onMounted(async () => {
                     <option value="">请选择</option>
                     <option v-for="p in platformOptions[form.category]" :key="p" :value="p">{{ p }}</option>
                   </select>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">状态</label>
+                  <select v-model="form.status" class="input-field">
+                    <option value="">无</option>
+                    <option v-for="s in statusOptions" :key="s.key" :value="s.key">{{ s.label }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">申请人</label>
+                  <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />
                 </div>
               </div>
               <div v-if="form.category === 'database'" class="grid grid-cols-2 gap-3">
@@ -1570,6 +1650,13 @@ onMounted(async () => {
                     </button>
                   </div>
                 </div>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">状态</label>
+                <select v-model="form.status" class="input-field">
+                  <option value="">无</option>
+                  <option v-for="s in statusOptions" :key="s.key" :value="s.key">{{ s.label }}</option>
+                </select>
               </div>
               <div class="grid grid-cols-2 gap-3">
                 <div>

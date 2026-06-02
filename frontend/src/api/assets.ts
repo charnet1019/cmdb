@@ -22,6 +22,7 @@ export async function getAssets(params: {
   organization_id?: number
   search?: string
   is_active?: boolean
+  status?: string
 }) {
   return getPaginated<Asset>('/assets', params)
 }

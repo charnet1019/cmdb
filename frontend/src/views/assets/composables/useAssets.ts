@@ -17,6 +17,7 @@ import type { Asset, AssetCategory } from '@/types'
 export interface AssetWithUI extends Asset {
   expandedNotes?: boolean
   selected?: boolean
+  creator_name?: string
 }
 
 // Asset statistics
@@ -59,6 +60,7 @@ export function useAssets() {
     category?: AssetCategory | 'all'
     search?: string
     organizationId?: number | null
+    status?: string
   }) {
     loading.value = true
     try {
@@ -67,7 +69,8 @@ export function useAssets() {
         limit: limit.value,
         category: params.category !== 'all' ? params.category : undefined,
         search: params.search || undefined,
-        organization_id: params.organizationId || undefined
+        organization_id: params.organizationId || undefined,
+        status: params.status || undefined
       })
       assets.value = (result.items || []).map(asset => ({
         ...asset,
@@ -223,6 +226,43 @@ export function useAssets() {
     })
   }
 
+  async function bulkUpdateStatus(statusValue: string, fetchFn: () => void) {
+    const ids = getSelectedAssetIds()
+    if (ids.length === 0) {
+      message.warning('请先选择要修改的资产')
+      return
+    }
+
+    const statusLabels: Record<string, string> = {
+      'inventory': '库存',
+      'deploying': '部署中',
+      'running': '运行中',
+      'maintenance': '维护中',
+      'deactivated': '停用',
+      'pending_scrap': '待报废',
+      'scrapped': '已报废',
+      'returned': '已退还'
+    }
+
+    Modal.confirm({
+      title: '确认修改状态',
+      content: `确定要将选中的 ${ids.length} 个资产的状态修改为「${statusLabels[statusValue] || statusValue}」吗？`,
+      okText: '确定',
+      cancelText: '取消',
+      centered: true,
+      async onOk() {
+        try {
+          await bulkUpdateAssets(ids, { status: statusValue })
+          message.success(`已更新 ${ids.length} 个资产的状态`)
+          fetchFn()
+          fetchAssetStats()
+        } catch (error: any) {
+          message.error(error.response?.data?.detail || '批量修改状态失败')
+        }
+      }
+    })
+  }
+
   return {
     // State
     assets,
@@ -248,6 +288,7 @@ export function useAssets() {
     bulkDisable,
     bulkActivate,
     bulkDelete,
+    bulkUpdateStatus,
     handleDelete
   }
 }

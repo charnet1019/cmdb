@@ -24,6 +24,18 @@ class AssetCategory(str, enum.Enum):
     GPT = "gpt"
 
 
+class AssetStatus(str, enum.Enum):
+    """Asset lifecycle status enumeration"""
+    INVENTORY = "inventory"           # 库存
+    DEPLOYING = "deploying"           # 部署中
+    RUNNING = "running"               # 运行中
+    MAINTENANCE = "maintenance"       # 维护中
+    DEACTIVATED = "deactivated"       # 停用
+    PENDING_SCRAP = "pending_scrap"   # 待报废
+    SCRAPPED = "scrapped"             # 已报废
+    RETURNED = "returned"             # 已退还
+
+
 class PermissionType(str, enum.Enum):
     """Permission type enumeration"""
     VIEW = "view"                    # 查看资产
@@ -203,6 +215,7 @@ class Asset(Base):
     owner_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), index=True)  # 负责人 ID
     owner_name: Mapped[Optional[str]] = mapped_column(String(100))  # 负责人姓名（冗余字段）
 
+    status: Mapped[Optional[str]] = mapped_column(String(50), index=True)  # AssetStatus
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     updated_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))

@@ -183,6 +183,8 @@ def build_asset_response(
         data["oob_address"] = asset.oob_address
     if asset.oob_username:
         data["oob_username"] = asset.oob_username
+    if asset.status:
+        data["status"] = asset.status
     # Database asset fields (runs_on hosts and storage_locations)
     # Only include if already loaded to avoid lazy-loading in async context
     if asset.category == "database":
@@ -321,6 +323,7 @@ async def list_assets(
     owner_name: Optional[str] = None,
     search: Optional[str] = None,
     is_active: Optional[bool] = None,
+    status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -361,6 +364,9 @@ async def list_assets(
 
     if is_active is not None:
         query = query.where(Asset.is_active == is_active)
+
+    if status is not None:
+        query = query.where(Asset.status == status)
 
     # Count total
     count_query = select(func.count()).select_from(query.subquery())
@@ -508,6 +514,7 @@ async def create_asset(
         oob_address=data.oob_address,
         oob_username=data.oob_username,
         oob_password_encrypted=oob_password_encrypted,
+        status=data.status,
     )
 
     db.add(asset)
@@ -592,6 +599,8 @@ async def bulk_update_assets(
     for asset in assets:
         if "is_active" in request.data:
             asset.is_active = request.data["is_active"]
+        if "status" in request.data:
+            asset.status = request.data["status"]
 
     await db.commit()
 
