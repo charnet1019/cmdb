@@ -1328,19 +1328,6 @@ onMounted(async () => {
                   </select>
                 </div>
               </div>
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1">状态</label>
-                  <select v-model="form.status" class="input-field">
-                    <option value="">无</option>
-                    <option v-for="s in statusOptions" :key="s.key" :value="s.key">{{ s.label }}</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1">申请人</label>
-                  <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />
-                </div>
-              </div>
               <div v-if="form.category === 'database'" class="grid grid-cols-2 gap-3">
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1">数据库类型</label>
@@ -1491,6 +1478,38 @@ onMounted(async () => {
 
             <!-- Network 专属字段 -->
             <template v-if="form.category === 'network'">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">申请人</label>
+                  <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
+                  <select v-model="form.owner_id" class="input-field">
+                    <option value="">请选择</option>
+                    <option v-for="user in userOptions" :key="user.id" :value="user.id">
+                      {{ user.username }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+            </template>
+
+            <!-- Web 专属字段 -->
+            <template v-if="form.category === 'web'">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">状态</label>
+                  <select v-model="form.status" class="input-field">
+                    <option value="">无</option>
+                    <option v-for="s in statusOptions" :key="s.key" :value="s.key">{{ s.label }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">申请人</label>
+                  <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />
+                </div>
+              </div>
               <div>
                 <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
                 <select v-model="form.owner_id" class="input-field">
@@ -1502,41 +1521,29 @@ onMounted(async () => {
               </div>
             </template>
 
-            <!-- Web 专属字段 -->
-            <template v-if="form.category === 'web'">
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1">申请人</label>
-                  <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />
-                </div>
-                <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
-                  <select v-model="form.owner_id" class="input-field">
-                    <option value="">请选择</option>
-                    <option v-for="user in userOptions" :key="user.id" :value="user.id">
-                      {{ user.username }}
-                    </option>
-                  </select>
-                </div>
-              </div>
-            </template>
-
             <!-- 数据库专属字段 -->
             <template v-if="form.category === 'database'">
               <div class="grid grid-cols-2 gap-3">
                 <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">状态</label>
+                  <select v-model="form.status" class="input-field">
+                    <option value="">无</option>
+                    <option v-for="s in statusOptions" :key="s.key" :value="s.key">{{ s.label }}</option>
+                  </select>
+                </div>
+                <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1">申请人</label>
                   <input v-model="form.applicant" type="text" class="input-field" placeholder="申请人姓名" />
                 </div>
-                <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
-                  <select v-model="form.owner_id" class="input-field">
-                    <option value="">请选择</option>
-                    <option v-for="user in userOptions" :key="user.id" :value="user.id">
-                      {{ user.username }}
-                    </option>
-                  </select>
-                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
+                <select v-model="form.owner_id" class="input-field">
+                  <option value="">请选择</option>
+                  <option v-for="user in userOptions" :key="user.id" :value="user.id">
+                    {{ user.username }}
+                  </option>
+                </select>
               </div>
               <div>
                 <label class="block text-xs font-medium text-slate-600 mb-1">运行于主机</label>
@@ -1575,27 +1582,45 @@ onMounted(async () => {
 
             <!-- Cloud 专属字段 -->
             <template v-if="form.category === 'cloud'">
-              <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
-                <select v-model="form.owner_id" class="input-field">
-                  <option value="">请选择</option>
-                  <option v-for="user in userOptions" :key="user.id" :value="user.id">
-                    {{ user.username }}
-                  </option>
-                </select>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">状态</label>
+                  <select v-model="form.status" class="input-field">
+                    <option value="">无</option>
+                    <option v-for="s in statusOptions" :key="s.key" :value="s.key">{{ s.label }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
+                  <select v-model="form.owner_id" class="input-field">
+                    <option value="">请选择</option>
+                    <option v-for="user in userOptions" :key="user.id" :value="user.id">
+                      {{ user.username }}
+                    </option>
+                  </select>
+                </div>
               </div>
             </template>
 
             <!-- GPT 专属字段 -->
             <template v-if="form.category === 'gpt'">
-              <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
-                <select v-model="form.owner_id" class="input-field">
-                  <option value="">请选择</option>
-                  <option v-for="user in userOptions" :key="user.id" :value="user.id">
-                    {{ user.username }}
-                  </option>
-                </select>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">状态</label>
+                  <select v-model="form.status" class="input-field">
+                    <option value="">无</option>
+                    <option v-for="s in statusOptions" :key="s.key" :value="s.key">{{ s.label }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
+                  <select v-model="form.owner_id" class="input-field">
+                    <option value="">请选择</option>
+                    <option v-for="user in userOptions" :key="user.id" :value="user.id">
+                      {{ user.username }}
+                    </option>
+                  </select>
+                </div>
               </div>
             </template>
 
