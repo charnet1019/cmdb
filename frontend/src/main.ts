@@ -34,34 +34,13 @@ function hideLoadingIndicator() {
 
 // Show the app element once fonts are loaded or timeout occurs
 function waitForFontsOrTimeout() {
-  // Check if fonts are already loaded
-  const isFontLoaded = document.fonts ? document.fonts.check('16px Inter') || document.fonts.check('16px Manrope') : true;
+  // Use document.fonts.ready for reliable font loading detection
+  const fontReady = document.fonts ? document.fonts.ready : Promise.resolve();
+  const timeout = new Promise(resolve => setTimeout(resolve, 1000));
 
-  if (isFontLoaded) {
-    // Fonts already loaded
-    mountAndHideLoading();
-  } else if (document.fonts) {
-    // Wait for fonts to load with timeout
-    const timeout = setTimeout(() => {
-      if (document.fonts) {
-        document.fonts.removeEventListener('loadingdone', fontLoadHandler);
-      }
-      mountAndHideLoading();
-    }, 1000); // 1 second timeout
-
-    const fontLoadHandler = () => {
-      clearTimeout(timeout);
-      if (document.fonts) {
-        document.fonts.removeEventListener('loadingdone', fontLoadHandler);
-      }
-      mountAndHideLoading();
-    };
-
-    document.fonts.addEventListener('loadingdone', fontLoadHandler);
-  } else {
-    // No font loading API, just mount
-    mountAndHideLoading();
-  }
+  Promise.race([fontReady, timeout])
+    .then(mountAndHideLoading)
+    .catch(mountAndHideLoading); // fallback if fonts API rejects
 }
 
 function mountAndHideLoading() {
@@ -70,7 +49,7 @@ function mountAndHideLoading() {
 }
 
 // Initialize the app with font loading considerations
-document.addEventListener('DOMContentLoaded', () => {
+function initApp() {
   // Ensure the app element is visible initially
   const appEl = document.getElementById('app');
   if (appEl) {
@@ -80,4 +59,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Wait for fonts or mount immediately
   waitForFontsOrTimeout();
-});
+}
+
+if (document.readyState === 'loading') {
+  // DOM not yet ready, wait for it
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  // DOM already ready (e.g., on page refresh), mount immediately
+  initApp();
+}

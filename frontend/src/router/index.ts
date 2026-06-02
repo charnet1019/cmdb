@@ -86,14 +86,34 @@ const router = createRouter({
 })
 
 // Navigation guard
-router.beforeEach((to, _from, next) => {
-  const token = localStorage.getItem('token')
+router.beforeEach(async (to, _from, next) => {
+  const token = localStorage.getItem('token')  // Read from source of truth
   const requiresAuth = to.meta.requiresAuth !== false
 
   if (requiresAuth && !token) {
     next({ name: 'Login', query: { redirect: to.fullPath } })
   } else if (to.name === 'Login' && token) {
     next({ name: 'Dashboard' })
+  } else if (requiresAuth && token) {
+    // Restore user info on every protected route after refresh
+    const { useAuthStore } = await import('@/stores/auth')
+    const authStore = useAuthStore()
+    if (!authStore.user) {
+      try {
+        const result = await authStore.fetchUser()
+        if (!result) {
+          // Token was cleared by interceptor, redirect to login
+          localStorage.removeItem('token')
+          next({ name: 'Login', query: { redirect: to.fullPath } })
+          return
+        }
+      } catch {
+        next({ name: 'Login', query: { redirect: to.fullPath } })
+        return
+      }
+    }
+    document.title = to.meta.title ? `${to.meta.title} - CMDB` : 'CMDB'
+    next()
   } else {
     // Set page title
     document.title = to.meta.title ? `${to.meta.title} - CMDB` : 'CMDB'

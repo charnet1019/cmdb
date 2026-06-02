@@ -9,6 +9,17 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<UserSimple | null>(null)
   const permissions = ref<string[]>([])
 
+  // Listen for token cleared event from API interceptor
+  const handleTokenCleared = () => {
+    token.value = null
+    user.value = null
+    permissions.value = []
+  }
+
+  // Remove any existing listener first (prevents accumulation during HMR)
+  window.removeEventListener('auth:token-cleared', handleTokenCleared)
+  window.addEventListener('auth:token-cleared', handleTokenCleared)
+
   // Getters
   const isAuthenticated = computed(() => !!token.value)
   const username = computed(() => user.value?.username || '')

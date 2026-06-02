@@ -31,8 +31,9 @@ api.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
-      // Clear token and redirect to login
       localStorage.removeItem('token')
+      // Notify auth store to clear its token ref (prevents stale token in router guard)
+      window.dispatchEvent(new CustomEvent('auth:token-cleared'))
       window.location.href = '/login'
     }
     return Promise.reject(error)
