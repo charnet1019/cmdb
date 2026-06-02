@@ -73,6 +73,11 @@ class UserSimple(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class UserDetailResponse(ResponseBase):
+    """Single user detail response schema"""
+    data: UserResponse
+
+
 # ============== Group Schemas ==============
 class GroupBase(BaseModel):
     """Base group schema"""
@@ -106,6 +111,11 @@ class GroupSimple(BaseModel):
     name: str
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class GroupDetailResponse(ResponseBase):
+    """Single group detail response schema"""
+    data: GroupResponse
 
 
 # ============== Asset Schemas ==============
@@ -158,6 +168,7 @@ class AssetCreate(AssetBase):
     db_type: Optional[str] = None
     applicant: Optional[str] = None
     namespace: Optional[str] = None
+    status: Optional[str] = Field(None, max_length=50)  # AssetStatus
     extra_data: Optional[dict] = Field(None, serialization_alias="metadata")
     # OOB fields (for host category)
     oob_address: Optional[str] = Field(None, max_length=200)  # OOB 地址
@@ -200,6 +211,7 @@ class AssetUpdate(BaseModel):
     # Database asset fields
     host_ids: Optional[List[str]] = None  # Runs on hosts (for database category)
     storage_locations: Optional[List[StorageLocationCreate]] = None  # Storage paths (for database category)
+    status: Optional[str] = Field(None, max_length=50)  # AssetStatus
 
 
 class AssetResponse(AssetBase):
@@ -217,6 +229,7 @@ class AssetResponse(AssetBase):
     data_disk: Optional[str] = None
     extra_data: Optional[dict] = None
     is_active: bool = True
+    status: Optional[str] = None  # AssetStatus
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     credentials: List["CredentialSimple"] = []
@@ -354,6 +367,10 @@ class LoginResponse(ResponseBase):
     """Login response schema"""
     data: TokenResponse
 
+
+class CurrentUserResponse(ResponseBase):
+    """Current user info response schema"""
+    data: UserSimple
 
 class PasswordResetRequest(BaseModel):
     """Password reset request"""

@@ -11,9 +11,9 @@ from sqlalchemy import select, func, or_
 from app.database import get_db
 from app.models import User, Group, UserGroup, Authorization, Asset
 from app.schemas import (
-    UserCreate, UserUpdate, UserResponse, UserSimple,
+    UserCreate, UserUpdate, UserResponse, UserSimple, UserDetailResponse,
     UserListResponse, PaginationMeta,
-    GroupCreate, GroupUpdate, GroupResponse, GroupSimple,
+    GroupCreate, GroupUpdate, GroupResponse, GroupSimple, GroupDetailResponse,
     GroupListResponse, PasswordResetRequest, ResponseBase
 )
 from app.api.deps import get_current_user, get_current_superuser
@@ -93,7 +93,7 @@ async def list_users(
     )
 
 
-@router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=UserDetailResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(
     data: UserCreate,
     db: AsyncSession = Depends(get_db),
@@ -151,21 +151,23 @@ async def create_user(
     await db.commit()
     await db.refresh(user)
 
-    return UserResponse(
-        id=user.id,
-        username=user.username,
-        email=user.email,
-        full_name=user.full_name,
-        phone=user.phone,
-        is_active=user.is_active,
-        mfa_enabled=user.mfa_enabled,
-        last_login_at=user.last_login_at,
-        created_at=user.created_at,
-        groups=[],
+    return UserDetailResponse(
+        data=UserResponse(
+            id=user.id,
+            username=user.username,
+            email=user.email,
+            full_name=user.full_name,
+            phone=user.phone,
+            is_active=user.is_active,
+            mfa_enabled=user.mfa_enabled,
+            last_login_at=user.last_login_at,
+            created_at=user.created_at,
+            groups=[],
+        )
     )
 
 
-@router.get("/{user_id}", response_model=UserResponse)
+@router.get("/{user_id}", response_model=UserDetailResponse)
 async def get_user(
     user_id: int,
     db: AsyncSession = Depends(get_db),
@@ -189,21 +191,23 @@ async def get_user(
     )
     groups = groups_result.scalars().all()
 
-    return UserResponse(
-        id=user.id,
-        username=user.username,
-        email=user.email,
-        full_name=user.full_name,
-        phone=user.phone,
-        is_active=user.is_active,
-        mfa_enabled=user.mfa_enabled,
-        last_login_at=user.last_login_at,
-        created_at=user.created_at,
-        groups=[{"id": g.id, "name": g.name} for g in groups],
+    return UserDetailResponse(
+        data=UserResponse(
+            id=user.id,
+            username=user.username,
+            email=user.email,
+            full_name=user.full_name,
+            phone=user.phone,
+            is_active=user.is_active,
+            mfa_enabled=user.mfa_enabled,
+            last_login_at=user.last_login_at,
+            created_at=user.created_at,
+            groups=[{"id": g.id, "name": g.name} for g in groups],
+        )
     )
 
 
-@router.put("/{user_id}", response_model=UserResponse)
+@router.put("/{user_id}", response_model=UserDetailResponse)
 async def update_user(
     user_id: int,
     data: UserUpdate,
@@ -271,17 +275,19 @@ async def update_user(
     )
     groups = groups_result.scalars().all()
 
-    return UserResponse(
-        id=user.id,
-        username=user.username,
-        email=user.email,
-        full_name=user.full_name,
-        phone=user.phone,
-        is_active=user.is_active,
-        mfa_enabled=user.mfa_enabled,
-        last_login_at=user.last_login_at,
-        created_at=user.created_at,
-        groups=[{"id": g.id, "name": g.name} for g in groups],
+    return UserDetailResponse(
+        data=UserResponse(
+            id=user.id,
+            username=user.username,
+            email=user.email,
+            full_name=user.full_name,
+            phone=user.phone,
+            is_active=user.is_active,
+            mfa_enabled=user.mfa_enabled,
+            last_login_at=user.last_login_at,
+            created_at=user.created_at,
+            groups=[{"id": g.id, "name": g.name} for g in groups],
+        )
     )
 
 
@@ -520,7 +526,7 @@ async def list_groups(
     )
 
 
-@group_router.post("", response_model=GroupResponse, status_code=status.HTTP_201_CREATED)
+@group_router.post("", response_model=GroupDetailResponse, status_code=status.HTTP_201_CREATED)
 async def create_group(
     data: GroupCreate,
     db: AsyncSession = Depends(get_db),
@@ -554,12 +560,14 @@ async def create_group(
     await db.commit()
     await db.refresh(group)
 
-    return GroupResponse(
-        id=group.id,
-        name=group.name,
-        description=group.description,
-        created_at=group.created_at,
-        member_count=len(data.initial_member_ids or []),
+    return GroupDetailResponse(
+        data=GroupResponse(
+            id=group.id,
+            name=group.name,
+            description=group.description,
+            created_at=group.created_at,
+            member_count=len(data.initial_member_ids or []),
+        )
     )
 
 
@@ -642,7 +650,7 @@ async def get_group_authorizations(
     }
 
 
-@group_router.put("/{group_id}", response_model=GroupResponse)
+@group_router.put("/{group_id}", response_model=GroupDetailResponse)
 async def update_group(
     group_id: int,
     name: Optional[str] = Query(None),
@@ -678,12 +686,14 @@ async def update_group(
     )
     member_count = member_count_result.scalar() or 0
 
-    return GroupResponse(
-        id=group.id,
-        name=group.name,
-        description=group.description,
-        created_at=group.created_at,
-        member_count=member_count,
+    return GroupDetailResponse(
+        data=GroupResponse(
+            id=group.id,
+            name=group.name,
+            description=group.description,
+            created_at=group.created_at,
+            member_count=member_count,
+        )
     )
 
 

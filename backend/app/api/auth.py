@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.database import get_db
 from app.models import User, LoginLog
 from app.schemas import (
-    LoginRequest, LoginResponse, TokenResponse, UserSimple,
+    LoginRequest, LoginResponse, TokenResponse, UserSimple, CurrentUserResponse,
     PasswordChangeRequest, ResponseBase
 )
 from app.core.security import verify_password, create_access_token, get_password_hash, validate_password_strength
@@ -171,16 +171,18 @@ async def change_password(
     return ResponseBase(message="密码修改成功")
 
 
-@router.get("/me", response_model=UserSimple)
+@router.get("/me", response_model=CurrentUserResponse)
 async def get_current_user_info(
     current_user: User = Depends(get_current_user),
 ):
     """
     Get current user info
     """
-    return UserSimple(
-        id=current_user.id,
-        username=current_user.username,
-        full_name=current_user.full_name,
-        email=current_user.email,
+    return CurrentUserResponse(
+        data=UserSimple(
+            id=current_user.id,
+            username=current_user.username,
+            full_name=current_user.full_name,
+            email=current_user.email,
+        )
     )
