@@ -198,7 +198,6 @@ class AssetUpdate(BaseModel):
     data_disk: Optional[str] = None
     notes: Optional[str] = None
     extra_data: Optional[dict] = None
-    is_active: Optional[bool] = None
     # Additional fields
     applicant: Optional[str] = Field(None, max_length=100)  # 申请人
     namespace: Optional[str] = Field(None, max_length=100)  # 命名空间
@@ -228,7 +227,6 @@ class AssetResponse(AssetBase):
     system_disk: Optional[str] = None
     data_disk: Optional[str] = None
     extra_data: Optional[dict] = None
-    is_active: bool = True
     status: Optional[str] = None  # AssetStatus
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

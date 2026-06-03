@@ -49,10 +49,6 @@ export function useAssets() {
 
   // Selected counts
   const selectedCount = computed(() => assets.value.filter(asset => asset.selected).length)
-  const selectedActiveCount = computed(() => assets.value.filter(asset => asset.selected && asset.is_active).length)
-  const selectedInactiveCount = computed(() => assets.value.filter(asset => asset.selected && !asset.is_active).length)
-  const canDisable = computed(() => selectedActiveCount.value > 0)
-  const canActivate = computed(() => selectedInactiveCount.value > 0)
   const selectedIds = computed(() => assets.value.filter(asset => asset.selected).map(asset => String(asset.id)))
 
   // Fetch assets
@@ -118,60 +114,6 @@ export function useAssets() {
 
   function getSelectedAssetIds(): string[] {
     return assets.value.filter(asset => asset.selected).map(asset => asset.id)
-  }
-
-  // Bulk operations
-  async function bulkDisable(fetchFn: () => void) {
-    const activeIds = assets.value.filter(asset => asset.selected && asset.is_active).map(asset => asset.id)
-    if (activeIds.length === 0) {
-      message.warning('选中的资产中没有可禁用的资产')
-      return
-    }
-
-    Modal.confirm({
-      title: '确认禁用',
-      content: `确定要禁用选中的 ${activeIds.length} 个资产吗？`,
-      okText: '确定',
-      okType: 'danger',
-      cancelText: '取消',
-      centered: true,
-      async onOk() {
-        try {
-          await bulkUpdateAssets(activeIds, { is_active: false })
-          message.success(`已禁用 ${activeIds.length} 个资产`)
-          fetchFn()
-          fetchAssetStats()
-        } catch (error: any) {
-          message.error(error.response?.data?.detail || '批量禁用失败')
-        }
-      }
-    })
-  }
-
-  async function bulkActivate(fetchFn: () => void) {
-    const inactiveIds = assets.value.filter(asset => asset.selected && !asset.is_active).map(asset => asset.id)
-    if (inactiveIds.length === 0) {
-      message.warning('选中的资产中没有可激活的资产')
-      return
-    }
-
-    Modal.confirm({
-      title: '确认激活',
-      content: `确定要激活选中的 ${inactiveIds.length} 个资产吗？`,
-      okText: '确定',
-      cancelText: '取消',
-      centered: true,
-      async onOk() {
-        try {
-          await bulkUpdateAssets(inactiveIds, { is_active: true })
-          message.success(`已激活 ${inactiveIds.length} 个资产`)
-          fetchFn()
-          fetchAssetStats()
-        } catch (error: any) {
-          message.error(error.response?.data?.detail || '批量激活失败')
-        }
-      }
-    })
   }
 
   // Delete single asset
@@ -273,11 +215,7 @@ export function useAssets() {
     assetStats,
     allSelected,
     selectedCount,
-    selectedActiveCount,
-    selectedInactiveCount,
     selectedIds,
-    canDisable,
-    canActivate,
 
     // Actions
     fetchAssets,
@@ -285,8 +223,6 @@ export function useAssets() {
     handlePageChange,
     selectAllChanged,
     selectionChanged,
-    bulkDisable,
-    bulkActivate,
     bulkDelete,
     bulkUpdateStatus,
     handleDelete

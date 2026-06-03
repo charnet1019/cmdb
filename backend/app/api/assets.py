@@ -100,7 +100,7 @@ ASSET_TYPE_FIELDS: Dict[str, List[str]] = {
 COMMON_FIELDS = [
     "id", "name", "asset_code", "category", "internal_address",
     "external_address", "platform", "organization_id", "organization_name",
-    "is_active", "notes", "extra_data", "created_at", "updated_at",
+    "notes", "extra_data", "created_at", "updated_at",
     "applicant", "credentials"
 ]
 
@@ -133,7 +133,6 @@ def build_asset_response(
         "id": str(asset.id),
         "name": asset.name,
         "category": category,
-        "is_active": asset.is_active,
     }
 
     # Add optional common fields only if not None
@@ -322,7 +321,6 @@ async def list_assets(
     owner_id: Optional[int] = None,
     owner_name: Optional[str] = None,
     search: Optional[str] = None,
-    is_active: Optional[bool] = None,
     status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -361,9 +359,6 @@ async def list_assets(
                 Asset.notes.ilike(f"%{search}%"),
             )
         )
-
-    if is_active is not None:
-        query = query.where(Asset.is_active == is_active)
 
     if status is not None:
         query = query.where(Asset.status == status)
@@ -597,8 +592,6 @@ async def bulk_update_assets(
 
     # Update each asset
     for asset in assets:
-        if "is_active" in request.data:
-            asset.is_active = request.data["is_active"]
         if "status" in request.data:
             asset.status = request.data["status"]
 

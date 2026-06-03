@@ -43,7 +43,6 @@ export interface Asset {
   data_disk: string | null
   notes: string | null
   extra_data: Record<string, any> | null
-  is_active: boolean
   applicant: string | null  // 申请人
   namespace: string | null  // 命名空间（数据库 Schema 等）
   owner_id: number | null  // 负责人 ID

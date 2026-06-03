@@ -8,8 +8,6 @@ import {
   RightOutlined,
   DeleteOutlined,
   CloseOutlined,
-  StopOutlined,
-  CheckCircleOutlined,
   FolderOutlined,
   FolderOpenOutlined,
   FileTextOutlined,
@@ -93,18 +91,12 @@ const {
   assetStats,
   allSelected,
   selectedCount,
-  selectedActiveCount,
-  selectedInactiveCount,
   selectedIds,
-  canDisable,
-  canActivate,
   fetchAssets,
   fetchAssetStats,
   handlePageChange,
   selectAllChanged,
   selectionChanged,
-  bulkDisable,
-  bulkActivate,
   bulkDelete,
   bulkUpdateStatus,
   handleDelete
@@ -1005,15 +997,6 @@ onMounted(async () => {
                 </button>
                 <template #overlay>
                   <div class="bg-white rounded-lg shadow-lg border border-slate-200 py-1 min-w-[140px]">
-                    <div @click="canDisable && bulkDisable(fetchData)" class="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2" :class="!canDisable ? 'opacity-50 cursor-not-allowed' : ''">
-                      <StopOutlined class="text-sm" />批量禁用
-                      <span v-if="selectedActiveCount > 0" class="text-xs text-slate-400 ml-auto">({{ selectedActiveCount }})</span>
-                    </div>
-                    <div @click="canActivate && bulkActivate(fetchData)" class="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2" :class="!canActivate ? 'opacity-50 cursor-not-allowed' : ''">
-                      <CheckCircleOutlined class="text-sm" />批量激活
-                      <span v-if="selectedInactiveCount > 0" class="text-xs text-slate-400 ml-auto">({{ selectedInactiveCount }})</span>
-                    </div>
-                    <div class="border-t border-slate-100 my-1"></div>
                     <div class="px-3 py-1 text-xs text-slate-400 font-medium">修改状态</div>
                     <div v-for="s in statusOptions" :key="s.key" @click="s.key && bulkUpdateStatus(s.key, fetchData)" class="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2" :class="!s.key ? 'opacity-50 cursor-not-allowed' : ''">
                       <span>{{ s.label }}</span>
@@ -1071,7 +1054,7 @@ onMounted(async () => {
               <tbody>
                 <tr v-if="assets.length === 0 && !loading"><td :colspan="orderedColumns.filter(k => isColVisible(k)).length" class="text-center py-16 text-slate-400">暂无数据</td></tr>
                 <template v-else>
-                  <tr v-for="asset in assets" :key="asset.id" :class="{ 'opacity-50 bg-slate-50': !asset.is_active }">
+                  <tr v-for="asset in assets" :key="asset.id">
                     <template v-for="key in orderedColumns" :key="key">
                       <td v-if="isColVisible(key)"
                           :class="{ 'text-right': key === 'actions', 'text-sm text-slate-600': key === 'applicant', 'whitespace-normal': key === 'notes', 'whitespace-pre-wrap': key === 'address' }">
@@ -1110,10 +1093,10 @@ onMounted(async () => {
                         <template v-else-if="key === 'oob_credentials'">
                           <div v-if="asset.oob_username || asset.extra_data?.oob_username" class="flex items-center gap-1.5 text-slate-600">
                             <span class="font-medium shrink-0">{{ asset.oob_username || asset.extra_data?.oob_username }}</span>
-                            <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(asset.oob_username || asset.extra_data?.oob_username || '')" />
+                            <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(asset.oob_username || asset.extra_data?.oob_username || '')" />
                             <span class="text-slate-400 font-mono ml-1 shrink-0">********</span>
-                            <CopyOutlined v-if="asset.is_active && (asset.oob_username || asset.extra_data?.oob_username)" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyOobPassword(asset)" />
-                            <EyeOutlined v-if="asset.is_active && (asset.oob_username || asset.extra_data?.oob_username)" class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showOobPasswordPopover(asset, $event)" />
+                            <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyOobPassword(asset)" />
+                            <EyeOutlined class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showOobPasswordPopover(asset, $event)" />
                           </div>
                         </template>
                         <template v-else-if="key === 'db_type'"><span class="text-sm text-slate-600">{{ asset.db_type || '' }}</span></template>
@@ -1136,10 +1119,6 @@ onMounted(async () => {
                           <span v-else class="text-sm text-slate-400">-</span>
                         </template>
                         <template v-else-if="key === 'organization'"><a-tooltip :title="getOrgPath(asset.organization_id)"><span class="text-sm text-slate-600 cursor-help">{{ asset.organization_name || 'Default' }}</span></a-tooltip></template>
-                        <template v-else-if="key === 'is_active'">
-                          <span v-if="asset.is_active" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">启用</span>
-                          <span v-else class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">禁用</span>
-                        </template>
                         <template v-else-if="key === 'status'">
                           <span v-if="asset.status" :class="`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(asset.status)}`">
                             {{ getStatusLabel(asset.status) }}
@@ -1151,13 +1130,10 @@ onMounted(async () => {
                         <template v-else-if="key === 'credentials'">
                           <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
                             <span class="font-medium shrink-0">{{ cred.username }}</span>
-                            <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(cred.username)" />
-                            <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed shrink-0" />
+                            <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(cred.username)" />
                             <span class="text-slate-400 font-mono ml-1 shrink-0">********</span>
-                            <CopyOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyPassword(cred)" />
-                            <CopyOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed shrink-0" />
-                            <EyeOutlined v-if="asset.is_active" class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showPasswordPopover(cred, $event)" />
-                            <EyeOutlined v-else class="text-[14px] text-slate-300 cursor-not-allowed ml-1 shrink-0" />
+                            <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyPassword(cred)" />
+                            <EyeOutlined class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showPasswordPopover(cred, $event)" />
                           </div>
                         </template>
                         <template v-else-if="key === 'notes'"><span class="text-sm text-slate-600">{{ asset.notes || '' }}</span></template>
@@ -1171,10 +1147,8 @@ onMounted(async () => {
                           <span class="text-sm text-slate-600">{{ formatDateTime(asset.updated_at) }}</span>
                         </template>
                         <template v-else-if="key === 'actions'">
-                          <button v-if="asset.is_active" @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded text-xs">更新</button>
-                          <button v-else disabled class="bg-slate-200 text-slate-400 px-2 py-0.5 rounded cursor-not-allowed text-xs">更新</button>
-                          <button v-if="asset.is_active" @click="handleDelete(asset, fetchData, fetchOrganizations)" class="border border-red-400 text-red-500 px-2 py-0.5 rounded text-xs ml-1">删除</button>
-                          <button v-else disabled class="border border-slate-200 text-slate-300 px-2 py-0.5 rounded cursor-not-allowed text-xs ml-1">删除</button>
+                          <button @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded text-xs">更新</button>
+                          <button @click="handleDelete(asset, fetchData, fetchOrganizations)" class="border border-red-400 text-red-500 px-2 py-0.5 rounded text-xs ml-1">删除</button>
                         </template>
                       </td>
                     </template>
