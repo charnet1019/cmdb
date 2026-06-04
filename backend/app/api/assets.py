@@ -888,6 +888,15 @@ async def export_assets(
             if not any(row.parent_id and row.parent_id not in org_map for row in rows):
                 break
 
+    # Get creator names
+    creator_ids = set(a.created_by_id for a in assets if a.created_by_id)
+    creator_names = {}
+    if creator_ids:
+        creator_result = await db.execute(
+            select(User.id, User.username).where(User.id.in_(creator_ids))
+        )
+        creator_names = {row.id: row.username for row in creator_result}
+
     # Prepare asset data
     asset_data = []
     for asset in assets:
@@ -924,7 +933,8 @@ async def export_assets(
             include_credentials=True,
             credentials_data=credentials,
             include_decrypted_passwords=True,  # For export, include decrypted passwords
-            oob_password=decrypted_oob_password
+            oob_password=decrypted_oob_password,
+            creator_name=creator_names.get(asset.created_by_id)
         ))
 
     # Generate file based on format
