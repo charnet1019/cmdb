@@ -287,7 +287,7 @@ async def list_assets_for_auth(
 ):
     """List assets for authorization selection"""
     result = await db.execute(
-        select(Asset).where(Asset.is_active.is_(True)).order_by(Asset.name)
+        select(Asset).order_by(Asset.name)
     )
     assets = result.scalars().all()
 

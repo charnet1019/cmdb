@@ -34,7 +34,7 @@ CATEGORY_COLUMNS: Dict[str, List[tuple]] = {
         ("applicant", "申请人"),
         ("owner_name", "负责人"),
         ("notes", "描述"),
-        ("is_active", "状态"),
+        ("status", "状态"),
         ("created_at", "创建时间"),
         ("updated_at", "更新时间"),
     ],
@@ -52,7 +52,7 @@ CATEGORY_COLUMNS: Dict[str, List[tuple]] = {
         ("credentials", "用户名密码"),
         ("owner_name", "负责人"),
         ("notes", "描述"),
-        ("is_active", "状态"),
+        ("status", "状态"),
         ("created_at", "创建时间"),
         ("updated_at", "更新时间"),
     ],
@@ -73,7 +73,7 @@ CATEGORY_COLUMNS: Dict[str, List[tuple]] = {
         ("owner_name", "负责人"),
         ("credentials", "用户名密码"),
         ("notes", "描述"),
-        ("is_active", "状态"),
+        ("status", "状态"),
         ("created_at", "创建时间"),
         ("updated_at", "更新时间"),
     ],
@@ -88,7 +88,7 @@ CATEGORY_COLUMNS: Dict[str, List[tuple]] = {
         ("owner_name", "负责人"),
         ("credentials", "用户名密码"),
         ("notes", "描述"),
-        ("is_active", "状态"),
+        ("status", "状态"),
         ("created_at", "创建时间"),
         ("updated_at", "更新时间"),
     ],
@@ -104,7 +104,7 @@ CATEGORY_COLUMNS: Dict[str, List[tuple]] = {
         ("owner_name", "负责人"),
         ("credentials", "用户名密码"),
         ("notes", "描述"),
-        ("is_active", "状态"),
+        ("status", "状态"),
         ("created_at", "创建时间"),
         ("updated_at", "更新时间"),
     ],
@@ -119,7 +119,7 @@ CATEGORY_COLUMNS: Dict[str, List[tuple]] = {
         ("owner_name", "负责人"),
         ("credentials", "用户名密码"),
         ("notes", "描述"),
-        ("is_active", "状态"),
+        ("status", "状态"),
         ("created_at", "创建时间"),
         ("updated_at", "更新时间"),
     ],
@@ -151,7 +151,7 @@ DEFAULT_COLUMNS = [
     ("applicant", "申请人"),
     ("owner_name", "负责人"),
     ("notes", "描述"),
-    ("is_active", "状态"),
+    ("status", "状态"),
     ("created_at", "创建时间"),
     ("updated_at", "更新时间"),
 ]
@@ -221,8 +221,19 @@ def export_assets_to_excel(data: List[Dict[str, Any]], category: Optional[str] =
             # Format specific fields
             if field == "category" and value:
                 value = CATEGORY_LABELS.get(value, value)
-            elif field == "is_active":
-                value = "启用" if value else "禁用"
+            elif field == "status":
+                from app.models import AssetStatus
+                status_labels = {
+                    AssetStatus.INVENTORY: "库存",
+                    AssetStatus.DEPLOYING: "部署中",
+                    AssetStatus.RUNNING: "运行中",
+                    AssetStatus.MAINTENANCE: "维护中",
+                    AssetStatus.DEACTIVATED: "停用",
+                    AssetStatus.PENDING_SCRAP: "待报废",
+                    AssetStatus.SCRAPPED: "已报废",
+                    AssetStatus.RETURNED: "已退还",
+                }
+                value = status_labels.get(value, value) if value else ""
             elif field == "vendor" and value is None:
                 # If vendor is empty, use platform value (for host/database assets)
                 value = asset.get("platform")
@@ -304,7 +315,7 @@ def export_assets_to_excel(data: List[Dict[str, Any]], category: Optional[str] =
         "storage_locations": 25,
         "owner_name": 15,
         "notes": 30,
-        "is_active": 10,
+        "status": 12,
         "created_at": 20,
         "updated_at": 20,
     }
@@ -354,8 +365,19 @@ def export_assets_to_csv(data: List[Dict[str, Any]], category: Optional[str] = N
             # Format specific fields
             if field == "category" and value:
                 value = CATEGORY_LABELS.get(value, value)
-            elif field == "is_active":
-                value = "启用" if value else "禁用"
+            elif field == "status":
+                from app.models import AssetStatus
+                status_labels = {
+                    AssetStatus.INVENTORY: "库存",
+                    AssetStatus.DEPLOYING: "部署中",
+                    AssetStatus.RUNNING: "运行中",
+                    AssetStatus.MAINTENANCE: "维护中",
+                    AssetStatus.DEACTIVATED: "停用",
+                    AssetStatus.PENDING_SCRAP: "待报废",
+                    AssetStatus.SCRAPPED: "已报废",
+                    AssetStatus.RETURNED: "已退还",
+                }
+                value = status_labels.get(value, value) if value else ""
             elif field == "vendor" and value is None:
                 # If vendor is empty, use platform value (for host/database assets)
                 value = asset.get("platform")

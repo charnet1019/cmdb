@@ -216,7 +216,6 @@ class Asset(Base):
     owner_name: Mapped[Optional[str]] = mapped_column(String(100))  # 负责人姓名（冗余字段）
 
     status: Mapped[Optional[str]] = mapped_column(String(50), index=True)  # AssetStatus
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     updated_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
@@ -239,7 +238,6 @@ class Asset(Base):
         Index("idx_assets_category", "category"),
         Index("idx_assets_organization_id", "organization_id"),
         Index("idx_assets_name", "name"),
-        Index("idx_assets_is_active", "is_active"),
     )
 
     def __repr__(self):

@@ -30,8 +30,12 @@ async def get_dashboard_stats(
     total_assets = assets_result.scalar() or 0
 
     # Active assets count
+    from app.models import AssetStatus
+
+    # Active assets count (not deactivated, pending_scrap, scrapped, returned)
+    inactive_statuses = [AssetStatus.DEACTIVATED, AssetStatus.PENDING_SCRAP, AssetStatus.SCRAPPED, AssetStatus.RETURNED]
     active_assets_result = await db.execute(
-        select(func.count()).select_from(Asset).where(Asset.is_active == True)
+        select(func.count()).select_from(Asset).where(Asset.status.notin_(inactive_statuses))
     )
     active_assets = active_assets_result.scalar() or 0
 
@@ -55,9 +59,12 @@ async def get_dashboard_stats(
     online_users = online_users_result.scalar() or 0
 
     # Asset type distribution
+    from app.models import AssetStatus
+
+    inactive_statuses = [AssetStatus.DEACTIVATED, AssetStatus.PENDING_SCRAP, AssetStatus.SCRAPPED, AssetStatus.RETURNED]
     asset_distribution_result = await db.execute(
         select(Asset.category, func.count().label("count"))
-        .where(Asset.is_active == True)
+        .where(Asset.status.notin_(inactive_statuses))
         .group_by(Asset.category)
     )
     asset_distribution = [
