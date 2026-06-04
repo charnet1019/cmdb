@@ -316,7 +316,6 @@ const localDeviceTypeOptions = ['交换机', '路由器', '防火墙', '负载�
 
 // Asset status options
 const statusOptions = [
-  { key: '', label: '请选择' },
   { key: 'inventory', label: '库存' },
   { key: 'deploying', label: '部署中' },
   { key: 'running', label: '运行中' },
@@ -998,7 +997,7 @@ onMounted(async () => {
                 <template #overlay>
                   <div class="bg-white rounded-lg shadow-lg border border-slate-200 py-1 min-w-[140px]">
                     <div class="px-3 py-1 text-xs text-slate-400 font-medium">修改状态</div>
-                    <div v-for="s in statusOptions" :key="s.key" @click="s.key && bulkUpdateStatus(s.key, fetchData)" class="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2" :class="!s.key ? 'opacity-50 cursor-not-allowed' : ''">
+                    <div v-for="s in statusOptions" :key="s.key" @click="bulkUpdateStatus(s.key, fetchData)" class="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2">
                       <span>{{ s.label }}</span>
                     </div>
                     <div class="border-t border-slate-100 my-1"></div>
