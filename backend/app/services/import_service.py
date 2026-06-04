@@ -958,6 +958,11 @@ async def batch_create_hosts(
             db.add(asset)
             await db.flush()  # Get asset ID
 
+            # Handle status field
+            status = parse_status(record.get("status"))
+            if status:
+                asset.status = status
+
             # Create credentials if provided
             if record.get("credentials"):
                 for cred in record["credentials"]:
@@ -1028,7 +1033,12 @@ async def batch_create_networks(
                 notes=record.get("notes"),
             )
             db.add(asset)
-            await db.flush()  # Get asset ID
+            await db.flush()
+
+            # Handle status field
+            status = parse_status(record.get("status"))
+            if status:
+                asset.status = status  # Get asset ID
 
             # Create credentials if provided
             if record.get("credentials"):
@@ -1090,6 +1100,11 @@ async def batch_update_networks(
 
             if record.get("organization_id"):
                 asset.organization_id = record["organization_id"]
+
+            # Handle status field
+            status = parse_status(record.get("status"))
+            if status:
+                asset.status = status
 
             # Handle credentials update
             if "credentials" in record:

@@ -112,7 +112,8 @@ def build_asset_response(
     credentials_data: Optional[List[Dict]] = None,
     include_decrypted_passwords: bool = False,
     creator_name: Optional[str] = None,
-    owner_name: Optional[str] = None
+    owner_name: Optional[str] = None,
+    oob_password: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Build asset response dictionary based on asset category.
@@ -182,6 +183,8 @@ def build_asset_response(
         data["oob_address"] = asset.oob_address
     if asset.oob_username:
         data["oob_username"] = asset.oob_username
+    if oob_password is not None:
+        data["oob_password"] = oob_password
     if asset.status:
         data["status"] = asset.status
     # Database asset fields (runs_on hosts and storage_locations)
@@ -907,12 +910,21 @@ async def export_assets(
         # Get full organization path for export
         org_name = build_org_full_path(asset.organization_id, org_map)
 
+        # Decrypt OOB password
+        decrypted_oob_password = None
+        if asset.oob_password_encrypted:
+            try:
+                decrypted_oob_password = decrypt_value(asset.oob_password_encrypted)
+            except Exception:
+                decrypted_oob_password = ""
+
         asset_data.append(build_asset_response(
             asset,
             org_name=org_name,
             include_credentials=True,
             credentials_data=credentials,
-            include_decrypted_passwords=True  # For export, include decrypted passwords
+            include_decrypted_passwords=True,  # For export, include decrypted passwords
+            oob_password=decrypted_oob_password
         ))
 
     # Generate file based on format
