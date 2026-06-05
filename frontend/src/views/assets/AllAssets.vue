@@ -1037,7 +1037,7 @@ onMounted(async () => {
                 <tr>
                   <template v-for="key in orderedColumns" :key="key">
                     <th v-if="isColVisible(key)"
-                        :class="{ 'w-10': key === 'checkbox', 'text-right': key === 'actions', 'col-drag-over': !FIXED_COLS.has(key) && dragOverKey === key }"
+                        :class="{ 'w-10': key === 'checkbox', 'col-drag-over': !FIXED_COLS.has(key) && dragOverKey === key }"
                         :draggable="!FIXED_COLS.has(key) || undefined"
                         @dragstart="!FIXED_COLS.has(key) ? handleColDragStart(key, $event) : undefined"
                         @dragover="!FIXED_COLS.has(key) ? handleColDragOver(key, $event) : undefined"
@@ -1056,7 +1056,7 @@ onMounted(async () => {
                   <tr v-for="asset in assets" :key="asset.id">
                     <template v-for="key in orderedColumns" :key="key">
                       <td v-if="isColVisible(key)"
-                          :class="{ 'text-right': key === 'actions', 'text-sm text-slate-600': key === 'applicant', 'whitespace-normal': key === 'notes', 'whitespace-pre-wrap': key === 'address' }">
+                          :class="{ 'text-sm text-slate-600': key === 'applicant', 'whitespace-normal': key === 'notes', 'whitespace-pre-wrap': key === 'address' }">
                         <template v-if="key === 'checkbox'">
                           <input type="checkbox" class="rounded border-gray-300 w-3.5 h-3.5" v-model="asset.selected" @change="selectionChanged" />
                         </template>
