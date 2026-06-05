@@ -11,6 +11,9 @@ from app.database import get_db
 from app.api.deps import get_current_user
 from app.models import User, UserPreference
 
+# Current column config schema version (deviation-based format since v4)
+CURRENT_SCHEMA_VERSION = 4
+
 router = APIRouter(prefix="/preferences", tags=["preferences"])
 
 
@@ -38,10 +41,14 @@ async def get_column_config(
     if pref is None:
         return {"code": 0, "data": {}}
 
+    # Skip visibility data from old schema versions — old format stored full state
+    # (false values override new defaults), not deviations from defaults
+    visibility = pref.column_visibility if pref.version >= CURRENT_SCHEMA_VERSION else {}
+
     return {
         "code": 0,
         "data": {
-            "column_visibility": pref.column_visibility,
+            "column_visibility": visibility,
             "column_order": pref.column_order,
             "version": pref.version,
         },
