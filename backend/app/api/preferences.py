@@ -12,7 +12,7 @@ from app.api.deps import get_current_user
 from app.models import User, UserPreference
 
 # Current column config schema version (deviation-based format since v4)
-CURRENT_SCHEMA_VERSION = 4
+CURRENT_SCHEMA_VERSION = 5
 
 router = APIRouter(prefix="/preferences", tags=["preferences"])
 
