@@ -362,3 +362,23 @@ class Setting(Base):
 
     def __repr__(self):
         return f"<Setting {self.key}>"
+
+
+class UserPreference(Base):
+    """User preference settings"""
+    __tablename__ = "user_preferences"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # 'all', 'host', 'network', etc.
+    column_visibility: Mapped[Optional[dict]] = mapped_column(JSONB)  # {"id": false, "status": true, ...}
+    column_order: Mapped[Optional[list]] = mapped_column(JSONB)  # ["name", "address", "status", ...]
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")  # schema version for cache invalidation
+    updated_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    __table_args__ = (
+        Index("idx_user_preferences_user_category", "user_id", "category", unique=True),
+    )
+
+    def __repr__(self):
+        return f"<UserPreference user={self.user_id} cat={self.category}>"

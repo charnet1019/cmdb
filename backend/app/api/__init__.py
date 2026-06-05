@@ -9,6 +9,7 @@ from app.api.settings import router as settings_router
 from app.api.dashboard import router as dashboard_router
 from app.api.logs import router as logs_router
 from app.api.authorizations import router as authz_router
+from app.api.preferences import router as preferences_router
 
 api_router = APIRouter()
 
@@ -23,3 +24,4 @@ api_router.include_router(cred_router)
 api_router.include_router(settings_router)
 api_router.include_router(logs_router)
 api_router.include_router(authz_router)
+api_router.include_router(preferences_router)
