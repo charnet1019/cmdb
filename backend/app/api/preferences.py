@@ -78,8 +78,7 @@ async def update_column_config(
             pref.column_visibility = data.column_visibility
         if data.column_order is not None:
             pref.column_order = data.column_order
-        if data.version is not None:
-            pref.version = data.version
+        pref.version = data.version if data.version is not None else pref.version
 
     await db.commit()
     await db.refresh(pref)

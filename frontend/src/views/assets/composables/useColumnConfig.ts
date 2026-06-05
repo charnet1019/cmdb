@@ -264,17 +264,19 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
     return config
   }
 
-  // Apply backend config (takes precedence over localStorage, but only if version matches)
+  // Apply backend config — safe with old versions (only applies keys that exist in current schema)
   function applyBackendConfig(config: Awaited<ReturnType<typeof getColumnConfig>>) {
-    // If backend version doesn't match current schema, discard backend config
-    if (config.version !== undefined && config.version !== COLUMN_SCHEMA_VERSION) {
-      return
-    }
     if (config.column_visibility) {
       for (const [key, visible] of Object.entries(config.column_visibility)) {
         const col = allColumns.value.find(c => c.key === key)
         if (col && !col.fixed) {
           visibleColumnKeys[key] = visible as boolean
+        }
+      }
+      // Fill in missing keys with defaults (backend config from old schema may not have all keys)
+      for (const col of allColumns.value) {
+        if (!col.fixed && !(col.key in visibleColumnKeys)) {
+          visibleColumnKeys[col.key] = col.defaultVisible || false
         }
       }
     }
@@ -296,16 +298,11 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
     try {
       const cat = getCategoryValue()
       const config = await getColumnConfig(cat)
-      if (config.column_visibility || config.column_order) {
+      // Only apply backend config if it has actual content — skip empty objects
+      const hasVisibility = config.column_visibility && Object.keys(config.column_visibility).length > 0
+      const hasOrder = config.column_order && config.column_order.length > 0
+      if (hasVisibility || hasOrder) {
         applyBackendConfig(config)
-        // If version mismatch, clear stale cache and re-init with new defaults
-        if (config.version !== undefined && config.version !== COLUMN_SCHEMA_VERSION) {
-          localStorage.removeItem(getSavedConfigKey())
-          localStorage.removeItem(getOrderKey())
-          initVisibleColumns()
-          initColumnOrder()
-          syncToBackend()
-        }
       }
     } catch {
       // Backend config not available — use localStorage
@@ -357,46 +354,46 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
     }
   }
 
-  // Sync current category to backend immediately when switching (only if version matches)
-  async function syncCurrentToBackend() {
-    try {
-      const cat = getCategoryValue()
-      const backend = await getColumnConfig(cat)
-      // Only sync if backend version matches — if not, let loadFromBackend handle the upgrade
-      if (backend.version !== undefined && backend.version !== COLUMN_SCHEMA_VERSION) {
-        return
-      }
-      await saveColumnConfig(cat, {
-        column_visibility: buildVisibilityConfig(),
-        column_order: [...columnOrder.value],
-        version: COLUMN_SCHEMA_VERSION,
-      })
-    } catch {
-      // Ignore
-    }
-  }
-
-  watch(() => unref(category), async () => {
-    if (!initialLoadDone) {
-      initialLoadDone = true
-    } else {
-      // Sync previous category before switching
-      await syncCurrentToBackend()
-    }
-    initVisibleColumns()
-    initColumnOrder()
-    // Load backend config for new category
-    loadFromBackend()
-  }, { immediate: true })
-
-  // Cleanup debounce timer on unmount
   watch(
-    () => columnConfigVersion.value,
-    () => {
-      // Triggered when visibility changes — handled by toggleColumn directly
+    () => unref(category),
+    async (_newCat, oldCat, onCleanup) => {
+      onCleanup(() => {
+        if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
+      })
+
+      if (!initialLoadDone) {
+        initialLoadDone = true
+      } else if (oldCat != null) {
+        // Build config for previous category BEFORE re-init overwrites visibleColumnKeys
+        const prevCat = oldCat as AssetCategory | 'all'
+        const prevConfig = buildVisibilityConfigFor(prevCat)
+        initVisibleColumns()
+        initColumnOrder()
+        // Sync previous category
+        try {
+          await saveColumnConfig(prevCat, {
+            column_visibility: prevConfig,
+            column_order: [...columnOrder.value],
+            version: COLUMN_SCHEMA_VERSION,
+          })
+        } catch { /* Ignore */ }
+      } else {
+        initVisibleColumns()
+        initColumnOrder()
+      }
+      loadFromBackend()
     },
-    { flush: 'pre' }
+    { immediate: true }
   )
+
+  function buildVisibilityConfigFor(cat: AssetCategory | 'all'): Record<string, boolean> {
+    const cols = categoryColumnDefs[cat] || categoryColumnDefs.all
+    const config: Record<string, boolean> = {}
+    for (const col of cols) {
+      if (!col.fixed) config[col.key] = (visibleColumnKeys[col.key] ?? col.defaultVisible) ?? false
+    }
+    return config
+  }
 
   return {
     allColumns,
