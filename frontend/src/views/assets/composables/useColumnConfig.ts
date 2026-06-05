@@ -256,20 +256,25 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
     }, DEBOUNCE_DELAY)
   }
 
+  // Build visibility deviations from defaults (only keys that differ)
   function buildVisibilityConfig(): Record<string, boolean> {
     const config: Record<string, boolean> = {}
     for (const col of allColumns.value) {
-      if (!col.fixed) config[col.key] = visibleColumnKeys[col.key] || false
+      if (!col.fixed && visibleColumnKeys[col.key] !== (col.defaultVisible || false)) {
+        config[col.key] = visibleColumnKeys[col.key] || false
+      }
     }
     return config
   }
 
-  // Build visibility config for a specific category (respects fixed columns)
+  // Build visibility deviations for a specific category (respects fixed columns)
   function buildVisibilityConfigFor(cat: AssetCategory | 'all'): Record<string, boolean> {
     const cols = categoryColumnDefs[cat] || categoryColumnDefs.all
     const config: Record<string, boolean> = {}
     for (const col of cols) {
-      if (!col.fixed) config[col.key] = (visibleColumnKeys[col.key] ?? col.defaultVisible) ?? false
+      if (!col.fixed && (visibleColumnKeys[col.key] ?? col.defaultVisible) !== (col.defaultVisible || false)) {
+        config[col.key] = (visibleColumnKeys[col.key] ?? col.defaultVisible) ?? false
+      }
     }
     return config
   }
@@ -281,19 +286,21 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
     }
   }
 
-  // Apply backend config — safe with old versions (only applies keys that exist in current schema)
+  // Apply backend config — treats saved data as deviations from defaults
+  // Only applies keys that exist in current schema and are not fixed
   function applyBackendConfig(config: Awaited<ReturnType<typeof getColumnConfig>>) {
+    // Start with defaults
+    for (const col of allColumns.value) {
+      if (!col.fixed && !(col.key in visibleColumnKeys)) {
+        visibleColumnKeys[col.key] = col.defaultVisible || false
+      }
+    }
+    // Apply saved deviations on top
     if (config.column_visibility) {
       for (const [key, visible] of Object.entries(config.column_visibility)) {
         const col = allColumns.value.find(c => c.key === key)
         if (col && !col.fixed) {
           visibleColumnKeys[key] = visible as boolean
-        }
-      }
-      // Fill in missing keys with defaults (backend config from old schema may not have all keys)
-      for (const col of allColumns.value) {
-        if (!col.fixed && !(col.key in visibleColumnKeys)) {
-          visibleColumnKeys[col.key] = col.defaultVisible || false
         }
       }
     }
@@ -361,14 +368,10 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
     localStorage.removeItem(getSavedConfigKey())
     localStorage.removeItem(getOrderKey())
     initColumnOrder()
-    // Save defaults to backend (excluding fixed columns, same as initial load)
+    // Reset to defaults — send empty deviations (no deviations = all defaults)
     try {
-      const defaults: Record<string, boolean> = {}
-      for (const col of allColumns.value) {
-        if (!col.fixed) defaults[col.key] = col.defaultVisible || false
-      }
       await saveColumnConfig(getCategoryValue(), {
-        column_visibility: defaults,
+        column_visibility: {},
         column_order: [],
         version: COLUMN_SCHEMA_VERSION,
       })
