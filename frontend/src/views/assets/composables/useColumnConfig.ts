@@ -264,6 +264,23 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
     return config
   }
 
+  // Build visibility config for a specific category (respects fixed columns)
+  function buildVisibilityConfigFor(cat: AssetCategory | 'all'): Record<string, boolean> {
+    const cols = categoryColumnDefs[cat] || categoryColumnDefs.all
+    const config: Record<string, boolean> = {}
+    for (const col of cols) {
+      if (!col.fixed) config[col.key] = (visibleColumnKeys[col.key] ?? col.defaultVisible) ?? false
+    }
+    return config
+  }
+
+  // Enforce that fixed columns are always visible
+  function enforceFixedColumns() {
+    for (const col of allColumns.value) {
+      if (col.fixed) visibleColumnKeys[col.key] = true
+    }
+  }
+
   // Apply backend config — safe with old versions (only applies keys that exist in current schema)
   function applyBackendConfig(config: Awaited<ReturnType<typeof getColumnConfig>>) {
     if (config.column_visibility) {
@@ -287,6 +304,8 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
       columnOrder.value = [...valid, ...missing]
       saveOrder()
     }
+    // Always enforce fixed columns after applying backend config
+    enforceFixedColumns()
     columnConfigVersion.value++
     // Update localStorage to match backend
     saveConfig()
@@ -342,10 +361,14 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
     localStorage.removeItem(getSavedConfigKey())
     localStorage.removeItem(getOrderKey())
     initColumnOrder()
-    // Clear backend config
+    // Save defaults to backend (excluding fixed columns, same as initial load)
     try {
+      const defaults: Record<string, boolean> = {}
+      for (const col of allColumns.value) {
+        if (!col.fixed) defaults[col.key] = col.defaultVisible || false
+      }
       await saveColumnConfig(getCategoryValue(), {
-        column_visibility: {},
+        column_visibility: defaults,
         column_order: [],
         version: COLUMN_SCHEMA_VERSION,
       })
@@ -367,13 +390,17 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
         // Build config for previous category BEFORE re-init overwrites visibleColumnKeys
         const prevCat = oldCat as AssetCategory | 'all'
         const prevConfig = buildVisibilityConfigFor(prevCat)
+        // Save previous category's column order before re-init overwrites it
+        const prevCols = categoryColumnDefs[prevCat] || categoryColumnDefs.all
+        const prevNonFixed = prevCols.filter(c => !c.fixed).map(c => c.key)
+        const prevOrder = columnOrder.value.filter(k => prevNonFixed.includes(k))
         initVisibleColumns()
         initColumnOrder()
         // Sync previous category
         try {
           await saveColumnConfig(prevCat, {
             column_visibility: prevConfig,
-            column_order: [...columnOrder.value],
+            column_order: prevOrder,
             version: COLUMN_SCHEMA_VERSION,
           })
         } catch { /* Ignore */ }
@@ -385,15 +412,6 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
     },
     { immediate: true }
   )
-
-  function buildVisibilityConfigFor(cat: AssetCategory | 'all'): Record<string, boolean> {
-    const cols = categoryColumnDefs[cat] || categoryColumnDefs.all
-    const config: Record<string, boolean> = {}
-    for (const col of cols) {
-      if (!col.fixed) config[col.key] = (visibleColumnKeys[col.key] ?? col.defaultVisible) ?? false
-    }
-    return config
-  }
 
   return {
     allColumns,
