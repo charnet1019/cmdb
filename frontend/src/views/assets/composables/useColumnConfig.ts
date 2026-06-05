@@ -212,10 +212,16 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
     // Check localStorage version — skip stale data from old schema
     const savedVersion = localStorage.getItem(getVersionKey())
     const isCurrentVersion = savedVersion === String(COLUMN_SCHEMA_VERSION)
-    const saved = isCurrentVersion ? loadSavedConfig() : {}
+
+    // Load old data regardless of version (needed for cleanup)
+    const rawSaved = loadSavedConfig()
+
+    // Use saved data only if version matches — old format stored full state
+    // (false values override new defaults), not deviations
+    const saved = isCurrentVersion ? rawSaved : {}
 
     // Invalidate stale localStorage on version mismatch
-    if (!isCurrentVersion && Object.keys(saved).length > 0) {
+    if (!isCurrentVersion && Object.keys(rawSaved).length > 0) {
       localStorage.removeItem(getSavedConfigKey())
       localStorage.removeItem(getVersionKey())
     }
