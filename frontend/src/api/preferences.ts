@@ -1,6 +1,6 @@
 import { api } from './index'
 
-export const COLUMN_SCHEMA_VERSION = 5
+export const COLUMN_SCHEMA_VERSION = 6
 
 export interface ColumnConfig {
   column_visibility?: Record<string, boolean>
