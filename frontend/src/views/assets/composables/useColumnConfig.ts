@@ -157,6 +157,7 @@ const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
 
 const STORAGE_KEY_PREFIX = 'cmdb_columns_'
 const STORAGE_ORDER_KEY_PREFIX = 'cmdb_columns_order_'
+const STORAGE_VERSION_KEY_PREFIX = 'cmdb_columns_version_'
 const DEBOUNCE_DELAY = 5000
 
 function getStorageKey(prefix: string, userId: number | undefined, category: string): string {
@@ -185,6 +186,10 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
     return getStorageKey(STORAGE_KEY_PREFIX, userId.value, getCategoryValue())
   }
 
+  function getVersionKey(): string {
+    return getStorageKey(STORAGE_VERSION_KEY_PREFIX, userId.value, getCategoryValue())
+  }
+
   function getOrderKey(): string {
     return getStorageKey(STORAGE_ORDER_KEY_PREFIX, userId.value, getCategoryValue())
   }
@@ -204,17 +209,33 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
   }
 
   function initVisibleColumns() {
-    const saved = loadSavedConfig()
+    // Check localStorage version — skip stale data from old schema
+    const savedVersion = localStorage.getItem(getVersionKey())
+    const isCurrentVersion = savedVersion === String(COLUMN_SCHEMA_VERSION)
+    const saved = isCurrentVersion ? loadSavedConfig() : {}
+
+    // Invalidate stale localStorage on version mismatch
+    if (!isCurrentVersion && Object.keys(saved).length > 0) {
+      localStorage.removeItem(getSavedConfigKey())
+      localStorage.removeItem(getVersionKey())
+    }
+
     for (const key of Object.keys(visibleColumnKeys)) {
       delete visibleColumnKeys[key]
     }
+    // Start with defaults
     for (const col of allColumns.value) {
       if (col.fixed) {
         visibleColumnKeys[col.key] = true
-      } else if (saved[col.key] !== undefined) {
-        visibleColumnKeys[col.key] = saved[col.key]
       } else {
         visibleColumnKeys[col.key] = col.defaultVisible || false
+      }
+    }
+    // Apply saved deviations on top
+    for (const [key, val] of Object.entries(saved)) {
+      const col = allColumns.value.find(c => c.key === key)
+      if (col && !col.fixed) {
+        visibleColumnKeys[key] = val
       }
     }
   }
@@ -228,11 +249,9 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
   }
 
   function saveConfig() {
-    const config: Record<string, boolean> = {}
-    for (const col of allColumns.value) {
-      if (!col.fixed) config[col.key] = visibleColumnKeys[col.key] || false
-    }
+    const config = buildVisibilityConfig()
     localStorage.setItem(getSavedConfigKey(), JSON.stringify(config))
+    localStorage.setItem(getVersionKey(), String(COLUMN_SCHEMA_VERSION))
   }
 
   function saveOrder() {
@@ -367,6 +386,7 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
     columnConfigVersion.value++
     localStorage.removeItem(getSavedConfigKey())
     localStorage.removeItem(getOrderKey())
+    localStorage.removeItem(getVersionKey())
     initColumnOrder()
     // Reset to defaults — send empty deviations (no deviations = all defaults)
     try {
