@@ -415,6 +415,9 @@ export function useColumnConfig(category: Ref<AssetCategory | 'all'> | AssetCate
 
       if (!initialLoadDone) {
         initialLoadDone = true
+        initVisibleColumns()
+        initColumnOrder()
+        columnConfigVersion.value++ // trigger initial table render
       } else if (oldCat != null) {
         // Build config for previous category BEFORE re-init overwrites visibleColumnKeys
         const prevCat = oldCat as AssetCategory | 'all'

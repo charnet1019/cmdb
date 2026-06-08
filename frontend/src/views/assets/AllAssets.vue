@@ -95,6 +95,7 @@ const {
   fetchAssets,
   fetchAssetStats,
   handlePageChange,
+  handleLimitChange,
   selectAllChanged,
   selectionChanged,
   bulkDelete,
@@ -1159,7 +1160,20 @@ onMounted(async () => {
           <!-- Loading overlay -->
           <div v-if="loading && assets.length > 0" class="absolute inset-0 bg-white/50 transition-opacity duration-200 pointer-events-none"></div>
           <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
-            <span class="text-sm text-slate-500">共 {{ total }} 条记录</span>
+            <div class="flex items-center gap-3">
+              <div class="flex items-center gap-2 text-sm text-slate-500">
+                <span>每页</span>
+                <select
+                  :value="limit"
+                  @change="handleLimitChange(Number(($event.target as HTMLSelectElement).value), fetchData)"
+                  class="text-sm border border-slate-200 rounded px-2 py-1 bg-white"
+                >
+                  <option v-for="size in [15, 30, 50, 100]" :key="size" :value="size">{{ size }}</option>
+                </select>
+                <span>条</span>
+              </div>
+              <span class="text-sm text-slate-500">共 {{ total }} 条记录</span>
+            </div>
             <div class="flex items-center gap-2">
               <button @click="handlePageChange(page - 1, fetchData)" :disabled="page === 1" class="px-3 py-1.5 text-sm border border-slate-200 rounded disabled:opacity-50">上一页</button>
               <span class="text-sm text-slate-600">{{ page }} / {{ Math.ceil(total / limit) || 1 }}</span>

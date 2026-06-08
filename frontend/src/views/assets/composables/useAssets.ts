@@ -28,13 +28,26 @@ export interface AssetStats {
   by_device_type: Record<string, number>
 }
 
+export const PAGE_SIZE_OPTIONS = [15, 30, 50, 100]
+const DEFAULT_PAGE_SIZE = 15
+const PAGE_SIZE_STORAGE_KEY = 'cmdb_asset_page_size'
+
+function loadSavedPageSize(): number {
+  try {
+    const saved = parseInt(localStorage.getItem(PAGE_SIZE_STORAGE_KEY) || '', 10)
+    return PAGE_SIZE_OPTIONS.includes(saved) ? saved : DEFAULT_PAGE_SIZE
+  } catch {
+    return DEFAULT_PAGE_SIZE
+  }
+}
+
 export function useAssets() {
   // Data
   const assets = ref<AssetWithUI[]>([])
   const loading = ref(false)
   const total = ref(0)
   const page = ref(1)
-  const limit = ref(20)
+  const limit = ref(loadSavedPageSize())
 
   // Asset statistics
   const assetStats = ref<AssetStats>({
@@ -95,6 +108,14 @@ export function useAssets() {
   // Handle page change
   function handlePageChange(newPage: number, fetchFn: () => void) {
     page.value = newPage
+    fetchFn()
+  }
+
+  // Handle page size change
+  function handleLimitChange(newLimit: number, fetchFn: () => void) {
+    limit.value = newLimit
+    page.value = 1
+    localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(newLimit))
     fetchFn()
   }
 
@@ -221,6 +242,7 @@ export function useAssets() {
     fetchAssets,
     fetchAssetStats,
     handlePageChange,
+    handleLimitChange,
     selectAllChanged,
     selectionChanged,
     bulkDelete,
