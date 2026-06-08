@@ -158,7 +158,7 @@ const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
 const STORAGE_KEY_PREFIX = 'cmdb_columns_'
 const STORAGE_ORDER_KEY_PREFIX = 'cmdb_columns_order_'
 const STORAGE_VERSION_KEY_PREFIX = 'cmdb_columns_version_'
-const DEBOUNCE_DELAY = 5000
+const DEBOUNCE_DELAY = 3000
 
 function getStorageKey(prefix: string, userId: number | undefined, category: string): string {
   return userId ? `${prefix}${userId}_${category}` : `${prefix}${category}`
