@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
 from app.database import get_db
-from app.models import User, Group, UserGroup, Authorization, Asset
+from app.models import User, Group, UserGroup, Authorization, Asset, OperationLog
 from app.schemas import (
     UserCreate, UserUpdate, UserResponse, UserSimple, UserDetailResponse,
     UserListResponse, PaginationMeta,
@@ -21,6 +21,30 @@ from app.core.security import get_password_hash, verify_password, validate_passw
 
 
 router = APIRouter(prefix="/users", tags=["用户管理"])
+
+
+async def log_operation(
+    db: AsyncSession,
+    user_id: int,
+    action: str,
+    resource_type: str,
+    resource_id: int,
+    details: Optional[dict] = None,
+    ip_address: Optional[str] = None,
+    status: str = "success",
+):
+    """Log an operation to the OperationLog table"""
+    entry = OperationLog(
+        user_id=user_id,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        details=details,
+        ip_address=ip_address,
+        status=status,
+    )
+    db.add(entry)
+    await db.commit()
 
 
 # ============== User APIs ==============
@@ -96,75 +120,94 @@ async def list_users(
 @router.post("", response_model=UserDetailResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(
     data: UserCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_superuser),
 ):
     """Create a new user (admin only)"""
-    # Check if username exists
-    existing = await db.execute(
-        select(User).where(User.username == data.username)
-    )
-    if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="用户名已存在"
+    ip = request.client.host if request.client else None
+    try:
+        # Check if username exists
+        existing = await db.execute(
+            select(User).where(User.username == data.username)
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="用户名已存在"
+            )
+
+        # Check if email exists
+        existing = await db.execute(
+            select(User).where(User.email == data.email)
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="邮箱已被使用"
+            )
+
+        # Validate password
+        is_valid, errors = validate_password_strength(data.password)
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="; ".join(errors)
+            )
+
+        # Create user
+        user = User(
+            username=data.username,
+            email=data.email,
+            full_name=data.full_name,
+            phone=data.phone,
+            password_hash=get_password_hash(data.password),
+            is_active=data.is_active,
+            mfa_enabled=data.mfa_enabled,
         )
 
-    # Check if email exists
-    existing = await db.execute(
-        select(User).where(User.email == data.email)
-    )
-    if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="邮箱已被使用"
+        db.add(user)
+        await db.flush()
+
+        # Add user to groups
+        if data.group_ids:
+            for group_id in data.group_ids:
+                user_group = UserGroup(user_id=user.id, group_id=group_id)
+                db.add(user_group)
+
+        await db.commit()
+        await db.refresh(user)
+
+        await log_operation(
+            db, current_user.id, "create", "user", user.id,
+            details={"username": user.username, "email": user.email},
+            ip_address=ip,
         )
 
-    # Validate password
-    is_valid, errors = validate_password_strength(data.password)
-    if not is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="; ".join(errors)
+        return UserDetailResponse(
+            data=UserResponse(
+                id=user.id,
+                username=user.username,
+                email=user.email,
+                full_name=user.full_name,
+                phone=user.phone,
+                is_active=user.is_active,
+                mfa_enabled=user.mfa_enabled,
+                last_login_at=user.last_login_at,
+                created_at=user.created_at,
+                groups=[],
+            )
         )
-
-    # Create user
-    user = User(
-        username=data.username,
-        email=data.email,
-        full_name=data.full_name,
-        phone=data.phone,
-        password_hash=get_password_hash(data.password),
-        is_active=data.is_active,
-        mfa_enabled=data.mfa_enabled,
-    )
-
-    db.add(user)
-    await db.flush()
-
-    # Add user to groups
-    if data.group_ids:
-        for group_id in data.group_ids:
-            user_group = UserGroup(user_id=user.id, group_id=group_id)
-            db.add(user_group)
-
-    await db.commit()
-    await db.refresh(user)
-
-    return UserDetailResponse(
-        data=UserResponse(
-            id=user.id,
-            username=user.username,
-            email=user.email,
-            full_name=user.full_name,
-            phone=user.phone,
-            is_active=user.is_active,
-            mfa_enabled=user.mfa_enabled,
-            last_login_at=user.last_login_at,
-            created_at=user.created_at,
-            groups=[],
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        await log_operation(
+            db, current_user.id, "create", "user", 0,
+            details={"username": data.username, "error": str(e)},
+            ip_address=ip, status="failed",
         )
-    )
+        raise
 
 
 @router.get("/{user_id}", response_model=UserDetailResponse)
@@ -211,10 +254,12 @@ async def get_user(
 async def update_user(
     user_id: int,
     data: UserUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Update user information"""
+    ip = request.client.host if request.client else None
     result = await db.execute(
         select(User).where(User.id == user_id)
     )
@@ -226,8 +271,9 @@ async def update_user(
             detail="用户不存在"
         )
 
-    # Update fields
-    if data.email is not None:
+    # Track what changed
+    changes = {}
+    if data.email is not None and data.email != user.email:
         # Check email uniqueness
         existing = await db.execute(
             select(User).where(User.email == data.email, User.id != user_id)
@@ -237,27 +283,33 @@ async def update_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="邮箱已被使用"
             )
+        changes["email"] = [user.email, data.email]
         user.email = data.email
 
-    if data.full_name is not None:
+    if data.full_name is not None and data.full_name != user.full_name:
+        changes["full_name"] = [user.full_name, data.full_name]
         user.full_name = data.full_name
 
-    if data.phone is not None:
+    if data.phone is not None and data.phone != user.phone:
+        changes["phone"] = [user.phone, data.phone]
         user.phone = data.phone
 
-    if data.is_active is not None:
+    if data.is_active is not None and data.is_active != user.is_active:
+        changes["is_active"] = [user.is_active, data.is_active]
         user.is_active = data.is_active
 
-    if data.mfa_enabled is not None:
+    if data.mfa_enabled is not None and data.mfa_enabled != user.mfa_enabled:
+        changes["mfa_enabled"] = [user.mfa_enabled, data.mfa_enabled]
         user.mfa_enabled = data.mfa_enabled
+
+    if data.is_superuser is not None and data.is_superuser != user.is_superuser:
+        changes["is_superuser"] = [user.is_superuser, data.is_superuser]
+        user.is_superuser = data.is_superuser
 
     # Update groups
     if data.group_ids is not None:
+        changes["group_ids"] = data.group_ids
         # Remove existing groups
-        await db.execute(
-            select(UserGroup).where(UserGroup.user_id == user_id)
-        )
-        # Delete would be done with delete statement
         for ug in (await db.execute(select(UserGroup).where(UserGroup.user_id == user_id))).scalars().all():
             await db.delete(ug)
 
@@ -268,6 +320,13 @@ async def update_user(
 
     await db.commit()
     await db.refresh(user)
+
+    if changes:
+        await log_operation(
+            db, current_user.id, "update", "user", user_id,
+            details={"changes": changes, "username": user.username},
+            ip_address=ip,
+        )
 
     # Get updated groups
     groups_result = await db.execute(
@@ -294,10 +353,12 @@ async def update_user(
 @router.delete("/{user_id}", response_model=ResponseBase)
 async def delete_user(
     user_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_superuser),
 ):
     """Delete user (admin only)"""
+    ip = request.client.host if request.client else None
     result = await db.execute(
         select(User).where(User.id == user_id)
     )
@@ -309,14 +370,27 @@ async def delete_user(
             detail="用户不存在"
         )
 
+    if user.username == "admin":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="默认用户禁止删除"
+        )
+
     if user.id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="不能删除自己"
         )
 
+    username = user.username
     await db.delete(user)
     await db.commit()
+
+    await log_operation(
+        db, current_user.id, "delete", "user", user_id,
+        details={"username": username},
+        ip_address=ip,
+    )
 
     return ResponseBase(message="用户已删除")
 
@@ -325,10 +399,12 @@ async def delete_user(
 async def reset_user_password(
     user_id: int,
     data: PasswordResetRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_superuser),
 ):
     """Reset user password (admin only)"""
+    ip = request.client.host if request.client else None
     result = await db.execute(
         select(User).where(User.id == user_id)
     )
@@ -362,11 +438,16 @@ async def reset_user_password(
 
     await db.commit()
 
-    response_data = {"message": "密码重置成功"}
-    if temp_password and data.method == "auto":
-        response_data["temp_password"] = temp_password
+    await log_operation(
+        db, current_user.id, "reset_password", "user", user_id,
+        details={"username": user.username, "method": data.method},
+        ip_address=ip,
+    )
 
-    return {"code": 0, "message": "密码重置成功", "data": response_data}
+    return ResponseBase(
+        message="密码重置成功",
+        data={"temp_password": temp_password} if temp_password else None,
+    )
 
 
 @router.get("/{user_id}/authorizations")
@@ -529,10 +610,12 @@ async def list_groups(
 @group_router.post("", response_model=GroupDetailResponse, status_code=status.HTTP_201_CREATED)
 async def create_group(
     data: GroupCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_superuser),
 ):
     """Create a new user group"""
+    ip = request.client.host if request.client else None
     # Check if name exists
     existing = await db.execute(
         select(Group).where(Group.name == data.name)
@@ -560,6 +643,12 @@ async def create_group(
     await db.commit()
     await db.refresh(group)
 
+    await log_operation(
+        db, current_user.id, "create", "group", group.id,
+        details={"name": group.name},
+        ip_address=ip,
+    )
+
     return GroupDetailResponse(
         data=GroupResponse(
             id=group.id,
@@ -574,10 +663,12 @@ async def create_group(
 @group_router.delete("/{group_id}", response_model=ResponseBase)
 async def delete_group(
     group_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_superuser),
 ):
     """Delete a user group"""
+    ip = request.client.host if request.client else None
     result = await db.execute(
         select(Group).where(Group.id == group_id)
     )
@@ -589,8 +680,21 @@ async def delete_group(
             detail="用户组不存在"
         )
 
+    if group.is_default:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="默认用户组无法被删除"
+        )
+
+    group_name = group.name
     await db.delete(group)
     await db.commit()
+
+    await log_operation(
+        db, current_user.id, "delete", "group", group_id,
+        details={"name": group_name},
+        ip_address=ip,
+    )
 
     return ResponseBase(message="用户组已删除")
 
@@ -653,32 +757,43 @@ async def get_group_authorizations(
 @group_router.put("/{group_id}", response_model=GroupDetailResponse)
 async def update_group(
     group_id: int,
-    name: Optional[str] = Query(None),
-    description: Optional[str] = Query(None),
+    request: Request,
+    data: GroupUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_superuser),
 ):
     """Update a user group"""
+    ip = request.client.host if request.client else None
     result = await db.execute(select(Group).where(Group.id == group_id))
     group = result.scalar_one_or_none()
 
     if not group:
         raise HTTPException(status_code=404, detail="用户组不存在")
 
-    if name:
+    changes = {}
+    if data.name is not None:
         # Check name uniqueness
         existing = await db.execute(
-            select(Group).where(Group.name == name, Group.id != group_id)
+            select(Group).where(Group.name == data.name, Group.id != group_id)
         )
         if existing.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="用户组名称已存在")
-        group.name = name
+        changes["name"] = [group.name, data.name]
+        group.name = data.name
 
-    if description is not None:
-        group.description = description
+    if data.description is not None and data.description != group.description:
+        changes["description"] = [group.description, data.description]
+        group.description = data.description
 
     await db.commit()
     await db.refresh(group)
+
+    if changes:
+        await log_operation(
+            db, current_user.id, "update", "group", group_id,
+            details={"changes": changes},
+            ip_address=ip,
+        )
 
     # Get member count
     member_count_result = await db.execute(
@@ -734,10 +849,12 @@ async def get_group_members(
 async def add_group_members(
     group_id: int,
     user_ids: List[int],
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_superuser),
 ):
     """Add members to a group"""
+    ip = request.client.host if request.client else None
     result = await db.execute(select(Group).where(Group.id == group_id))
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="用户组不存在")
@@ -765,6 +882,13 @@ async def add_group_members(
 
     await db.commit()
 
+    if added > 0:
+        await log_operation(
+            db, current_user.id, "add_group_members", "group", group_id,
+            details={"user_ids": user_ids, "added": added},
+            ip_address=ip,
+        )
+
     return {"code": 0, "message": f"已添加 {added} 名成员"}
 
 
@@ -772,10 +896,12 @@ async def add_group_members(
 async def remove_group_member(
     group_id: int,
     user_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_superuser),
 ):
     """Remove a member from a group"""
+    ip = request.client.host if request.client else None
     result = await db.execute(
         select(UserGroup).where(
             UserGroup.group_id == group_id,
@@ -787,7 +913,19 @@ async def remove_group_member(
     if not user_group:
         raise HTTPException(status_code=404, detail="成员不存在")
 
+    # Get user and group names for logging
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    user_name = user_result.scalar_one_or_none().username if user_result.scalar_one_or_none() else str(user_id)
+    group_result = await db.execute(select(Group).where(Group.id == group_id))
+    group_name = group_result.scalar_one_or_none().name if group_result.scalar_one_or_none() else str(group_id)
+
     await db.delete(user_group)
     await db.commit()
+
+    await log_operation(
+        db, current_user.id, "remove_group_member", "group", group_id,
+        details={"user_id": user_id, "username": user_name, "group_name": group_name},
+        ip_address=ip,
+    )
 
     return ResponseBase(message="成员已移除")

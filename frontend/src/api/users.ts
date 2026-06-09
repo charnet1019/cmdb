@@ -1,5 +1,5 @@
 import { getPaginated, api } from './index'
-import type { User, Group } from '@/types'
+import type { User, Group, UserAuthorization, UserAuthorizationsResponse, GroupAuthorization, GroupMember } from '@/types'
 
 // User APIs
 export async function getUsers(params: {
@@ -50,25 +50,6 @@ export async function resetUserPassword(id: number, data: {
 }
 
 // User Authorizations API
-export interface UserAuthorization {
-  id: number
-  asset_id: number
-  asset_name: string
-  asset_category: string
-  permissions: string[]
-  valid_until: string | null
-  status: string
-  source_type: 'direct' | 'group'
-  group_id?: number
-  group_name?: string
-}
-
-export interface UserAuthorizationsResponse {
-  direct: UserAuthorization[]
-  inherited: UserAuthorization[]
-  total: number
-}
-
 export async function getUserAuthorizations(userId: number): Promise<UserAuthorizationsResponse> {
   const response = await api.get(`/users/${userId}/authorizations`)
   return response.data.data
@@ -97,30 +78,12 @@ export async function deleteGroup(id: number): Promise<void> {
 }
 
 // Group Authorizations API
-export interface GroupAuthorization {
-  id: number
-  asset_id: number
-  asset_name: string
-  asset_category: string
-  permissions: string[]
-  valid_until: string | null
-  status: string
-}
-
 export async function getGroupAuthorizations(groupId: number): Promise<GroupAuthorization[]> {
   const response = await api.get(`/groups/${groupId}/authorizations`)
   return response.data.data
 }
 
 // Group Members API
-export interface GroupMember {
-  id: number
-  username: string
-  full_name: string | null
-  email: string
-  is_active: boolean
-}
-
 export async function getGroupMembers(groupId: number): Promise<GroupMember[]> {
   const response = await api.get(`/groups/${groupId}/members`)
   return response.data.data
@@ -135,6 +98,6 @@ export async function removeGroupMember(groupId: number, userId: number): Promis
 }
 
 export async function updateGroup(id: number, data: { name?: string; description?: string }): Promise<Group> {
-  const response = await api.put(`/groups/${id}`, null, { params: data })
+  const response = await api.put(`/groups/${id}`, data)
   return response.data.data
 }

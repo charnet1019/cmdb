@@ -1,22 +1,26 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import { UsergroupAddOutlined, SearchOutlined, SafetyCertificateOutlined, GroupOutlined, EditOutlined, DeleteOutlined, CloseOutlined, UserAddOutlined, UserDeleteOutlined } from '@ant-design/icons-vue'
 import { getGroups, createGroup, deleteGroup, updateGroup, getGroupAuthorizations, getGroupMembers, addGroupMembers, removeGroupMember, getUsers } from '@/api/users'
-import type { Group, User } from '@/types'
-import type { GroupAuthorization, GroupMember } from '@/api/users'
+import { useUsersStore } from '@/stores/users'
+import type { Group, GroupAuthorization, GroupMember } from '@/types'
 
 const router = useRouter()
 const route = useRoute()
+const usersStore = useUsersStore()
 
-// Data
-const groups = ref<Group[]>([])
-const allUsers = ref<User[]>([])
-const loading = ref(false)
-const total = ref(0)
-const page = ref(1)
+// Data — use store for shared state
+const groups = computed(() => usersStore.groups)
+const allUsers = computed(() => usersStore.allUsers)
+const total = computed(() => usersStore.groupsTotal)
+const page = computed({
+  get: () => usersStore.groupsPage,
+  set: (v: number) => { usersStore.groupsPage = v },
+})
 const limit = ref(20)
+const loading = ref(false)
 
 // Filters
 const searchQuery = ref('')
@@ -74,12 +78,12 @@ async function fetchGroups() {
       limit: limit.value,
       search: searchQuery.value || undefined
     })
-    groups.value = result.items || []
-    total.value = result.total || 0
-  } catch (error) {
-    message.error('获取用户组列表失败')
-    groups.value = []
-    total.value = 0
+    usersStore.groups = result.items || []
+    usersStore.groupsTotal = result.total || 0
+  } catch (error: any) {
+    message.error(error.response?.data?.detail || '获取用户组列表失败')
+    usersStore.groups = []
+    usersStore.groupsTotal = 0
   } finally {
     loading.value = false
   }
@@ -89,7 +93,7 @@ async function fetchGroups() {
 async function fetchUsers() {
   try {
     const result = await getUsers({ limit: 100 })
-    allUsers.value = result.items || []
+    usersStore.allUsers = result.items || []
   } catch {
     // Handle silently
   }
@@ -168,15 +172,22 @@ async function handleEditSubmit() {
 
 // Delete group
 async function handleDelete(group: Group) {
-  if (!confirm(`确定要删除用户组 "${group.name}" 吗?`)) return
-
-  try {
-    await deleteGroup(group.id)
-    message.success('用户组已删除')
-    fetchGroups()
-  } catch (error) {
-    message.error('删除失败')
-  }
+  Modal.confirm({
+    title: '删除用户组',
+    content: `确定要删除用户组 "${group.name}" 吗？`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        await deleteGroup(group.id)
+        message.success('用户组已删除')
+        fetchGroups()
+      } catch (e: any) {
+        message.error(e.response?.data?.detail || '删除失败')
+      }
+    },
+  })
 }
 
 // Open authorizations modal
@@ -214,7 +225,7 @@ async function openMembersModal(group: Group) {
 
 // Add members
 async function handleAddMembers() {
-  if (!selectedGroup.value || selectedUserIds.value.length === 0) {
+  if (!selectedGroup.value || !selectedUserIds.value || selectedUserIds.value.length === 0) {
     message.error('请选择要添加的成员')
     return
   }
@@ -232,17 +243,23 @@ async function handleAddMembers() {
 
 // Remove member
 async function handleRemoveMember(member: GroupMember) {
-  if (!selectedGroup.value) return
-  if (!confirm(`确定要将 "${member.username}" 从用户组移除吗?`)) return
-
-  try {
-    await removeGroupMember(selectedGroup.value.id, member.id)
-    message.success('成员已移除')
-    groupMembers.value = groupMembers.value.filter(m => m.id !== member.id)
-    fetchGroups()
-  } catch (error) {
-    message.error('移除失败')
-  }
+  Modal.confirm({
+    title: '移除成员',
+    content: `确定要将 "${member.username}" 从用户组移除吗？`,
+    okText: '移除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        await removeGroupMember(selectedGroup.value!.id, member.id)
+        message.success('成员已移除')
+        groupMembers.value = groupMembers.value.filter(m => m.id !== member.id)
+        fetchGroups()
+      } catch {
+        message.error('移除失败')
+      }
+    },
+  })
 }
 
 // Format date
@@ -260,7 +277,7 @@ function isMember(userId: number): boolean {
 onMounted(() => {
   // Restore state from URL
   const query = route.query
-  if (query.page) page.value = Number(query.page)
+  if (query.page) usersStore.groupsPage = Number(query.page)
   if (query.search) searchQuery.value = query.search as string
 
   fetchGroups()
@@ -268,9 +285,9 @@ onMounted(() => {
 })
 
 // Sync state to URL
-watch([page, searchQuery], () => {
+watch([() => usersStore.groupsPage, searchQuery], () => {
   const query: Record<string, string> = {}
-  if (page.value !== 1) query.page = String(page.value)
+  if (usersStore.groupsPage !== 1) query.page = String(usersStore.groupsPage)
   if (searchQuery.value) query.search = searchQuery.value
   router.replace({ query })
 }, { deep: true })
@@ -521,17 +538,25 @@ watch([page, searchQuery], () => {
           <div class="bg-slate-50 rounded-lg p-4 mb-4">
             <h4 class="font-medium text-slate-700 mb-3">添加成员</h4>
             <div class="flex gap-2">
-              <select v-model="selectedUserIds" multiple class="input-field flex-1 h-auto min-h-[80px]">
-                <option v-for="user in allUsers.filter(u => !isMember(u.id))" :key="user.id" :value="user.id">
-                  {{ user.username }} ({{ user.full_name || user.email }})
-                </option>
-              </select>
-              <button @click="handleAddMembers" class="btn-primary" :disabled="selectedUserIds.length === 0">
+              <a-select
+                v-model:value="selectedUserIds"
+                mode="multiple"
+                style="width: 100%"
+                placeholder="搜索并选择用户"
+                :options="allUsers.filter(u => !isMember(u.id)).map(u => ({
+                  label: `${u.username} (${u.full_name || u.email})`,
+                  value: u.id,
+                }))"
+                :max-tag-count="3"
+                :max-tag-text-length="20"
+                show-search
+                :filter-option="(input: string, option: any) => option.label.toLowerCase().includes(input.toLowerCase())"
+              />
+              <button @click="handleAddMembers" class="btn-primary" :disabled="!selectedUserIds || selectedUserIds.length === 0" style="white-space: nowrap">
                 <UserAddOutlined class="text-sm mr-1" />
                 添加
               </button>
             </div>
-            <p class="text-xs text-slate-500 mt-2">按住 Ctrl/Cmd 可多选</p>
           </div>
 
           <!-- Members List -->

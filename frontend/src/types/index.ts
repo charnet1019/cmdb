@@ -177,3 +177,41 @@ export interface StorageLocation {
   description: string | null
   created_at: string
 }
+
+// User authorization types
+export interface UserAuthorization {
+  id: number
+  asset_id: number
+  asset_name: string
+  asset_category: string
+  permissions: string[]
+  valid_until: string | null
+  status: string
+  source_type: 'direct' | 'group'
+  group_id?: number
+  group_name?: string
+}
+
+export interface UserAuthorizationsResponse {
+  direct: UserAuthorization[]
+  inherited: UserAuthorization[]
+  total: number
+}
+
+export interface GroupAuthorization {
+  id: number
+  asset_id: number
+  asset_name: string
+  asset_category: string
+  permissions: string[]
+  valid_until: string | null
+  status: string
+}
+
+export interface GroupMember {
+  id: number
+  username: string
+  full_name: string | null
+  email: string
+  is_active: boolean
+}

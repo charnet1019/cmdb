@@ -48,6 +48,7 @@ class UserUpdate(BaseModel):
     phone: Optional[str] = Field(None, max_length=20)
     group_ids: Optional[List[int]] = None
     is_active: Optional[bool] = None
+    is_superuser: Optional[bool] = None
     mfa_enabled: Optional[bool] = None
 
 
@@ -88,17 +89,20 @@ class GroupBase(BaseModel):
 class GroupCreate(GroupBase):
     """Group creation schema"""
     initial_member_ids: Optional[List[int]] = []
+    is_default: bool = False
 
 
 class GroupUpdate(BaseModel):
     """Group update schema"""
     name: Optional[str] = Field(None, max_length=100)
     description: Optional[str] = None
+    is_default: Optional[bool] = None
 
 
 class GroupResponse(GroupBase):
     """Group response schema"""
     id: int
+    is_default: bool = False
     created_at: datetime
     member_count: int = 0
 

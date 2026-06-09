@@ -1,23 +1,30 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import { UserAddOutlined, SearchOutlined, SafetyCertificateOutlined, EditOutlined, LockOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-vue'
 import { getUsers, createUser, updateUser, deleteUser, resetUserPassword, getUserAuthorizations } from '@/api/users'
 import { getGroups } from '@/api/users'
-import type { User, Group } from '@/types'
-import type { UserAuthorization } from '@/api/users'
+import { useUsersStore } from '@/stores/users'
+import type { User, UserAuthorization } from '@/types'
 
 const router = useRouter()
 const route = useRoute()
+const usersStore = useUsersStore()
 
-// Data
-const users = ref<User[]>([])
-const groups = ref<Group[]>([])
+// Data — use store for shared state
+const users = computed(() => usersStore.users)
+const groups = computed(() => usersStore.groups)
+const total = computed(() => usersStore.usersTotal)
+const page = computed({
+  get: () => usersStore.usersPage,
+  set: (v: number) => { usersStore.usersPage = v },
+})
+const limit = computed({
+  get: () => usersStore.usersLimit,
+  set: (v: number) => { usersStore.usersLimit = v },
+})
 const loading = ref(false)
-const total = ref(0)
-const page = ref(1)
-const limit = ref(20)
 
 // Filters
 const searchQuery = ref('')
@@ -47,6 +54,55 @@ const userForm = ref({
   mfa_enabled: false
 })
 
+// Validation
+const emailError = ref('')
+const phoneError = ref('')
+const passwordStrength = ref<'weak' | 'medium' | 'strong' | ''>('')
+
+function validateEmail(email: string): boolean {
+  if (!email) return true
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return re.test(email)
+}
+
+function validatePhone(phone: string): boolean {
+  if (!phone) return true
+  const re = /^1[3-9]\d{9}$/
+  return re.test(phone)
+}
+
+function getPasswordStrength(password: string): 'weak' | 'medium' | 'strong' | '' {
+  if (!password) return ''
+  let score = 0
+  if (password.length >= 8) score++
+  if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score++
+  if (/\d/.test(password)) score++
+  if (/[^a-zA-Z0-9]/.test(password)) score++
+  if (score <= 1) return 'weak'
+  if (score <= 2) return 'medium'
+  return 'strong'
+}
+
+function onEmailBlur() {
+  if (userForm.value.email && !validateEmail(userForm.value.email)) {
+    emailError.value = '请输入有效的邮箱地址'
+  } else {
+    emailError.value = ''
+  }
+}
+
+function onPhoneBlur() {
+  if (userForm.value.phone && !validatePhone(userForm.value.phone)) {
+    phoneError.value = '请输入有效的中国大陆手机号'
+  } else {
+    phoneError.value = ''
+  }
+}
+
+function onPasswordInput() {
+  passwordStrength.value = getPasswordStrength(userForm.value.password)
+}
+
 const resetPasswordForm = ref({
   method: 'auto' as 'auto' | 'manual',
   new_password: '',
@@ -67,12 +123,12 @@ async function fetchUsers() {
       search: searchQuery.value || undefined,
       is_active: statusFilter.value ?? undefined
     })
-    users.value = result.items || []
-    total.value = result.total || 0
-  } catch (error) {
-    message.error('获取用户列表失败')
-    users.value = []
-    total.value = 0
+    usersStore.users = result.items || []
+    usersStore.usersTotal = result.total || 0
+  } catch (error: any) {
+    message.error(error.response?.data?.detail || '获取用户列表失败')
+    usersStore.users = []
+    usersStore.usersTotal = 0
   } finally {
     loading.value = false
   }
@@ -82,10 +138,10 @@ async function fetchUsers() {
 async function fetchGroups() {
   try {
     const result = await getGroups({ limit: 100 })
-    groups.value = result.items || []
+    usersStore.groups = result.items || []
   } catch (error) {
     console.error('Failed to fetch groups')
-    groups.value = []
+    usersStore.groups = []
   }
 }
 
@@ -115,6 +171,9 @@ function openCreateModal() {
     is_active: true,
     mfa_enabled: false
   }
+  emailError.value = ''
+  phoneError.value = ''
+  passwordStrength.value = ''
   showUserModal.value = true
 }
 
@@ -132,6 +191,9 @@ function openEditModal(user: User) {
     is_active: user.is_active,
     mfa_enabled: user.mfa_enabled
   }
+  emailError.value = ''
+  phoneError.value = ''
+  passwordStrength.value = ''
   showUserModal.value = true
 }
 
@@ -142,9 +204,25 @@ async function handleSubmit() {
     return
   }
 
-  if (!editingUser.value && userForm.value.password !== userForm.value.confirm_password) {
-    message.error('两次输入的密码不一致')
+  if (!validateEmail(userForm.value.email)) {
+    emailError.value = '请输入有效的邮箱地址'
     return
+  }
+
+  if (userForm.value.phone && !validatePhone(userForm.value.phone)) {
+    phoneError.value = '请输入有效的中国大陆手机号'
+    return
+  }
+
+  if (!editingUser.value) {
+    if (!userForm.value.password) {
+      message.error('请输入密码')
+      return
+    }
+    if (userForm.value.password !== userForm.value.confirm_password) {
+      message.error('两次输入的密码不一致')
+      return
+    }
   }
 
   modalLoading.value = true
@@ -185,15 +263,22 @@ async function handleSubmit() {
 
 // Delete user
 async function handleDelete(user: User) {
-  if (!confirm(`确定要删除用户 "${user.username}" 吗?`)) return
-
-  try {
-    await deleteUser(user.id)
-    message.success('用户已删除')
-    fetchUsers()
-  } catch (error) {
-    message.error('删除失败')
-  }
+  Modal.confirm({
+    title: '删除用户',
+    content: `确定要删除用户 "${user.username}" 吗？`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        await deleteUser(user.id)
+        message.success('用户已删除')
+        fetchUsers()
+      } catch (e: any) {
+        message.error(e.response?.data?.detail || '删除失败')
+      }
+    },
+  })
 }
 
 // Open reset password modal
@@ -305,7 +390,7 @@ async function openAuthorizationsModal(user: User) {
 onMounted(() => {
   // Restore state from URL
   const query = route.query
-  if (query.page) page.value = Number(query.page)
+  if (query.page) usersStore.usersPage = Number(query.page)
   if (query.search) searchQuery.value = query.search as string
   if (query.status === 'true') statusFilter.value = true
   else if (query.status === 'false') statusFilter.value = false
@@ -315,9 +400,9 @@ onMounted(() => {
 })
 
 // Sync state to URL
-watch([page, searchQuery, statusFilter], () => {
+watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
   const query: Record<string, string> = {}
-  if (page.value !== 1) query.page = String(page.value)
+  if (usersStore.usersPage !== 1) query.page = String(usersStore.usersPage)
   if (searchQuery.value) query.search = searchQuery.value
   if (statusFilter.value !== null) query.status = String(statusFilter.value)
   router.replace({ query })
@@ -485,7 +570,8 @@ watch([page, searchQuery, statusFilter], () => {
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">邮箱 <span class="text-red-500">*</span></label>
-                <input v-model="userForm.email" type="email" class="input-field" placeholder="请输入邮箱" />
+                <input v-model="userForm.email" type="email" class="input-field" :class="{ 'border-red-400': emailError }" placeholder="请输入邮箱" @blur="onEmailBlur" />
+                <p v-if="emailError" class="text-xs text-red-500 mt-1">{{ emailError }}</p>
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">姓名</label>
@@ -496,7 +582,8 @@ watch([page, searchQuery, statusFilter], () => {
             <!-- Phone -->
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-1">手机号</label>
-              <input v-model="userForm.phone" type="text" class="input-field" placeholder="请输入手机号" />
+              <input v-model="userForm.phone" type="text" class="input-field" :class="{ 'border-red-400': phoneError }" placeholder="请输入手机号" @blur="onPhoneBlur" />
+              <p v-if="phoneError" class="text-xs text-red-500 mt-1">{{ phoneError }}</p>
             </div>
 
             <!-- Groups -->
@@ -515,7 +602,15 @@ watch([page, searchQuery, statusFilter], () => {
               <div class="grid grid-cols-2 gap-4">
                 <div>
                   <label class="block text-sm font-medium text-slate-700 mb-1">密码 <span class="text-red-500">*</span></label>
-                  <input v-model="userForm.password" type="password" class="input-field" placeholder="请输入密码" />
+                  <input v-model="userForm.password" type="password" class="input-field" placeholder="请输入密码" @input="onPasswordInput" />
+                  <div v-if="passwordStrength" class="mt-1.5 h-1 rounded-full bg-slate-100 overflow-hidden">
+                    <div class="h-full rounded-full transition-all duration-300"
+                         :class="{ 'bg-red-400 w-1/4': passwordStrength === 'weak', 'bg-yellow-400 w-1/2': passwordStrength === 'medium', 'bg-green-400 w-3/4': passwordStrength === 'strong' }" />
+                  </div>
+                  <p v-if="passwordStrength" class="text-xs mt-1"
+                     :class="{ 'text-red-400': passwordStrength === 'weak', 'text-yellow-500': passwordStrength === 'medium', 'text-green-500': passwordStrength === 'strong' }">
+                    密码强度：{{ passwordStrength === 'weak' ? '弱' : passwordStrength === 'medium' ? '中' : '强' }}
+                  </p>
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-slate-700 mb-1">确认密码 <span class="text-red-500">*</span></label>
