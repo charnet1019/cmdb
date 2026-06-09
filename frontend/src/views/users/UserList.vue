@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import { UserAddOutlined, SearchOutlined, SafetyCertificateOutlined, EditOutlined, LockOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-vue'
@@ -174,6 +174,8 @@ function openCreateModal() {
   emailError.value = ''
   phoneError.value = ''
   passwordStrength.value = ''
+  groupSearch.value = ''
+  showGroupDropdown.value = false
   showUserModal.value = true
 }
 
@@ -194,6 +196,8 @@ function openEditModal(user: User) {
   emailError.value = ''
   phoneError.value = ''
   passwordStrength.value = ''
+  groupSearch.value = ''
+  showGroupDropdown.value = false
   showUserModal.value = true
 }
 
@@ -386,8 +390,59 @@ async function openAuthorizationsModal(user: User) {
   }
 }
 
+// Group multi-select state
+const groupSearch = ref('')
+const showGroupDropdown = ref(false)
+const groupDropdownRef = ref<HTMLElement | null>(null)
+
+// Filtered groups (exclude already selected)
+const availableGroups = computed(() => {
+  const selectedIds = new Set(userForm.value.group_ids)
+  return groups.value.filter(g =>
+    !selectedIds.has(g.id) &&
+    (groupSearch.value === '' || g.name.toLowerCase().includes(groupSearch.value.toLowerCase()))
+  )
+})
+
+function isSelected(groupId: number): boolean {
+  return userForm.value.group_ids.includes(groupId)
+}
+
+function removeGroup(groupId: number) {
+  userForm.value.group_ids = userForm.value.group_ids.filter(id => id !== groupId)
+}
+
+function addGroup(groupId: number) {
+  if (!isSelected(groupId)) {
+    userForm.value.group_ids.push(groupId)
+  }
+  groupSearch.value = ''
+}
+
+function toggleGroupDropdown() {
+  showGroupDropdown.value = !showGroupDropdown.value
+  if (showGroupDropdown.value) groupSearch.value = ''
+}
+
+// Close dropdown on outside click
+function onGroupInputClick(e: Event) {
+  e.stopPropagation()
+  showGroupDropdown.value = true
+  groupSearch.value = ''
+}
+
+function onGroupDropdownClick(e: Event) {
+  e.stopPropagation()
+}
+
+function onDocumentClick() {
+  showGroupDropdown.value = false
+}
+
 // Initial load
 onMounted(() => {
+  document.addEventListener('click', onDocumentClick)
+
   // Restore state from URL
   const query = route.query
   if (query.page) usersStore.usersPage = Number(query.page)
@@ -397,6 +452,10 @@ onMounted(() => {
 
   fetchUsers()
   fetchGroups()
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocumentClick)
 })
 
 // Sync state to URL
@@ -552,7 +611,7 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
           </button>
         </div>
         <div class="p-6">
-          <form @submit.prevent="handleSubmit" class="space-y-4">
+          <form @submit.prevent="handleSubmit" autocomplete="off" class="space-y-4">
             <!-- Username (readonly for edit) -->
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-1">用户名 <span class="text-red-500">*</span></label>
@@ -589,12 +648,53 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
             <!-- Groups -->
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-1">用户组</label>
-              <select v-model="userForm.group_ids" multiple class="input-field h-auto min-h-[80px]">
-                <option v-for="group in groups" :key="group.id" :value="group.id">
-                  {{ group.name }}
-                </option>
-              </select>
-              <p class="text-xs text-slate-500 mt-1">按住 Ctrl/Cmd 可多选</p>
+              <div class="relative" ref="groupDropdownRef">
+                <div
+                  class="bg-surface-container-lowest rounded-lg border border-slate-200 hover:border-slate-300 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20 transition-all cursor-text min-h-[42px] px-2 py-1 flex flex-wrap items-center gap-1"
+                  @click="onGroupInputClick"
+                >
+                  <span
+                    v-for="groupId in userForm.group_ids"
+                    :key="groupId"
+                    class="inline-flex items-center gap-1 bg-primary/10 text-primary text-xs font-medium px-2 py-0.5 rounded-md"
+                  >
+                    {{ groups.find(g => g.id === groupId)?.name || `#${groupId}` }}
+                    <button
+                      type="button"
+                      @click.stop="removeGroup(groupId)"
+                      class="hover:text-primary transition-colors font-bold leading-none"
+                    >
+                      ×
+                    </button>
+                  </span>
+                  <input
+                    v-model="groupSearch"
+                    type="search"
+                    autocomplete="section-1"
+                    class="outline-none flex-1 min-w-[120px] text-sm bg-transparent"
+                    :placeholder="userForm.group_ids.length === 0 ? '搜索或选择用户组' : ''"
+                    @click.stop="showGroupDropdown = true"
+                    @input="showGroupDropdown = true"
+                  />
+                </div>
+                <transition name="dropdown">
+                  <div
+                    v-if="showGroupDropdown && availableGroups.length > 0"
+                    class="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg border border-slate-200 shadow-lg max-h-48 overflow-y-auto z-50"
+                    @click="onGroupDropdownClick"
+                  >
+                    <div
+                      v-for="group in availableGroups"
+                      :key="group.id"
+                      class="px-3 py-2 text-sm cursor-pointer hover:bg-primary/5 transition-colors"
+                      @click="addGroup(group.id)"
+                    >
+                      <span class="font-medium text-slate-700">{{ group.name }}</span>
+                      <span v-if="group.description" class="text-slate-400 ml-2 text-xs">{{ group.description }}</span>
+                    </div>
+                  </div>
+                </transition>
+              </div>
             </div>
 
             <!-- Password (only for create) -->
@@ -602,7 +702,7 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
               <div class="grid grid-cols-2 gap-4">
                 <div>
                   <label class="block text-sm font-medium text-slate-700 mb-1">密码 <span class="text-red-500">*</span></label>
-                  <input v-model="userForm.password" type="password" class="input-field" placeholder="请输入密码" @input="onPasswordInput" />
+                  <input v-model="userForm.password" type="password" autocomplete="new-password" class="input-field" placeholder="请输入密码" @input="onPasswordInput" />
                   <div v-if="passwordStrength" class="mt-1.5 h-1 rounded-full bg-slate-100 overflow-hidden">
                     <div class="h-full rounded-full transition-all duration-300"
                          :class="{ 'bg-red-400 w-1/4': passwordStrength === 'weak', 'bg-yellow-400 w-1/2': passwordStrength === 'medium', 'bg-green-400 w-3/4': passwordStrength === 'strong' }" />
@@ -614,7 +714,7 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-slate-700 mb-1">确认密码 <span class="text-red-500">*</span></label>
-                  <input v-model="userForm.confirm_password" type="password" class="input-field" placeholder="请再次输入密码" />
+                  <input v-model="userForm.confirm_password" type="password" autocomplete="new-password" class="input-field" placeholder="请再次输入密码" />
                 </div>
               </div>
             </template>

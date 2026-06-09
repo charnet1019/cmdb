@@ -130,6 +130,17 @@
   .glass-card {
     @apply bg-white/80 backdrop-blur-xl rounded-xl shadow-xl border border-white/20;
   }
+
+  /* Dropdown transition */
+  .dropdown-enter-active,
+  .dropdown-leave-active {
+    transition: opacity 0.15s ease, transform 0.15s ease;
+  }
+  .dropdown-enter-from,
+  .dropdown-leave-to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
 }
 
 @layer utilities {
