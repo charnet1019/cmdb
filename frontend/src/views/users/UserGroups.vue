@@ -516,7 +516,7 @@ watch([() => usersStore.groupsPage, searchQuery], () => {
                 <td>
                   <span class="badge badge-success">
                     <span class="inline-block w-1.5 h-1.5 rounded-full mr-1 bg-success"></span>
-                    {{ auth.status === 'active' ? 'Active' : 'Inactive' }}
+                    {{ auth.status === 'active' ? '启用' : '禁用' }}
                   </span>
                 </td>
               </tr>

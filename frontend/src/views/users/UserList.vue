@@ -544,7 +544,7 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
                 :class="user.is_active ? 'badge-success' : 'bg-slate-100 text-slate-500'"
               >
                 <span class="inline-block w-1.5 h-1.5 rounded-full mr-1" :class="user.is_active ? 'bg-success' : 'bg-slate-400'"></span>
-                {{ user.is_active ? 'Active' : 'Disabled' }}
+                {{ user.is_active ? '启用' : '禁用' }}
               </span>
             </td>
             <td>
@@ -717,7 +717,7 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
                 <div class="flex gap-4 mt-2">
                   <label class="flex items-center gap-2 cursor-pointer">
                     <input type="radio" v-model="userForm.is_active" :value="true" class="text-primary" />
-                    <span class="text-sm text-slate-600">活跃</span>
+                    <span class="text-sm text-slate-600">启用</span>
                   </label>
                   <label class="flex items-center gap-2 cursor-pointer">
                     <input type="radio" v-model="userForm.is_active" :value="false" class="text-primary" />
@@ -863,7 +863,7 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
                 <td>
                   <span class="badge badge-success">
                     <span class="inline-block w-1.5 h-1.5 rounded-full mr-1 bg-success"></span>
-                    {{ auth.status === 'active' ? 'Active' : 'Inactive' }}
+                    {{ auth.status === 'active' ? '启用' : '禁用' }}
                   </span>
                 </td>
               </tr>
