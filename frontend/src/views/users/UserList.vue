@@ -3,8 +3,7 @@ import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import { UserAddOutlined, SearchOutlined, SafetyCertificateOutlined, EditOutlined, LockOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-vue'
-import { getUsers, createUser, updateUser, deleteUser, resetUserPassword, getUserAuthorizations } from '@/api/users'
-import { getGroups } from '@/api/users'
+import { createUser, updateUser, deleteUser, resetUserPassword, getUserAuthorizations, getGroups } from '@/api/users'
 import { useUsersStore } from '@/stores/users'
 import type { User, UserAuthorization } from '@/types'
 
@@ -117,18 +116,15 @@ const modalTitle = computed(() => editingUser.value ? '编辑用户' : '添加�
 async function fetchUsers() {
   loading.value = true
   try {
-    const result = await getUsers({
+    await usersStore.fetchUsers({
       page: page.value,
       limit: limit.value,
       search: searchQuery.value || undefined,
       is_active: statusFilter.value ?? undefined
     })
-    usersStore.users = result.items || []
-    usersStore.usersTotal = result.total || 0
   } catch (error: any) {
     message.error(error.response?.data?.detail || '获取用户列表失败')
-    usersStore.users = []
-    usersStore.usersTotal = 0
+    usersStore.resetUsers()
   } finally {
     loading.value = false
   }
@@ -417,11 +413,6 @@ function addGroup(groupId: number) {
     userForm.value.group_ids.push(groupId)
   }
   groupSearch.value = ''
-}
-
-function toggleGroupDropdown() {
-  showGroupDropdown.value = !showGroupDropdown.value
-  if (showGroupDropdown.value) groupSearch.value = ''
 }
 
 // Close dropdown on outside click
@@ -772,7 +763,7 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
           </button>
         </div>
         <div class="p-6">
-          <form @submit.prevent="handleResetPassword" class="space-y-4">
+          <form @submit.prevent="handleResetPassword" autocomplete="off" class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-1">重置方式</label>
               <div class="space-y-2 mt-2">
@@ -795,11 +786,11 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
             <template v-if="resetPasswordForm.method === 'manual'">
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">新密码</label>
-                <input v-model="resetPasswordForm.new_password" type="password" class="input-field" placeholder="请输入新密码" />
+                <input v-model="resetPasswordForm.new_password" type="password" autocomplete="new-password" class="input-field" placeholder="请输入新密码" />
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">确认密码</label>
-                <input v-model="resetPasswordForm.confirm_password" type="password" class="input-field" placeholder="请再次输入密码" />
+                <input v-model="resetPasswordForm.confirm_password" type="password" autocomplete="new-password" class="input-field" placeholder="请再次输入密码" />
               </div>
             </template>
 

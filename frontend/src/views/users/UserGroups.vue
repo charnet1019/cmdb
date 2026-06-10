@@ -3,7 +3,7 @@ import { ref, onMounted, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import { UsergroupAddOutlined, SearchOutlined, SafetyCertificateOutlined, GroupOutlined, EditOutlined, DeleteOutlined, CloseOutlined, UserAddOutlined, UserDeleteOutlined } from '@ant-design/icons-vue'
-import { getGroups, createGroup, deleteGroup, updateGroup, getGroupAuthorizations, getGroupMembers, addGroupMembers, removeGroupMember, getUsers } from '@/api/users'
+import { createGroup, deleteGroup, updateGroup, getGroupAuthorizations, getGroupMembers, addGroupMembers, removeGroupMember, getUsers } from '@/api/users'
 import { useUsersStore } from '@/stores/users'
 import type { Group, GroupAuthorization, GroupMember } from '@/types'
 
@@ -73,17 +73,14 @@ const permissionLabels: Record<string, string> = {
 async function fetchGroups() {
   loading.value = true
   try {
-    const result = await getGroups({
+    await usersStore.fetchGroups({
       page: page.value,
       limit: limit.value,
       search: searchQuery.value || undefined
     })
-    usersStore.groups = result.items || []
-    usersStore.groupsTotal = result.total || 0
   } catch (error: any) {
     message.error(error.response?.data?.detail || '获取用户组列表失败')
-    usersStore.groups = []
-    usersStore.groupsTotal = 0
+    usersStore.resetGroups()
   } finally {
     loading.value = false
   }
@@ -102,6 +99,12 @@ async function fetchUsers() {
 // Handle search
 function handleSearch() {
   page.value = 1
+  fetchGroups()
+}
+
+// Handle page change
+function handlePageChange(newPage: number) {
+  page.value = newPage
   fetchGroups()
 }
 
@@ -341,7 +344,10 @@ watch([() => usersStore.groupsPage, searchQuery], () => {
                 <div class="w-10 h-10 rounded bg-primary/10 flex items-center justify-center">
                   <SafetyCertificateOutlined class="text-primary" />
                 </div>
-                <span class="font-medium text-slate-900">{{ group.name }}</span>
+                <div>
+                  <span class="font-medium text-slate-900">{{ group.name }}</span>
+                  <span v-if="group.is_default" class="ml-2 px-2 py-0.5 bg-amber-50 text-amber-700 text-xs rounded-md font-medium">默认</span>
+                </div>
               </div>
             </td>
             <td>
@@ -382,7 +388,7 @@ watch([() => usersStore.groupsPage, searchQuery], () => {
         <span class="text-sm text-slate-500">共 {{ total }} 条记录</span>
         <div class="flex items-center gap-2">
           <button
-            @click="page--; fetchGroups()"
+            @click="handlePageChange(page - 1)"
             :disabled="page === 1"
             class="px-3 py-1.5 text-sm border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-50"
           >
@@ -390,7 +396,7 @@ watch([() => usersStore.groupsPage, searchQuery], () => {
           </button>
           <span class="text-sm text-slate-600">{{ page }} / {{ Math.ceil(total / limit) || 1 }}</span>
           <button
-            @click="page++; fetchGroups()"
+            @click="handlePageChange(page + 1)"
             :disabled="page >= Math.ceil(total / limit)"
             class="px-3 py-1.5 text-sm border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-50"
           >

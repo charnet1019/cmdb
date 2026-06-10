@@ -85,14 +85,20 @@ async def list_users(
     result = await db.execute(query)
     users = result.scalars().all()
 
-    # Get groups for each user
-    user_responses = []
-    for user in users:
+    # Batch fetch groups for all users
+    user_ids = [u.id for u in users]
+    if user_ids:
         groups_result = await db.execute(
-            select(Group).join(UserGroup).where(UserGroup.user_id == user.id)
+            select(UserGroup, Group).join(Group, Group.id == UserGroup.group_id).where(UserGroup.user_id.in_(user_ids))
         )
-        groups = groups_result.scalars().all()
-        user_dict = {
+        user_groups_map: dict[int, list[dict]] = {}
+        for ug, g in groups_result.all():
+            user_groups_map.setdefault(ug.user_id, []).append({"id": g.id, "name": g.name})
+    else:
+        user_groups_map = {}
+
+    user_responses = [
+        {
             "id": user.id,
             "username": user.username,
             "email": user.email,
@@ -102,9 +108,10 @@ async def list_users(
             "mfa_enabled": user.mfa_enabled,
             "last_login_at": user.last_login_at,
             "created_at": user.created_at,
-            "groups": [{"id": g.id, "name": g.name} for g in groups],
+            "groups": user_groups_map.get(user.id, []),
         }
-        user_responses.append(user_dict)
+        for user in users
+    ]
 
     return UserListResponse(
         data=user_responses,
@@ -178,6 +185,12 @@ async def create_user(
         await db.commit()
         await db.refresh(user)
 
+        # Fetch groups after commit
+        groups_result = await db.execute(
+            select(Group).join(UserGroup).where(UserGroup.user_id == user.id)
+        )
+        groups = groups_result.scalars().all()
+
         await log_operation(
             db, current_user.id, "create", "user", user.id,
             details={"username": user.username, "email": user.email},
@@ -195,7 +208,7 @@ async def create_user(
                 mfa_enabled=user.mfa_enabled,
                 last_login_at=user.last_login_at,
                 created_at=user.created_at,
-                groups=[],
+                groups=[{"id": g.id, "name": g.name} for g in groups],
             )
         )
     except HTTPException:
@@ -383,6 +396,21 @@ async def delete_user(
         )
 
     username = user.username
+
+    # Clean up related records
+    ug_result = await db.execute(
+        select(UserGroup).where(UserGroup.user_id == user_id)
+    )
+    for ug in ug_result.scalars().all():
+        await db.delete(ug)
+
+    # Soft-delete authorizations (set entity_id to null or delete)
+    auth_result = await db.execute(
+        select(Authorization).where(Authorization.entity_id == user_id, Authorization.entity_type == "user")
+    )
+    for auth in auth_result.scalars().all():
+        await db.delete(auth)
+
     await db.delete(user)
     await db.commit()
 
@@ -580,21 +608,26 @@ async def list_groups(
     result = await db.execute(query)
     groups = result.scalars().all()
 
-    # Get member count for each group
-    group_responses = []
-    for group in groups:
-        member_count_result = await db.execute(
-            select(func.count()).select_from(UserGroup).where(UserGroup.group_id == group.id)
+    # Batch fetch member counts
+    group_ids = [g.id for g in groups]
+    member_counts: dict[int, int] = {}
+    if group_ids:
+        counts_result = await db.execute(
+            select(UserGroup.group_id, func.count()).where(UserGroup.group_id.in_(group_ids)).group_by(UserGroup.group_id)
         )
-        member_count = member_count_result.scalar() or 0
+        member_counts = dict(counts_result.all())
 
-        group_responses.append({
+    group_responses = [
+        {
             "id": group.id,
             "name": group.name,
             "description": group.description,
+            "is_default": group.is_default,
             "created_at": group.created_at,
-            "member_count": member_count,
-        })
+            "member_count": member_counts.get(group.id, 0),
+        }
+        for group in groups
+    ]
 
     return GroupListResponse(
         data=group_responses,
@@ -915,9 +948,11 @@ async def remove_group_member(
 
     # Get user and group names for logging
     user_result = await db.execute(select(User).where(User.id == user_id))
-    user_name = user_result.scalar_one_or_none().username if user_result.scalar_one_or_none() else str(user_id)
+    user_obj = user_result.scalar_one_or_none()
+    user_name = user_obj.username if user_obj else str(user_id)
     group_result = await db.execute(select(Group).where(Group.id == group_id))
-    group_name = group_result.scalar_one_or_none().name if group_result.scalar_one_or_none() else str(group_id)
+    group_obj = group_result.scalar_one_or_none()
+    group_name = group_obj.name if group_obj else str(group_id)
 
     await db.delete(user_group)
     await db.commit()

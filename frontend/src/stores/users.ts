@@ -16,14 +16,14 @@ export const useUsersStore = defineStore('users', () => {
   const groupsLimit = ref(20)
 
   // Actions
-  async function fetchUsers(page?: number, limit?: number, search?: string, isActive?: boolean) {
-    if (page !== undefined) usersPage.value = page
-    if (limit !== undefined) usersLimit.value = limit
+  async function fetchUsers(params?: { page?: number; limit?: number; search?: string; is_active?: boolean }) {
+    if (params?.page !== undefined) usersPage.value = params.page
+    if (params?.limit !== undefined) usersLimit.value = params.limit
     const result = await getUsers({
-      page: usersPage.value,
-      limit: usersLimit.value,
-      search: search || undefined,
-      is_active: isActive ?? undefined,
+      page: params?.page ?? usersPage.value,
+      limit: params?.limit ?? usersLimit.value,
+      search: params?.search || undefined,
+      is_active: params?.is_active ?? undefined,
     })
     users.value = result.items || []
     usersTotal.value = result.total || 0
@@ -36,13 +36,13 @@ export const useUsersStore = defineStore('users', () => {
     return allUsers.value
   }
 
-  async function fetchGroups(page?: number, limit?: number, search?: string) {
-    if (page !== undefined) groupsPage.value = page
-    if (limit !== undefined) groupsLimit.value = limit
+  async function fetchGroups(params?: { page?: number; limit?: number; search?: string }) {
+    if (params?.page !== undefined) groupsPage.value = params.page
+    if (params?.limit !== undefined) groupsLimit.value = params.limit
     const result = await getGroups({
-      page: groupsPage.value,
-      limit: groupsLimit.value,
-      search: search || undefined,
+      page: params?.page ?? groupsPage.value,
+      limit: params?.limit ?? groupsLimit.value,
+      search: params?.search || undefined,
     })
     groups.value = result.items || []
     groupsTotal.value = result.total || 0

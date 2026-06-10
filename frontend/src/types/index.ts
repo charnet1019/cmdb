@@ -16,6 +16,7 @@ export interface Group {
   id: number
   name: string
   description?: string
+  is_default?: boolean
   member_count?: number
   created_at?: string
 }
