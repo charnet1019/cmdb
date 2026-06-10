@@ -42,7 +42,8 @@ const membersLoading = ref(false)
 // Form state
 const groupForm = ref({
   name: '',
-  description: ''
+  description: '',
+  initial_member_ids: [] as number[]
 })
 
 // Add members form
@@ -109,11 +110,13 @@ function handlePageChange(newPage: number) {
 }
 
 // Open create modal
-function openCreateModal() {
+async function openCreateModal() {
   groupForm.value = {
     name: '',
-    description: ''
+    description: '',
+    initial_member_ids: []
   }
+  await fetchUsers()
   showModal.value = true
 }
 
@@ -138,7 +141,8 @@ async function handleSubmit() {
   try {
     await createGroup({
       name: groupForm.value.name,
-      description: groupForm.value.description
+      description: groupForm.value.description,
+      initial_member_ids: groupForm.value.initial_member_ids.length > 0 ? groupForm.value.initial_member_ids : undefined
     })
     message.success('用户组创建成功')
     showModal.value = false
@@ -425,6 +429,23 @@ watch([() => usersStore.groupsPage, searchQuery], () => {
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-1">用户组描述</label>
               <textarea v-model="groupForm.description" class="input-field h-24 resize-none" placeholder="请输入描述"></textarea>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">初始成员</label>
+              <a-select
+                v-model:value="groupForm.initial_member_ids"
+                mode="multiple"
+                style="width: 100%"
+                placeholder="搜索并选择用户"
+                :options="allUsers.map(u => ({
+                  label: `${u.username} (${u.full_name || u.email})`,
+                  value: u.id,
+                }))"
+                :max-tag-count="3"
+                :max-tag-text-length="20"
+                show-search
+                :filter-option="(input: string, option: any) => option.label.toLowerCase().includes(input.toLowerCase())"
+              />
             </div>
             <div class="flex justify-end gap-2 pt-4">
               <button type="button" @click="showModal = false" class="btn-secondary">取消</button>
