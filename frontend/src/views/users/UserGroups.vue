@@ -462,7 +462,7 @@ watch([() => usersStore.groupsPage, searchQuery], () => {
               <textarea v-model="groupForm.description" class="input-field h-24 resize-none" placeholder="请输入描述"></textarea>
             </div>
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">初始成员</label>
+              <label class="block text-sm font-medium text-slate-700 mb-1">用户</label>
               <a-select
                 v-model:value="groupForm.initial_member_ids"
                 mode="multiple"
