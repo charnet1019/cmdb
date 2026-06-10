@@ -3,6 +3,7 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { PlusOutlined, EditOutlined, BlockOutlined, CheckCircleOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-vue'
+import { formatDateTime } from '@/utils/datetime'
 import {
   getAuthorizations,
   createAuthorization,
@@ -266,12 +267,6 @@ async function toggleStatus(auth: any) {
   } catch {
     message.error('操作失败')
   }
-}
-
-// Format datetime
-function formatDateTime(dateStr: string | null): string {
-  if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleString('zh-CN')
 }
 
 // Get permission label

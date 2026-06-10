@@ -32,28 +32,10 @@ import { useColumnConfig } from './composables/useColumnConfig'
 import { createAsset, updateAsset, createCredential, updateCredential, getAssets } from '@/api/assets'
 import { getUsers } from '@/api/users'
 import ColumnCustomizer from './components/ColumnCustomizer.vue'
+import { formatDateTime } from '@/utils/datetime'
 import ImportModal from './components/ImportModal.vue'
 import ExportModal from './components/ExportModal.vue'
 import type { Asset, AssetCategory } from '@/types'
-
-// Format datetime: treat naive ISO strings as UTC, then convert to local timezone (UTC+8)
-function formatDateTime(isoString?: string | null): string {
-  if (!isoString) return ''
-  try {
-    // If string has no timezone info, treat it as UTC by appending +00:00
-    const normalized = isoString.match(/[+-]\d{2}:\d{2}$|Z$/) ? isoString : isoString + '+00:00'
-    const date = new Date(normalized)
-    return date.toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).replace(/\//g, '-')
-  } catch {
-    return isoString
-  }
-}
 
 // Router for URL state persistence
 const route = useRoute()

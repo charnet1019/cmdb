@@ -3,6 +3,7 @@ import { ref, onMounted, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import { UsergroupAddOutlined, SearchOutlined, SafetyCertificateOutlined, GroupOutlined, EditOutlined, DeleteOutlined, CloseOutlined, UserAddOutlined, UserDeleteOutlined } from '@ant-design/icons-vue'
+import { formatDate } from '@/utils/datetime'
 import { createGroup, deleteGroup, updateGroup, getGroupAuthorizations, getGroupMembers, addGroupMembers, removeGroupMember, getUsers } from '@/api/users'
 import { useUsersStore } from '@/stores/users'
 import type { Group, GroupAuthorization, GroupMember } from '@/types'
@@ -19,7 +20,10 @@ const page = computed({
   get: () => usersStore.groupsPage,
   set: (v: number) => { usersStore.groupsPage = v },
 })
-const limit = ref(20)
+const limit = computed({
+  get: () => usersStore.groupsLimit,
+  set: (v: number) => { usersStore.groupsLimit = v },
+})
 const loading = ref(false)
 
 // Filters
@@ -103,9 +107,22 @@ function handleSearch() {
   fetchGroups()
 }
 
+// Reset search
+function resetSearch() {
+  searchQuery.value = ''
+  page.value = 1
+  fetchGroups()
+}
+
 // Handle page change
 function handlePageChange(newPage: number) {
   page.value = newPage
+  fetchGroups()
+}
+
+// Handle limit change
+function onLimitChange() {
+  page.value = 1
   fetchGroups()
 }
 
@@ -269,12 +286,6 @@ async function handleRemoveMember(member: GroupMember) {
   })
 }
 
-// Format date
-function formatDate(dateStr: string | null | undefined): string {
-  if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleDateString('zh-CN')
-}
-
 // Check if user is already a member
 function isMember(userId: number): boolean {
   return groupMembers.value.some(m => m.id === userId)
@@ -315,9 +326,17 @@ watch([() => usersStore.groupsPage, searchQuery], () => {
             v-model="searchQuery"
             type="text"
             placeholder="搜索用户组..."
-            class="input-field pl-10"
+            class="input-field pl-10 pr-8"
             @keyup.enter="handleSearch"
           />
+          <button
+            v-if="searchQuery"
+            @click="resetSearch"
+            type="button"
+            class="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+          >
+            <CloseOutlined class="text-sm" />
+          </button>
         </div>
         <button @click="handleSearch" class="btn-secondary">搜索</button>
       </div>
@@ -389,7 +408,19 @@ watch([() => usersStore.groupsPage, searchQuery], () => {
 
       <!-- Pagination -->
       <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
-        <span class="text-sm text-slate-500">共 {{ total }} 条记录</span>
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2 text-sm text-slate-500">
+            <span>每页</span>
+            <select v-model="limit" @change="onLimitChange" class="text-sm border border-slate-200 rounded px-2 py-1 bg-white">
+              <option :value="15">15</option>
+              <option :value="30">30</option>
+              <option :value="50">50</option>
+              <option :value="100">100</option>
+            </select>
+            <span>条</span>
+          </div>
+          <span class="text-sm text-slate-500">共 {{ total }} 条记录</span>
+        </div>
         <div class="flex items-center gap-2">
           <button
             @click="handlePageChange(page - 1)"

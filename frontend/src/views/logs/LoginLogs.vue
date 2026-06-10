@@ -2,6 +2,7 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getLoginLogs, type LoginLog, type LoginLogStats } from '@/api/logs'
+import { formatDateTime } from '@/utils/datetime'
 import { SearchOutlined } from '@ant-design/icons-vue'
 
 const router = useRouter()
@@ -62,18 +63,6 @@ function handleSearch() {
 function handlePageChange(newPage: number) {
   page.value = newPage
   fetchLogs()
-}
-
-// Format datetime
-function formatDateTime(dateStr: string | null): string {
-  if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
 }
 
 // Initial load

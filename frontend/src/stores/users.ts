@@ -11,9 +11,9 @@ export const useUsersStore = defineStore('users', () => {
   const usersTotal = ref(0)
   const groupsTotal = ref(0)
   const usersPage = ref(1)
-  const usersLimit = ref(20)
+  const usersLimit = ref(15)
   const groupsPage = ref(1)
-  const groupsLimit = ref(20)
+  const groupsLimit = ref(15)
 
   // Actions
   async function fetchUsers(params?: { page?: number; limit?: number; search?: string; is_active?: boolean }) {

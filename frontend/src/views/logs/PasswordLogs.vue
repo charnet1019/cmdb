@@ -2,6 +2,7 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getPasswordLogs, type PasswordLog } from '@/api/logs'
+import { formatDateTime } from '@/utils/datetime'
 
 const router = useRouter()
 const route = useRoute()
@@ -57,12 +58,6 @@ function handleSearch() {
 function handlePageChange(newPage: number) {
   page.value = newPage
   fetchLogs()
-}
-
-// Format datetime
-function formatDateTime(dateStr: string | null): string {
-  if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleString('zh-CN')
 }
 
 // Initial load

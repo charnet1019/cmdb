@@ -2,9 +2,10 @@
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
-import { UserAddOutlined, SearchOutlined, SafetyCertificateOutlined, EditOutlined, LockOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-vue'
+import { UserAddOutlined, SearchOutlined, SafetyCertificateOutlined, EditOutlined, LockOutlined, DeleteOutlined, CloseOutlined, EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons-vue'
 import { createUser, updateUser, deleteUser, resetUserPassword, getUserAuthorizations, getGroups } from '@/api/users'
 import { useUsersStore } from '@/stores/users'
+import { formatDateTime } from '@/utils/datetime'
 import type { User, UserAuthorization } from '@/types'
 
 const router = useRouter()
@@ -56,7 +57,10 @@ const userForm = ref({
 // Validation
 const emailError = ref('')
 const phoneError = ref('')
+const passwordError = ref('')
 const passwordStrength = ref<'weak' | 'medium' | 'strong' | ''>('')
+const showPassword = ref(false)
+const showConfirmPassword = ref(false)
 
 function validateEmail(email: string): boolean {
   if (!email) return true
@@ -82,6 +86,15 @@ function getPasswordStrength(password: string): 'weak' | 'medium' | 'strong' | '
   return 'strong'
 }
 
+function validatePassword(password: string): string[] {
+  const errors: string[] = []
+  if (password.length < 8) errors.push('密码长度不能少于8个字符')
+  if (!/[a-z]/.test(password)) errors.push('密码必须包含小写字母')
+  if (!/[A-Z]/.test(password)) errors.push('密码必须包含大写字母')
+  if (!/\d/.test(password)) errors.push('密码必须包含数字')
+  return errors
+}
+
 function onEmailBlur() {
   if (userForm.value.email && !validateEmail(userForm.value.email)) {
     emailError.value = '请输入有效的邮箱地址'
@@ -99,7 +112,14 @@ function onPhoneBlur() {
 }
 
 function onPasswordInput() {
-  passwordStrength.value = getPasswordStrength(userForm.value.password)
+  const pwd = userForm.value.password
+  const errors = validatePassword(pwd)
+  if (errors.length) {
+    passwordError.value = errors.join('；')
+  } else {
+    passwordError.value = ''
+  }
+  passwordStrength.value = getPasswordStrength(pwd)
 }
 
 const resetPasswordForm = ref({
@@ -108,6 +128,8 @@ const resetPasswordForm = ref({
   confirm_password: '',
   force_change: true
 })
+const showResetPassword = ref(false)
+const showResetConfirmPassword = ref(false)
 
 // Computed
 const modalTitle = computed(() => editingUser.value ? '编辑用户' : '添加用户')
@@ -123,7 +145,7 @@ async function fetchUsers() {
       is_active: statusFilter.value ?? undefined
     })
   } catch (error: any) {
-    message.error(error.response?.data?.detail || '获取用户列表失败')
+    message.error(getErrorMessage(error))
     usersStore.resetUsers()
   } finally {
     loading.value = false
@@ -147,9 +169,23 @@ function handleSearch() {
   fetchUsers()
 }
 
+// Reset search
+function resetSearch() {
+  searchQuery.value = ''
+  statusFilter.value = null
+  page.value = 1
+  fetchUsers()
+}
+
 // Handle page change
 function handlePageChange(newPage: number) {
   page.value = newPage
+  fetchUsers()
+}
+
+// Handle limit change
+function onLimitChange() {
+  page.value = 1
   fetchUsers()
 }
 
@@ -169,7 +205,10 @@ function openCreateModal() {
   }
   emailError.value = ''
   phoneError.value = ''
+  passwordError.value = ''
   passwordStrength.value = ''
+  showPassword.value = false
+  showConfirmPassword.value = false
   groupSearch.value = ''
   showGroupDropdown.value = false
   showUserModal.value = true
@@ -219,6 +258,11 @@ async function handleSubmit() {
       message.error('请输入密码')
       return
     }
+    const pwdErrors = validatePassword(userForm.value.password)
+    if (pwdErrors.length) {
+      message.error(pwdErrors.join('；'))
+      return
+    }
     if (userForm.value.password !== userForm.value.confirm_password) {
       message.error('两次输入的密码不一致')
       return
@@ -255,7 +299,7 @@ async function handleSubmit() {
     showUserModal.value = false
     fetchUsers()
   } catch (error: any) {
-    message.error(error.response?.data?.detail || '操作失败')
+    message.error(getErrorMessage(error))
   } finally {
     modalLoading.value = false
   }
@@ -275,7 +319,7 @@ async function handleDelete(user: User) {
         message.success('用户已删除')
         fetchUsers()
       } catch (e: any) {
-        message.error(e.response?.data?.detail || '删除失败')
+        message.error(getErrorMessage(e))
       }
     },
   })
@@ -290,6 +334,8 @@ function openResetPasswordModal(user: User) {
     confirm_password: '',
     force_change: true
   }
+  showResetPassword.value = false
+  showResetConfirmPassword.value = false
   showResetPasswordModal.value = true
 }
 
@@ -302,8 +348,9 @@ async function handleResetPassword() {
       message.error('两次输入的密码不一致')
       return
     }
-    if (resetPasswordForm.value.new_password.length < 8) {
-      message.error('密码长度不能少于8个字符')
+    const pwdErrors = validatePassword(resetPasswordForm.value.new_password)
+    if (pwdErrors.length) {
+      message.error(pwdErrors.join('；'))
       return
     }
   }
@@ -323,7 +370,7 @@ async function handleResetPassword() {
       message.success('密码重置成功')
     }
   } catch (error: any) {
-    message.error(error.response?.data?.detail || '重置失败')
+    message.error(getErrorMessage(error))
   } finally {
     modalLoading.value = false
   }
@@ -332,18 +379,6 @@ async function handleResetPassword() {
 // Get user avatar text
 function getAvatarText(user: User): string {
   return user.full_name?.[0] || user.username[0]?.toUpperCase() || 'U'
-}
-
-// Format date
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
 }
 
 // Asset category labels
@@ -430,6 +465,19 @@ function onDocumentClick() {
   showGroupDropdown.value = false
 }
 
+// Error message extractor — handles string, Pydantic error list, or fallback
+function getErrorMessage(error: any): string {
+  const detail = error?.response?.data?.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail.map((e: any) => e.msg || e).join('；')
+  }
+  if (detail && typeof detail === 'object') {
+    return JSON.stringify(detail)
+  }
+  return error?.response?.data?.message || '操作失败'
+}
+
 // Initial load
 onMounted(() => {
   document.addEventListener('click', onDocumentClick)
@@ -474,9 +522,17 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
             v-model="searchQuery"
             type="text"
             placeholder="搜索用户名、姓名、邮箱..."
-            class="input-field pl-10"
+            class="input-field pl-10 pr-8"
             @keyup.enter="handleSearch"
           />
+          <button
+            v-if="searchQuery"
+            @click="resetSearch"
+            type="button"
+            class="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+          >
+            <CloseOutlined class="text-sm" />
+          </button>
         </div>
         <select v-model="statusFilter" @change="handleSearch" class="input-field w-32">
           <option :value="null">全部状态</option>
@@ -536,7 +592,7 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
               </div>
             </td>
             <td>
-              <span class="text-sm text-slate-600">{{ formatDate(user.last_login_at) }}</span>
+              <span class="text-sm text-slate-600">{{ formatDateTime(user.last_login_at) }}</span>
             </td>
             <td>
               <span
@@ -570,7 +626,19 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
 
       <!-- Pagination -->
       <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
-        <span class="text-sm text-slate-500">共 {{ total }} 条记录</span>
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2 text-sm text-slate-500">
+            <span>每页</span>
+            <select v-model="limit" @change="onLimitChange" class="text-sm border border-slate-200 rounded px-2 py-1 bg-white">
+              <option :value="15">15</option>
+              <option :value="30">30</option>
+              <option :value="50">50</option>
+              <option :value="100">100</option>
+            </select>
+            <span>条</span>
+          </div>
+          <span class="text-sm text-slate-500">共 {{ total }} 条记录</span>
+        </div>
         <div class="flex items-center gap-2">
           <button
             @click="handlePageChange(page - 1)"
@@ -693,7 +761,14 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
               <div class="grid grid-cols-2 gap-4">
                 <div>
                   <label class="block text-sm font-medium text-slate-700 mb-1">密码 <span class="text-red-500">*</span></label>
-                  <input v-model="userForm.password" type="password" autocomplete="new-password" class="input-field" placeholder="请输入密码" @input="onPasswordInput" />
+                  <div class="relative">
+                    <input v-model="userForm.password" :type="showPassword ? 'text' : 'password'" autocomplete="new-password" class="input-field pr-10" placeholder="请输入密码" @input="onPasswordInput" />
+                    <button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors" @click="showPassword = !showPassword" :title="showPassword ? '隐藏密码' : '显示密码'">
+                      <EyeOutlined v-if="showPassword" />
+                      <EyeInvisibleOutlined v-else />
+                    </button>
+                  </div>
+                  <p v-if="passwordError" class="text-xs text-red-500 mt-1">{{ passwordError }}</p>
                   <div v-if="passwordStrength" class="mt-1.5 h-1 rounded-full bg-slate-100 overflow-hidden">
                     <div class="h-full rounded-full transition-all duration-300"
                          :class="{ 'bg-red-400 w-1/4': passwordStrength === 'weak', 'bg-yellow-400 w-1/2': passwordStrength === 'medium', 'bg-green-400 w-3/4': passwordStrength === 'strong' }" />
@@ -705,7 +780,13 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-slate-700 mb-1">确认密码 <span class="text-red-500">*</span></label>
-                  <input v-model="userForm.confirm_password" type="password" autocomplete="new-password" class="input-field" placeholder="请再次输入密码" />
+                  <div class="relative">
+                    <input v-model="userForm.confirm_password" :type="showConfirmPassword ? 'text' : 'password'" autocomplete="new-password" class="input-field pr-10" placeholder="请再次输入密码" />
+                    <button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors" @click="showConfirmPassword = !showConfirmPassword" :title="showConfirmPassword ? '隐藏密码' : '显示密码'">
+                      <EyeOutlined v-if="showConfirmPassword" />
+                      <EyeInvisibleOutlined v-else />
+                    </button>
+                  </div>
                 </div>
               </div>
             </template>
@@ -786,11 +867,23 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
             <template v-if="resetPasswordForm.method === 'manual'">
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">新密码</label>
-                <input v-model="resetPasswordForm.new_password" type="password" autocomplete="new-password" class="input-field" placeholder="请输入新密码" />
+                <div class="relative">
+                  <input v-model="resetPasswordForm.new_password" :type="showResetPassword ? 'text' : 'password'" autocomplete="new-password" class="input-field pr-10" placeholder="请输入新密码" />
+                  <button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors" @click="showResetPassword = !showResetPassword" :title="showResetPassword ? '隐藏密码' : '显示密码'">
+                    <EyeOutlined v-if="showResetPassword" />
+                    <EyeInvisibleOutlined v-else />
+                  </button>
+                </div>
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">确认密码</label>
-                <input v-model="resetPasswordForm.confirm_password" type="password" autocomplete="new-password" class="input-field" placeholder="请再次输入密码" />
+                <div class="relative">
+                  <input v-model="resetPasswordForm.confirm_password" :type="showResetConfirmPassword ? 'text' : 'password'" autocomplete="new-password" class="input-field pr-10" placeholder="请再次输入密码" />
+                  <button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors" @click="showResetConfirmPassword = !showResetConfirmPassword" :title="showResetConfirmPassword ? '隐藏密码' : '显示密码'">
+                    <EyeOutlined v-if="showResetConfirmPassword" />
+                    <EyeInvisibleOutlined v-else />
+                  </button>
+                </div>
               </div>
             </template>
 
@@ -858,7 +951,7 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
                   <span v-else class="text-xs text-slate-500">用户组: {{ auth.group_name }}</span>
                 </td>
                 <td>
-                  <span class="text-sm text-slate-600">{{ auth.valid_until ? formatDate(auth.valid_until) : '永久' }}</span>
+                  <span class="text-sm text-slate-600">{{ auth.valid_until ? formatDateTime(auth.valid_until) : '永久' }}</span>
                 </td>
                 <td>
                   <span class="badge badge-success">
