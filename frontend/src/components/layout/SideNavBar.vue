@@ -221,7 +221,7 @@ watch(() => route.path, (path) => {
           >
             <component :is="item.icon" style="font-size: 20px;"/>
             <span style="font-size: 14px; flex: 1;">{{ item.label }}</span>
-            <component :is="DownOutlined" style="font-size: 12px; transition: transform 0.2s;" :style="{ transform: isParentExpanded(item) ? 'rotate(180deg)' : 'rotate(0deg)' }"/>
+            <component :is="DownOutlined" class="nav-arrow" style="transition: transform 0.2s;" :style="{ transform: isParentExpanded(item) ? 'rotate(180deg)' : 'rotate(0deg)' }"/>
           </div>
 
           <!-- 折叠态：父菜单项悬停触发 -->
@@ -245,7 +245,7 @@ watch(() => route.path, (path) => {
               @click.stop="navigateTo(child.path)"
               class="nav-item"
               :class="{ active: isActive(child.path) }"
-              style="font-size: 12px; padding: 6px 12px;"
+              style="font-size: 12px; padding: 8px 12px;"
             >
               {{ child.label }}
             </div>
@@ -323,5 +323,13 @@ watch(() => route.path, (path) => {
   font-weight: 500;
   color: #0f172a;
   line-height: 1.4;
+}
+
+/* Thinner arrow icon */
+.nav-arrow :deep(svg) {
+  font-size: 12px;
+}
+.nav-arrow :deep(path) {
+  stroke-width: 1.2;
 }
 </style>
