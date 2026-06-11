@@ -221,7 +221,7 @@ watch(() => route.path, (path) => {
           >
             <component :is="item.icon" style="font-size: 20px;"/>
             <span style="font-size: 14px; flex: 1;">{{ item.label }}</span>
-            <component :is="DownOutlined" style="font-size: 14px; transition: transform 0.2s;" :style="{ transform: isParentExpanded(item) ? 'rotate(180deg)' : 'rotate(0deg)' }"/>
+            <component :is="DownOutlined" style="font-size: 12px; transition: transform 0.2s;" :style="{ transform: isParentExpanded(item) ? 'rotate(180deg)' : 'rotate(0deg)' }"/>
           </div>
 
           <!-- 折叠态：父菜单项悬停触发 -->

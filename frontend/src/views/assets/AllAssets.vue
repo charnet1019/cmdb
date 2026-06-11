@@ -796,7 +796,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="space-y-4" @click="closePasswordPopover">
+  <div class="space-y-[1px]" @click="closePasswordPopover">
     <!-- Password popover -->
     <Teleport to="body">
       <div
@@ -812,7 +812,7 @@ onMounted(async () => {
           v-for="cat in categories"
           :key="cat.key"
           @click="changeCategory(cat.key as AssetCategory | 'all')"
-          class="flex items-center gap-2 px-6 py-4 text-sm font-medium whitespace-nowrap"
+          class="flex items-center gap-1.5 px-3 py-2.5 text-[14px] font-medium whitespace-nowrap"
           :class="activeCategory === cat.key ? 'text-teal-600 border-b-2 border-teal-600' : 'text-slate-500 hover:text-slate-700'"
         >
           <component :is="cat.icon" class="text-lg" />
@@ -822,22 +822,22 @@ onMounted(async () => {
     </div>
 
     <!-- Main Content -->
-    <div class="flex gap-6">
+    <div class="flex gap-1">
       <!-- Asset/Type Tree (Left Panel) -->
-      <div class="hidden lg:block w-60 flex-shrink-0">
+      <div class="hidden lg:block w-52 flex-shrink-0">
         <div class="card">
           <!-- Tab Controls -->
           <div class="flex border-b border-slate-100 mb-1">
             <button
               @click="switchTreeView('asset')"
-              class="flex-1 py-2 text-xs font-medium text-center"
+              class="flex-1 py-2 text-sm font-medium text-center"
               :class="treeViewMode === 'asset' ? 'font-bold text-primary border-b-2 border-primary' : 'text-slate-400 hover:text-primary'"
             >
               资产树
             </button>
             <button
               @click="switchTreeView('type')"
-              class="flex-1 py-2 text-xs font-medium text-center"
+              class="flex-1 py-2 text-sm font-medium text-center"
               :class="treeViewMode === 'type' ? 'font-bold text-primary border-b-2 border-primary' : 'text-slate-400 hover:text-primary'"
             >
               类型树
@@ -845,11 +845,11 @@ onMounted(async () => {
           </div>
 
           <!-- Tree Content -->
-          <div class="text-sm">
+          <div class="text-[13px]">
             <template v-if="treeViewMode === 'asset'">
               <!-- Asset Tree - Root Node -->
               <div
-                class="py-2 px-2 rounded cursor-pointer hover:bg-slate-50 mb-1 font-medium"
+                class="py-1 px-2 rounded cursor-pointer hover:bg-slate-50 mb-0.5 font-medium"
                 :class="[
                   selectedOrgId === null && isRootExpanded ? 'bg-primary/10 text-primary' : 'text-slate-700',
                   dragOverOrgId === null && draggedOrgId !== null ? 'bg-blue-50' : ''
@@ -875,7 +875,7 @@ onMounted(async () => {
                 <div
                   v-for="org in flattenedOrgs"
                   :key="org.id"
-                  class="py-1.5 px-2 rounded cursor-pointer hover:bg-slate-50 flex items-center gap-1"
+                  class="py-1 px-2 rounded cursor-pointer hover:bg-slate-50 flex items-center gap-1"
                   :class="{
                     'bg-primary/10 text-primary': selectedOrgId === org.id,
                     'text-slate-600': selectedOrgId !== org.id,
@@ -941,7 +941,7 @@ onMounted(async () => {
               <!-- Type Tree -->
               <template v-for="node in flattenedTypeTree" :key="node.id">
                 <div
-                  class="py-1.5 px-2 rounded cursor-pointer hover:bg-slate-50 flex items-center gap-1"
+                  class="py-1 px-2 rounded cursor-pointer hover:bg-slate-50 flex items-center gap-1"
                   :class="isSelectedTypeNode(node) ? 'bg-primary/10 text-primary' : 'text-slate-600'"
                   :style="{ paddingLeft: `${node.level * 16 + 8}px` }"
                   @click="handleSelectType(node)"
@@ -965,7 +965,7 @@ onMounted(async () => {
       <!-- Asset Table (Right Panel) -->
       <div class="flex-1">
         <!-- Action Bar -->
-        <div class="bg-white rounded-xl shadow-sm p-3 mb-1">
+        <div class="bg-white rounded-xl shadow-sm p-2.5 mb-0.5">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <button @click="openCreateModal" class="btn-primary text-xs px-3 py-1.5">创建</button>
@@ -1137,7 +1137,7 @@ onMounted(async () => {
           </div>
           <!-- Loading overlay -->
           <div v-if="loading && assets.length > 0" class="absolute inset-0 bg-white/50 transition-opacity duration-200 pointer-events-none"></div>
-          <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
+          <div class="px-4 py-2 border-t border-slate-100 flex items-center justify-between">
             <div class="flex items-center gap-3">
               <div class="flex items-center gap-2 text-sm text-slate-500">
                 <span>每页</span>
@@ -1689,11 +1689,11 @@ onMounted(async () => {
     <div v-if="showOrgModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showOrgModal = false"></div>
       <div class="relative bg-white w-full max-w-md rounded-xl shadow-2xl">
-        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
           <h2 class="text-lg font-bold text-slate-900">{{ orgModalMode === 'create' ? '创建节点' : '重命名节点' }}</h2>
           <button @click="showOrgModal = false" class="p-1.5 hover:bg-slate-100 rounded-lg"><CloseOutlined class="text-slate-400" /></button>
         </div>
-        <div class="p-6">
+        <div class="p-4">
           <div class="space-y-4">
             <div><label class="block text-xs font-medium text-slate-600 mb-1">节点名称 <span class="text-red-500">*</span></label><input v-model="orgForm.name" type="text" class="input-field" placeholder="请输入节点名称" autofocus @keydown.enter="handleOrgModalSubmit" /></div>
             <div class="flex justify-end gap-3 pt-1.5 border-t border-slate-100">

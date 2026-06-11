@@ -28,7 +28,7 @@ async function handleLogout() {
       class="layout-main"
       :class="sidebarCollapsed ? 'layout-main-collapsed' : 'layout-main-expanded'"
     >
-      <div style="padding: 24px;">
+      <div style="padding: 4px;">
         <RouterView />
       </div>
     </main>
