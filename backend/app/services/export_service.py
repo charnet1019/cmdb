@@ -4,14 +4,12 @@ Handles Excel and CSV export functionality
 """
 from io import BytesIO, StringIO
 import csv
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta, timezone
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
-
 # Column definitions for export by asset category
-# Each category exports only its relevant fields
 CATEGORY_COLUMNS: Dict[str, List[tuple]] = {
     "host": [
         ("id", "ID"),
@@ -163,8 +161,8 @@ DEFAULT_COLUMNS = [
     ("updated_at", "更新时间"),
 ]
 
-# UTC+8 timezone offset
-UTC8_OFFSET_HOURS = 8
+UTC8 = timezone(timedelta(hours=8))
+UTC8_FMT = "%Y-%m-%d %H:%M:%S"
 
 CATEGORY_LABELS = {
     "host": "主机",
@@ -175,171 +173,158 @@ CATEGORY_LABELS = {
     "gpt": "GPT 服务",
 }
 
+# Module-level status label mapping — reused across all exports
+STATUS_LABELS: Dict[str, str] = {}
+
+def _init_status_labels():
+    """Lazy-init status labels to avoid importing models at module level."""
+    if not STATUS_LABELS:
+        from app.models import AssetStatus
+        STATUS_LABELS.update({
+            AssetStatus.INVENTORY: "库存",
+            AssetStatus.DEPLOYING: "部署中",
+            AssetStatus.RUNNING: "运行中",
+            AssetStatus.MAINTENANCE: "维护中",
+            AssetStatus.DEACTIVATED: "停用",
+            AssetStatus.PENDING_SCRAP: "待报废",
+            AssetStatus.SCRAPPED: "已报废",
+            AssetStatus.RETURNED: "已退还",
+        })
+
+_init_status_labels()
+
+# Shared openpyxl styles — created once, reused
+_HEADER_FILL = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+_HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
+_HEADER_ALIGN = Alignment(horizontal="center", vertical="center")
+_HEADER_BORDER = Border(
+    left=Side(style='thin', color='B4C6E7'),
+    right=Side(style='thin', color='B4C6E7'),
+    top=Side(style='thin', color='B4C6E7'),
+    bottom=Side(style='thin', color='B4C6E7'),
+)
+_CELL_BORDER = Border(
+    left=Side(style='thin', color='E7E6E6'),
+    right=Side(style='thin', color='E7E6E6'),
+    top=Side(style='thin', color='E7E6E6'),
+    bottom=Side(style='thin', color='E7E6E6'),
+)
+_CELL_ALIGN = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+# Column width defaults
+COLUMN_WIDTHS = {
+    "id": 10,
+    "name": 20,
+    "asset_code": 15,
+    "category": 12,
+    "internal_address": 20,
+    "external_address": 20,
+    "organization_name": 20,
+    "device_type": 12,
+    "vendor": 15,
+    "model": 20,
+    "serial_number": 20,
+    "cpu": 12,
+    "memory": 12,
+    "system_disk": 15,
+    "data_disk": 15,
+    "credentials": 25,
+    "oob": 20,
+    "oob_username": 15,
+    "oob_password": 15,
+    "applicant": 12,
+    "runs_on": 20,
+    "storage_locations": 25,
+    "owner_name": 15,
+    "notes": 30,
+    "creator_name": 12,
+    "status": 12,
+    "created_at": 20,
+    "updated_at": 20,
+}
+
+
+def format_field_value(field: str, asset: Dict[str, Any]) -> Any:
+    """Format a single field value for export. Shared by Excel and CSV writers."""
+    value = asset.get(field)
+
+    if field == "category" and value:
+        return CATEGORY_LABELS.get(value, value)
+    if field == "status":
+        return STATUS_LABELS.get(value, value) if value else ""
+    if field == "vendor" and value is None:
+        return asset.get("platform")
+    if field in ("created_at", "updated_at") and value:
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=timezone.utc)
+            value = value.astimezone(UTC8)
+            return value.strftime(UTC8_FMT)
+        if isinstance(value, str):
+            try:
+                dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt.astimezone(UTC8).strftime(UTC8_FMT)
+            except Exception:
+                pass
+        return str(value)
+    if field == "credentials":
+        creds = asset.get("credentials", [])
+        if creds:
+            return "\n".join(f"{c.get('username')}:{c.get('password', '')}" for c in creds if c.get('username'))
+        return ""
+    if field == "oob":
+        return asset.get("oob_address")
+    if field == "version":
+        return (asset.get("extra_data") or {}).get("version")
+    if field == "runs_on":
+        hosts = asset.get("runs_on_hosts", [])
+        return ", ".join(h.get("name", "") for h in hosts) if hosts else ""
+    if field == "storage_locations":
+        locs = asset.get("storage_locations", [])
+        return "\n".join(f"{l.get('path_type', '')}:{l.get('path', '')}" for l in locs) if locs else ""
+    if field == "extra_data":
+        return ""
+    return value
+
+
+def _write_excel_data(ws, data: List[Dict[str, Any]], export_columns: List[tuple]):
+    """Write data rows to an Excel worksheet with formatting."""
+    for row_idx, asset in enumerate(data, 2):
+        for col_idx, (field, _) in enumerate(export_columns, 1):
+            value = format_field_value(field, asset)
+            if field == "extra_data":
+                continue
+            cell = ws.cell(row=row_idx, column=col_idx, value=value if value else "")
+            cell.border = _CELL_BORDER
+            cell.alignment = _CELL_ALIGN
+
 
 def export_assets_to_excel(data: List[Dict[str, Any]], category: Optional[str] = None) -> BytesIO:
-    """
-    Export assets to Excel format
-
-    Args:
-        data: List of asset dictionaries
-        category: Asset category (host/network/database/cloud/web/gpt). If None, uses all columns.
-    """
+    """Export assets to Excel format."""
     wb = Workbook()
     ws = wb.active
     ws.title = "资产导出"
 
-    # Determine columns based on category
-    if category and category in CATEGORY_COLUMNS:
-        export_columns = CATEGORY_COLUMNS[category]
-    else:
-        export_columns = DEFAULT_COLUMNS
-
-    # Header styles
-    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-    header_font = Font(bold=True, color="FFFFFF", size=11)
-    header_alignment = Alignment(horizontal="center", vertical="center")
-    header_border = Border(
-        left=Side(style='thin', color='B4C6E7'),
-        right=Side(style='thin', color='B4C6E7'),
-        top=Side(style='thin', color='B4C6E7'),
-        bottom=Side(style='thin', color='B4C6E7')
-    )
+    export_columns = CATEGORY_COLUMNS.get(category, DEFAULT_COLUMNS) if category else DEFAULT_COLUMNS
 
     # Write headers
     for col, (field, label) in enumerate(export_columns, 1):
         cell = ws.cell(row=1, column=col, value=label)
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = header_alignment
-        cell.border = header_border
+        cell.fill = _HEADER_FILL
+        cell.font = _HEADER_FONT
+        cell.alignment = _HEADER_ALIGN
+        cell.border = _HEADER_BORDER
 
-    # Write data rows
-    cell_border = Border(
-        left=Side(style='thin', color='E7E6E6'),
-        right=Side(style='thin', color='E7E6E6'),
-        top=Side(style='thin', color='E7E6E6'),
-        bottom=Side(style='thin', color='E7E6E6')
-    )
-
-    for row_idx, asset in enumerate(data, 2):
-        for col_idx, (field, _) in enumerate(export_columns, 1):
-            value = asset.get(field)
-
-            # Format specific fields
-            if field == "category" and value:
-                value = CATEGORY_LABELS.get(value, value)
-            elif field == "status":
-                from app.models import AssetStatus
-                status_labels = {
-                    AssetStatus.INVENTORY: "库存",
-                    AssetStatus.DEPLOYING: "部署中",
-                    AssetStatus.RUNNING: "运行中",
-                    AssetStatus.MAINTENANCE: "维护中",
-                    AssetStatus.DEACTIVATED: "停用",
-                    AssetStatus.PENDING_SCRAP: "待报废",
-                    AssetStatus.SCRAPPED: "已报废",
-                    AssetStatus.RETURNED: "已退还",
-                }
-                value = status_labels.get(value, value) if value else ""
-            elif field == "vendor" and value is None:
-                # If vendor is empty, use platform value (for host/database assets)
-                value = asset.get("platform")
-            elif field in ["created_at", "updated_at"] and value:
-                # Convert to UTC+8 and format as "年 - 月-日 时：分:秒"
-                if isinstance(value, datetime):
-                    # If naive datetime, assume UTC and add 8 hours
-                    if value.tzinfo is None:
-                        value = value + timedelta(hours=UTC8_OFFSET_HOURS)
-                    else:
-                        # Convert to UTC+8
-                        value = value.astimezone(timezone(timedelta(hours=UTC8_OFFSET_HOURS)))
-                    value = value.strftime("%Y-%m-%d %H:%M:%S")
-                elif isinstance(value, str):
-                    # Parse ISO format string and convert
-                    try:
-                        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-                        if dt.tzinfo is None:
-                            dt = dt + timedelta(hours=UTC8_OFFSET_HOURS)
-                        else:
-                            dt = dt.astimezone(timezone(timedelta(hours=UTC8_OFFSET_HOURS)))
-                        value = dt.strftime("%Y-%m-%d %H:%M:%S")
-                    except:
-                        value = str(value)
-            elif field == "credentials":
-                # Join multiple credentials as "username:password" lines
-                creds = asset.get("credentials", [])
-                if creds:
-                    value = "\n".join([f"{c.get('username')}:{c.get('password', '')}" for c in creds if c.get('username')])
-                else:
-                    value = ""
-            elif field == "oob":
-                value = asset.get("oob_address")
-            elif field == "oob_username":
-                value = asset.get("oob_username")
-            elif field == "oob_password":
-                # Already decrypted in export API
-                pass
-            elif field == "version":
-                # Extract from extra_data (metadata)
-                extra_data = asset.get("extra_data") or {}
-                value = extra_data.get(field)
-            elif field == "runs_on":
-                runs_on_hosts = asset.get("runs_on_hosts", [])
-                if runs_on_hosts:
-                    value = ", ".join([h.get("name", "") for h in runs_on_hosts])
-                else:
-                    value = ""
-            elif field == "storage_locations":
-                locs = asset.get("storage_locations", [])
-                if locs:
-                    value = "\n".join([f"{l.get('path_type', '')}:{l.get('path', '')}" for l in locs])
-                else:
-                    value = ""
-            elif field == "extra_data":
-                # Skip extra_data as it's JSON
-                continue
-
-            cell = ws.cell(row=row_idx, column=col_idx, value=value if value else "")
-            cell.border = cell_border
-            cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    # Write data
+    _write_excel_data(ws, data, export_columns)
 
     # Column widths
-    column_widths = {
-        "id": 10,
-        "name": 20,
-        "asset_code": 15,
-        "category": 12,
-        "internal_address": 20,
-        "external_address": 20,
-        "organization_name": 20,
-        "device_type": 12,
-        "vendor": 15,
-        "model": 20,
-        "serial_number": 20,
-        "cpu": 12,
-        "memory": 12,
-        "system_disk": 15,
-        "data_disk": 15,
-        "credentials": 25,
-        "oob": 20,
-        "oob_username": 15,
-        "oob_password": 15,
-        "applicant": 12,
-        "runs_on": 20,
-        "storage_locations": 25,
-        "owner_name": 15,
-        "notes": 30,
-        "creator_name": 12,
-        "status": 12,
-        "created_at": 20,
-        "updated_at": 20,
-    }
-
     for col_idx, (field, _) in enumerate(export_columns, 1):
         col_letter = ws.cell(row=1, column=col_idx).column_letter
-        ws.column_dimensions[col_letter].width = column_widths.get(field, 15)
+        ws.column_dimensions[col_letter].width = COLUMN_WIDTHS.get(field, 15)
 
-    # Set row height
     ws.row_dimensions[1].height = 25
 
     buffer = BytesIO()
@@ -348,116 +333,101 @@ def export_assets_to_excel(data: List[Dict[str, Any]], category: Optional[str] =
     return buffer
 
 
-def export_assets_to_csv(data: List[Dict[str, Any]], category: Optional[str] = None) -> BytesIO:
+async def _export_excel_stream(
+    data_gen,  # async generator yielding Dict[str, Any]
+    export_columns: List[tuple],
+) -> Tuple[BytesIO, int]:
+    """Stream asset data into an Excel file using write_only mode.
+
+    Avoids holding all asset data in memory at once.
+    Note: write_only mode does not support cell-level styling.
+    Returns: (BytesIO, row_count)
     """
-    Export assets to CSV format
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet()
 
-    Args:
-        data: List of asset dictionaries
-        category: Asset category (host/network/database/cloud/web/gpt). If None, uses all columns.
-    """
-    # Use StringIO for text-based CSV writing, then encode to UTF-8
-    string_buffer = StringIO()
+    # Write headers
+    header_row = [label for _, label in export_columns]
+    ws.append(header_row)
 
-    # Determine columns based on category
-    if category and category in CATEGORY_COLUMNS:
-        export_columns = CATEGORY_COLUMNS[category]
-    else:
-        export_columns = DEFAULT_COLUMNS
+    # Column widths
+    for col_idx, (field, _) in enumerate(export_columns, 1):
+        from openpyxl.utils import get_column_letter
+        col_letter = get_column_letter(col_idx)
+        ws.column_dimensions[col_letter].width = COLUMN_WIDTHS.get(field, 15)
 
-    writer = csv.writer(string_buffer, lineterminator='\n')
-
-    # Write header
-    header = [label for _, label in export_columns]
-    writer.writerow(header)
-
-    # Write data
-    for asset in data:
+    # Write data rows from generator
+    count = 0
+    async for asset in data_gen:
         row = []
         for field, _ in export_columns:
-            value = asset.get(field)
+            if field == "extra_data":
+                row.append("")
+                continue
+            value = format_field_value(field, asset)
+            row.append(value if value else "")
+        ws.append(row)
+        count += 1
 
-            # Format specific fields
-            if field == "category" and value:
-                value = CATEGORY_LABELS.get(value, value)
-            elif field == "status":
-                from app.models import AssetStatus
-                status_labels = {
-                    AssetStatus.INVENTORY: "库存",
-                    AssetStatus.DEPLOYING: "部署中",
-                    AssetStatus.RUNNING: "运行中",
-                    AssetStatus.MAINTENANCE: "维护中",
-                    AssetStatus.DEACTIVATED: "停用",
-                    AssetStatus.PENDING_SCRAP: "待报废",
-                    AssetStatus.SCRAPPED: "已报废",
-                    AssetStatus.RETURNED: "已退还",
-                }
-                value = status_labels.get(value, value) if value else ""
-            elif field == "vendor" and value is None:
-                # If vendor is empty, use platform value (for host/database assets)
-                value = asset.get("platform")
-            elif field in ["created_at", "updated_at"] and value:
-                # Convert to UTC+8 and format as "年 - 月-日 时：分:秒"
-                if isinstance(value, datetime):
-                    # If naive datetime, assume UTC and add 8 hours
-                    if value.tzinfo is None:
-                        value = value + timedelta(hours=UTC8_OFFSET_HOURS)
-                    else:
-                        # Convert to UTC+8
-                        value = value.astimezone(timezone(timedelta(hours=UTC8_OFFSET_HOURS)))
-                    value = value.strftime("%Y-%m-%d %H:%M:%S")
-                elif isinstance(value, str):
-                    # Parse ISO format string and convert
-                    try:
-                        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-                        if dt.tzinfo is None:
-                            dt = dt + timedelta(hours=UTC8_OFFSET_HOURS)
-                        else:
-                            dt = dt.astimezone(timezone(timedelta(hours=UTC8_OFFSET_HOURS)))
-                        value = dt.strftime("%Y-%m-%d %H:%M:%S")
-                    except:
-                        value = str(value)
-            elif field == "credentials":
-                # Join multiple credentials as "username:password" lines
-                creds = asset.get("credentials", [])
-                if creds:
-                    value = "\n".join([f"{c.get('username')}:{c.get('password', '')}" for c in creds if c.get('username')])
-                else:
-                    value = ""
-            elif field == "oob":
-                value = asset.get("oob_address")
-            elif field == "oob_username":
-                value = asset.get("oob_username")
-            elif field == "oob_password":
-                # Already decrypted in export API
-                pass
-            elif field == "version":
-                # Extract from extra_data (metadata)
-                extra_data = asset.get("extra_data") or {}
-                value = extra_data.get(field)
-            elif field == "runs_on":
-                runs_on_hosts = asset.get("runs_on_hosts", [])
-                if runs_on_hosts:
-                    value = ", ".join([h.get("name", "") for h in runs_on_hosts])
-                else:
-                    value = ""
-            elif field == "storage_locations":
-                locs = asset.get("storage_locations", [])
-                if locs:
-                    value = "\n".join([f"{l.get('path_type', '')}:{l.get('path', '')}" for l in locs])
-                else:
-                    value = ""
-            elif field == "extra_data":
-                value = ""
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer, count
 
+
+async def _export_csv_stream(
+    data_gen,  # async generator yielding Dict[str, Any]
+    export_columns: List[tuple],
+) -> Tuple[BytesIO, int]:
+    """Stream asset data into a CSV file with UTF-8 BOM.
+
+    Returns: (BytesIO, row_count)
+    """
+    string_buffer = StringIO()
+    writer = csv.writer(string_buffer, lineterminator='\n')
+
+    # Header
+    writer.writerow([label for _, label in export_columns])
+
+    count = 0
+    async for asset in data_gen:
+        row = []
+        for field, _ in export_columns:
+            if field == "extra_data":
+                row.append("")
+                continue
+            value = format_field_value(field, asset)
             row.append(value if value else "")
         writer.writerow(row)
+        count += 1
 
-    # Convert to BytesIO with BOM for Excel compatibility with Chinese characters
     csv_content = string_buffer.getvalue()
     string_buffer.close()
 
-    # Add UTF-8 BOM and encode
     content = b'\xef\xbb\xbf' + csv_content.encode('utf-8')
-    buffer = BytesIO(content)
-    return buffer
+    return BytesIO(content), count
+
+
+def export_assets_to_csv(data: List[Dict[str, Any]], category: Optional[str] = None) -> BytesIO:
+    """Export assets to CSV format with UTF-8 BOM."""
+    export_columns = CATEGORY_COLUMNS.get(category, DEFAULT_COLUMNS) if category else DEFAULT_COLUMNS
+
+    string_buffer = StringIO()
+    writer = csv.writer(string_buffer, lineterminator='\n')
+
+    # Header
+    writer.writerow([label for _, label in export_columns])
+
+    # Data rows
+    for asset in data:
+        row = []
+        for field, _ in export_columns:
+            value = format_field_value(field, asset)
+            row.append(value if value else "")
+        writer.writerow(row)
+
+    csv_content = string_buffer.getvalue()
+    string_buffer.close()
+
+    content = b'\xef\xbb\xbf' + csv_content.encode('utf-8')
+    return BytesIO(content)

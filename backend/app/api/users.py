@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
 from app.database import get_db
-from app.models import User, Group, UserGroup, Authorization, Asset, OperationLog
+from app.models import User, Group, UserGroup, Authorization, Asset
+from app.utils.audit import log_operation
 from app.schemas import (
     UserCreate, UserUpdate, UserResponse, UserSimple, UserDetailResponse,
     UserListResponse, PaginationMeta,
@@ -21,30 +22,6 @@ from app.core.security import get_password_hash, verify_password, validate_passw
 
 
 router = APIRouter(prefix="/users", tags=["用户管理"])
-
-
-async def log_operation(
-    db: AsyncSession,
-    user_id: int,
-    action: str,
-    resource_type: str,
-    resource_id: int,
-    details: Optional[dict] = None,
-    ip_address: Optional[str] = None,
-    status: str = "success",
-):
-    """Log an operation to the OperationLog table"""
-    entry = OperationLog(
-        user_id=user_id,
-        action=action,
-        resource_type=resource_type,
-        resource_id=resource_id,
-        details=details,
-        ip_address=ip_address,
-        status=status,
-    )
-    db.add(entry)
-    await db.commit()
 
 
 # ============== User APIs ==============

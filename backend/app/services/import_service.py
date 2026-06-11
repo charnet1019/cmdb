@@ -2,21 +2,550 @@
 Asset Import Service
 Handles XLSX template generation and file import processing
 """
+import re
 from io import BytesIO
 from typing import List, Dict, Any, Optional, Tuple
-from openpyxl import Workbook
+
+from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.encryption import encrypt_value
+from sqlalchemy import select, delete
 
-from app.models import Asset, Organization, AssetHostRelation, StorageLocation
-from sqlalchemy import select
+from app.core.encryption import encrypt_value
+from app.models import Asset, Organization, AssetHostRelation, StorageLocation, Credential
+
+# Track org paths auto-created during the current import batch (cleared per-import)
+CreatedOrgs: set = set()
+
+
+def get_created_orgs() -> set:
+    """Return and clear the set of org paths auto-created during the last import."""
+    orgs = CreatedOrgs.copy()
+    CreatedOrgs.clear()
+    return orgs
+
+# ─── Field definitions ───────────────────────────────────────────────
+# Format: (field_name, display_label, is_required)
+
+HOST_CREATE_FIELDS = [
+    ("name", "*资产名称", True),
+    ("asset_code", "资产编号", False),
+    ("organization", "节点", False),
+    ("platform", "*平台", True),
+    ("external_address", "外网地址", False),
+    ("internal_address", "*内网地址", True),
+    ("credentials", "*用户名密码", True),
+    ("cpu", "CPU", False),
+    ("memory", "内存", False),
+    ("system_disk", "系统盘", False),
+    ("data_disk", "数据盘", False),
+    ("model", "型号", False),
+    ("serial_number", "序列号", False),
+    ("oob", "OOB 地址", False),
+    ("oob_username", "OOB 用户名", False),
+    ("oob_password", "OOB 密码", False),
+    ("applicant", "申请人", False),
+    ("status", "状态", False),
+    ("notes", "描述", False),
+]
+
+HOST_UPDATE_FIELDS = [
+    ("id", "*ID", True),
+    ("name", "资产名称", False),
+    ("asset_code", "资产编号", False),
+    ("organization", "节点", False),
+    ("platform", "平台", False),
+    ("external_address", "外网地址", False),
+    ("internal_address", "内网地址", False),
+    ("credentials", "用户名密码", False),
+    ("cpu", "CPU", False),
+    ("memory", "内存", False),
+    ("system_disk", "系统盘", False),
+    ("data_disk", "数据盘", False),
+    ("model", "型号", False),
+    ("serial_number", "序列号", False),
+    ("oob", "OOB 地址", False),
+    ("oob_username", "OOB 用户名", False),
+    ("oob_password", "OOB 密码", False),
+    ("applicant", "申请人", False),
+    ("status", "状态", False),
+    ("notes", "描述", False),
+]
+
+NETWORK_CREATE_FIELDS = [
+    ("name", "*资产名称", True),
+    ("asset_code", "资产编号", False),
+    ("organization", "节点", False),
+    ("device_type", "*设备类型", True),
+    ("vendor", "*厂商", True),
+    ("model", "型号", False),
+    ("serial_number", "序列号", False),
+    ("external_address", "外网地址", False),
+    ("internal_address", "内网地址", False),
+    ("credentials", "*用户名密码", True),
+    ("status", "*状态", True),
+    ("notes", "描述", False),
+]
+
+NETWORK_UPDATE_FIELDS = [
+    ("id", "*ID", True),
+    ("name", "资产名称", False),
+    ("asset_code", "资产编号", False),
+    ("organization", "节点", False),
+    ("device_type", "设备类型", False),
+    ("vendor", "厂商", False),
+    ("model", "型号", False),
+    ("serial_number", "序列号", False),
+    ("external_address", "外网地址", False),
+    ("internal_address", "内网地址", False),
+    ("credentials", "用户名密码", False),
+    ("status", "状态", False),
+    ("notes", "描述", False),
+]
+
+DATABASE_CREATE_FIELDS = [
+    ("name", "*资产名称", True),
+    ("asset_code", "资产编号", False),
+    ("organization", "节点", False),
+    ("platform", "*平台", True),
+    ("db_type", "*数据库类型", True),
+    ("external_address", "外网地址", False),
+    ("internal_address", "内网地址", False),
+    ("credentials", "*用户名密码", True),
+    ("runs_on", "运行于", False),
+    ("storage_locations", "存储位置", False),
+    ("version", "版本", False),
+    ("namespace", "命名空间", False),
+    ("applicant", "申请人", False),
+    ("status", "状态", False),
+    ("notes", "描述", False),
+]
+
+DATABASE_UPDATE_FIELDS = [
+    ("id", "*ID", True),
+    ("name", "资产名称", False),
+    ("asset_code", "资产编号", False),
+    ("organization", "节点", False),
+    ("platform", "平台", False),
+    ("db_type", "数据库类型", False),
+    ("external_address", "外网地址", False),
+    ("internal_address", "内网地址", False),
+    ("credentials", "用户名密码", False),
+    ("runs_on", "运行于", False),
+    ("storage_locations", "存储位置", False),
+    ("version", "版本", False),
+    ("namespace", "命名空间", False),
+    ("applicant", "申请人", False),
+    ("status", "状态", False),
+    ("notes", "描述", False),
+]
+
+CLOUD_CREATE_FIELDS = [
+    ("name", "*资产名称", True),
+    ("asset_code", "资产编号", False),
+    ("organization", "节点", False),
+    ("platform", "*平台", True),
+    ("external_address", "外网地址", False),
+    ("internal_address", "内网地址", False),
+    ("credentials", "*用户名密码", True),
+    ("status", "状态", False),
+    ("notes", "描述", False),
+]
+
+CLOUD_UPDATE_FIELDS = [
+    ("id", "*ID", True),
+    ("name", "资产名称", False),
+    ("asset_code", "资产编号", False),
+    ("organization", "节点", False),
+    ("platform", "平台", False),
+    ("external_address", "外网地址", False),
+    ("internal_address", "内网地址", False),
+    ("credentials", "用户名密码", False),
+    ("status", "状态", False),
+    ("notes", "描述", False),
+]
+
+WEB_CREATE_FIELDS = [
+    ("name", "*资产名称", True),
+    ("asset_code", "资产编号", False),
+    ("organization", "节点", False),
+    ("platform", "*平台", True),
+    ("external_address", "*外网地址", True),
+    ("internal_address", "内网地址", False),
+    ("credentials", "*用户名密码", True),
+    ("applicant", "申请人", False),
+    ("status", "状态", False),
+    ("notes", "描述", False),
+]
+
+WEB_UPDATE_FIELDS = [
+    ("id", "*ID", True),
+    ("name", "资产名称", False),
+    ("asset_code", "资产编号", False),
+    ("organization", "节点", False),
+    ("platform", "平台", False),
+    ("external_address", "外网地址", False),
+    ("internal_address", "内网地址", False),
+    ("credentials", "用户名密码", False),
+    ("applicant", "申请人", False),
+    ("status", "状态", False),
+    ("notes", "描述", False),
+]
+
+GPT_CREATE_FIELDS = [
+    ("name", "*名称", True),
+    ("asset_code", "资产编号", False),
+    ("organization", "节点", False),
+    ("platform", "*平台", True),
+    ("external_address", "*外网地址", True),
+    ("internal_address", "内网地址", False),
+    ("credentials", "用户名密码", True),
+    ("applicant", "申请人", False),
+    ("status", "状态", False),
+    ("notes", "描述", False),
+]
+
+GPT_UPDATE_FIELDS = [
+    ("id", "*ID", True),
+    ("name", "名称", False),
+    ("asset_code", "资产编号", False),
+    ("organization", "节点", False),
+    ("platform", "平台", False),
+    ("external_address", "外网地址", False),
+    ("internal_address", "内网地址", False),
+    ("credentials", "用户名密码", False),
+    ("applicant", "申请人", False),
+    ("status", "状态", False),
+    ("notes", "描述", False),
+]
+
+CATEGORY_FIELDS = {
+    "host": {"create": HOST_CREATE_FIELDS, "update": HOST_UPDATE_FIELDS},
+    "network": {"create": NETWORK_CREATE_FIELDS, "update": NETWORK_UPDATE_FIELDS},
+    "database": {"create": DATABASE_CREATE_FIELDS, "update": DATABASE_UPDATE_FIELDS},
+    "cloud": {"create": CLOUD_CREATE_FIELDS, "update": CLOUD_UPDATE_FIELDS},
+    "web": {"create": WEB_CREATE_FIELDS, "update": WEB_UPDATE_FIELDS},
+    "gpt": {"create": GPT_CREATE_FIELDS, "update": GPT_UPDATE_FIELDS},
+}
+
+CATEGORY_NAMES = {
+    "host": "主机",
+    "network": "网络设备",
+    "database": "数据库",
+    "cloud": "云服务",
+    "web": "网站服务",
+    "gpt": "AI 服务",
+}
+
+# ─── Category-specific metadata ──────────────────────────────────────
+
+# Fields passed to Asset() constructor (beyond name/category/created_by_id)
+CATEGORY_CREATE_FIELDS = {
+    "host": [
+        "asset_code", "platform", "external_address", "internal_address",
+        "model", "serial_number", "cpu", "memory", "system_disk", "data_disk",
+        "applicant", "organization_id", "notes", "oob_address", "oob_username",
+    ],
+    "network": [
+        "asset_code", "device_type", "vendor", "model", "serial_number",
+        "external_address", "internal_address", "applicant", "organization_id", "notes",
+    ],
+    "database": [
+        "asset_code", "platform", "db_type", "external_address", "internal_address",
+        "applicant", "namespace", "organization_id", "notes",
+    ],
+    "cloud": [
+        "asset_code", "platform", "external_address", "internal_address",
+        "organization_id", "notes",
+    ],
+    "web": [
+        "asset_code", "platform", "external_address", "internal_address",
+        "applicant", "organization_id", "notes",
+    ],
+    "gpt": [
+        "asset_code", "platform", "external_address", "internal_address",
+        "applicant", "organization_id", "notes",
+    ],
+}
+
+# Fields updated via setattr in update mode
+CATEGORY_UPDATE_FIELDS = {
+    "host": [
+        "name", "asset_code", "platform", "external_address", "internal_address",
+        "model", "serial_number", "cpu", "memory", "system_disk", "data_disk",
+        "applicant", "notes", "oob_address", "oob_username",
+    ],
+    "network": [
+        "name", "asset_code", "device_type", "vendor", "model", "serial_number",
+        "external_address", "internal_address", "applicant", "notes",
+    ],
+    "database": [
+        "name", "asset_code", "platform", "db_type", "external_address",
+        "internal_address", "applicant", "namespace", "notes",
+    ],
+    "cloud": [
+        "name", "asset_code", "platform", "external_address", "internal_address", "notes",
+    ],
+    "web": [
+        "name", "asset_code", "platform", "external_address",
+        "internal_address", "applicant", "notes",
+    ],
+    "gpt": [
+        "name", "asset_code", "platform", "external_address",
+        "internal_address", "applicant", "notes",
+    ],
+}
+
+# Credential type per category
+CATEGORY_CRED_TYPE = {
+    "host": "password",
+    "network": "password",
+    "database": "password",
+    "cloud": "api_key",
+    "web": "password",
+    "gpt": "api_key",
+}
+
+# ─── Template example data ───────────────────────────────────────────
+
+CATEGORY_EXAMPLES = {
+    "host": {
+        "title_create": "主机导入模板",
+        "title_update": "主机更新模板",
+        "create": [
+            "test-server-01", "CI001", "Default/研发部/服务器组", "Linux",
+            "192.168.1.100", "10.0.0.100", "admin:123456", "8 核", "16GB",
+            "500GB SSD", "2TB HDD", "Dell R740", "SN123456", "192.168.1.200",
+            "admin", "admin123", "张三", "启用", "测试服务器 - 开发环境",
+        ],
+        "update": [
+            "56c4d4cd-42ba-4397-abfa-36ecba64af13", "test-server-01", "CI001",
+            "Default/研发部/服务器组", "Linux", "192.168.1.100", "10.0.0.100",
+            "admin:123456", "8 核", "16GB", "500GB SSD", "2TB HDD", "Dell R740",
+            "SN123456", "192.168.1.200", "admin", "admin123", "张三", "启用",
+            "测试服务器 - 开发环境",
+        ],
+    },
+    "network": {
+        "title_create": "网络设备导入模板",
+        "title_update": "网络设备更新模板",
+        "create": [
+            "Core-SW-01", "NW001", "Default/研发部/网络设备", "交换机", "Cisco",
+            "C9300-48P", "FCW1234D001", "10.0.0.1", "192.168.1.1",
+            "admin:cisco123\nnetadmin:netpass123", "启用", "核心交换机 - 生产环境",
+        ],
+        "update": [
+            "56c4d4cd-42ba-4397-abfa-36ecba64af13", "Core-SW-01", "NW001",
+            "Default/研发部/网络设备", "交换机", "Cisco", "C9300-48P", "FCW1234D001",
+            "10.0.0.1", "192.168.1.1", "admin:cisco123\nnetadmin:netpass123",
+            "启用", "核心交换机 - 生产环境",
+        ],
+    },
+    "database": {
+        "title_create": "数据库导入模板",
+        "title_update": "数据库更新模板",
+        "create": [
+            "MySQL-Prod-01", "DB001", "Default/研发部/数据库", "RDS", "MySQL",
+            "", "192.168.1.100:3306", "root:mysqlroot123\napp:apppass",
+            "web-server-01", "/var/lib/mysql|data|主数据目录", "8.0.32", "main",
+            "张三", "True", "生产环境主数据库",
+        ],
+        "update": [
+            "56c4d4cd-42ba-4397-abfa-36ecba64af13", "MySQL-Prod-01", "DB001",
+            "Default/研发部/数据库", "RDS", "MySQL", "", "192.168.1.100:3306",
+            "root:mysqlroot123\napp:apppass", "web-server-01",
+            "/var/lib/mysql|data|主数据目录", "8.0.32", "main", "张三",
+            "running", "生产环境主数据库",
+        ],
+    },
+    "cloud": {
+        "title_create": "云服务导入模板",
+        "title_update": "云服务更新模板",
+        "create": [
+            "AWS-Prod-Account", "CL001", "Default/研发部/云服务", "AWS",
+            "https://aws.amazon.com", "10.0.0.1",
+            "AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            "True", "生产环境 AWS 账号",
+        ],
+        "update": [
+            "56c4d4cd-42ba-4397-abfa-36ecba64af13", "AWS-Prod-Account", "CL001",
+            "Default/研发部/云服务", "AWS", "https://aws.amazon.com", "10.0.0.1",
+            "AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            "启用", "生产环境 AWS 账号",
+        ],
+    },
+    "web": {
+        "title_create": "网站服务导入模板",
+        "title_update": "网站服务更新模板",
+        "create": [
+            "Jira", "WB001", "Default/研发部/应用系统", "Nginx",
+            "https://jira.example.com", "http://192.168.1.100:8080",
+            "admin:jiraadmin\nreadonly:readonly123", "张三", "True",
+            "项目管理平台",
+        ],
+        "update": [
+            "56c4d4cd-42ba-4397-abfa-36ecba64af13", "Jira", "WB001",
+            "Default/研发部/应用系统", "Nginx", "https://jira.example.com",
+            "http://192.168.1.100:8080",
+            "admin:jiraadmin\nreadonly:readonly123", "项目管理平台",
+        ],
+    },
+    "gpt": {
+        "title_create": "AI 服务导入模板",
+        "title_update": "AI 服务更新模板",
+        "create": [
+            "OpenAI-API", "AI001", "Default/研发部/AI 服务", "OpenAI",
+            "https://api.openai.com/v1", "",
+            "sk-key:sk-abc123xyz\nclue-key:sk-clue456", "张三", "True",
+            "AI 服务 API",
+        ],
+        "update": [
+            "56c4d4cd-42ba-4397-abfa-36ecba64af13", "OpenAI-API", "AI001",
+            "Default/研发部/AI 服务", "OpenAI", "https://api.openai.com/v1", "",
+            "sk-key:sk-abc123xyz\nclue-key:sk-clue456", "张三", "running",
+            "AI 服务 API",
+        ],
+    },
+}
+
+# ─── Shared openpyxl styles ──────────────────────────────────────────
+
+_HEADER_FILL = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+_HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
+_HEADER_ALIGN = Alignment(horizontal="center", vertical="center")
+_HEADER_BORDER = Border(
+    left=Side(style='thin', color='B4C6E7'),
+    right=Side(style='thin', color='B4C6E7'),
+    top=Side(style='thin', color='B4C6E7'),
+    bottom=Side(style='thin', color='B4C6E7'),
+)
+_HINT_FONT = Font(italic=True, color="666666", size=9)
+_THIN_BORDER = Border(
+    left=Side(style='thin', color='E7E6E6'),
+    right=Side(style='thin', color='E7E6E6'),
+    top=Side(style='thin', color='E7E6E6'),
+    bottom=Side(style='thin', color='E7E6E6'),
+)
+_CELL_ALIGN = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+UUID_PATTERN = re.compile(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+)
+_ASSET_CODE_PATTERN = re.compile(r'^[A-Z]+\d+$')
+
+# ─── Template generation ─────────────────────────────────────────────
+
+def _generate_template(
+    category: str,
+    mode: str,
+    title: str,
+    fields: List[Tuple[str, str, bool]],
+    example_data: List[str],
+) -> BytesIO:
+    """Generic XLSX template generator."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = title
+
+    for col, (field_name, label, _required) in enumerate(fields, 1):
+        cell = ws.cell(row=1, column=col, value=label)
+        cell.fill = _HEADER_FILL
+        cell.font = _HEADER_FONT
+        cell.alignment = _HEADER_ALIGN
+        cell.border = _HEADER_BORDER
+
+    for col, (field_name, _label, _required) in enumerate(fields, 1):
+        cell = ws.cell(row=2, column=col, value="")
+        cell.font = _HINT_FONT
+        cell.border = _THIN_BORDER
+        if field_name == "organization":
+            cell.value = "（填写完整路径，节点不存在时会自动创建）"
+        elif field_name == "runs_on":
+            cell.value = "（主机名称，每行一个）"
+        elif field_name == "storage_locations":
+            cell.value = "（路径|类型|描述，每行一个）"
+
+    for col, value in enumerate(example_data, 1):
+        cell = ws.cell(row=3, column=col, value=value)
+        cell.alignment = _CELL_ALIGN
+        cell.border = _THIN_BORDER
+
+    for idx in range(len(fields)):
+        col_letter = ws.cell(row=1, column=idx + 1).column_letter
+        field_name = fields[idx][0]
+        if field_name in ('id', 'external_address', 'internal_address'):
+            ws.column_dimensions[col_letter].width = 25
+        elif field_name == 'credentials':
+            ws.column_dimensions[col_letter].width = 20
+        elif field_name == 'organization':
+            ws.column_dimensions[col_letter].width = 18
+        elif field_name == 'storage_locations':
+            ws.column_dimensions[col_letter].width = 25
+        else:
+            ws.column_dimensions[col_letter].width = 15
+
+    ws.row_dimensions[1].height = 25
+    ws.row_dimensions[2].height = 18
+    ws.row_dimensions[3].height = 20
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+
+def generate_category_template(category: str, mode: str) -> Tuple[BytesIO, str]:
+    """Generate XLSX template for a given category and mode.
+
+    Replaces the 12 individual generate_*_template() functions.
+    Returns (buffer, filename).
+    """
+    fields = CATEGORY_FIELDS[category][mode]
+    example = CATEGORY_EXAMPLES[category][mode]
+    title = CATEGORY_EXAMPLES[category][f"title_{mode}"]
+
+    filename_map = {
+        ("host", "create"): "主机创建模板.xlsx",
+        ("host", "update"): "主机更新模板.xlsx",
+        ("network", "create"): "网络设备创建模板.xlsx",
+        ("network", "update"): "网络设备更新模板.xlsx",
+        ("database", "create"): "数据库创建模板.xlsx",
+        ("database", "update"): "数据库更新模板.xlsx",
+        ("cloud", "create"): "云服务创建模板.xlsx",
+        ("cloud", "update"): "云服务更新模板.xlsx",
+        ("web", "create"): "网站服务创建模板.xlsx",
+        ("web", "update"): "网站服务更新模板.xlsx",
+        ("gpt", "create"): "AI 服务创建模板.xlsx",
+        ("gpt", "update"): "AI 服务更新模板.xlsx",
+    }
+    filename = filename_map[(category, mode)]
+
+    return _generate_template(category, mode, title, fields, example), filename
+
+# Backward-compatible aliases — kept so existing imports still work
+generate_host_create_template = lambda: generate_category_template("host", "create")[0]
+generate_host_update_template = lambda: generate_category_template("host", "update")[0]
+generate_network_create_template = lambda: generate_category_template("network", "create")[0]
+generate_network_update_template = lambda: generate_category_template("network", "update")[0]
+generate_database_create_template = lambda: generate_category_template("database", "create")[0]
+generate_database_update_template = lambda: generate_category_template("database", "update")[0]
+generate_cloud_create_template = lambda: generate_category_template("cloud", "create")[0]
+generate_cloud_update_template = lambda: generate_category_template("cloud", "update")[0]
+generate_web_create_template = lambda: generate_category_template("web", "create")[0]
+generate_web_update_template = lambda: generate_category_template("web", "update")[0]
+generate_gpt_create_template = lambda: generate_category_template("gpt", "create")[0]
+generate_gpt_update_template = lambda: generate_category_template("gpt", "update")[0]
+
+# ─── Helpers ─────────────────────────────────────────────────────────
 
 async def resolve_or_create_organization(db: AsyncSession, path_str: str) -> int:
     """根据路径字符串解析或创建组织节点，返回 org_id。
 
     路径格式: Default/研发部/服务器组 或 研发部/服务器组（自动补 Default）
     不存在的节点会按层级自动创建。
+
+    Optimized: single batch lookup, then 2 flushes total (IDs + paths)
+    regardless of how many new orgs are created.
     """
     parts = [p.strip() for p in path_str.split("/") if p.strip()]
     if not parts:
@@ -24,31 +553,54 @@ async def resolve_or_create_organization(db: AsyncSession, path_str: str) -> int
     if parts[0] != "Default":
         parts.insert(0, "Default")
 
-    current_parent_id = None
-    current_level = 0
+    # Batch-lookup: group by name (same name can exist under different parents)
+    loaded: Dict[str, List[Organization]] = {}
+    result = await db.execute(
+        select(Organization).where(Organization.name.in_(parts))
+    )
+    for org in result.scalars().all():
+        loaded.setdefault(org.name, []).append(org)
 
-    for i, name in enumerate(parts[1:], 1):
-        result = await db.execute(
-            select(Organization).where(
-                Organization.name == name,
-                Organization.parent_id == current_parent_id,
-            )
-        )
-        org = result.scalar_one_or_none()
-        if not org:
-            org = Organization(
+    # Walk the path, matching by name + parent_id
+    current_obj: Optional[Organization] = None
+    new_orgs: List[Organization] = []
+
+    for name in parts:
+        candidate = None
+        for org in loaded.get(name, []):
+            if current_obj is None and org.parent_id is None:
+                candidate = org
+                break
+            elif current_obj is not None and org.parent_id == current_obj.id:
+                candidate = org
+                break
+        if candidate is None:
+            candidate = Organization(
                 name=name,
-                parent_id=current_parent_id,
-                level=current_level,
+                parent_id=current_obj.id if current_obj else None,
+                level=current_obj.level + 1 if current_obj else 0,
             )
-            db.add(org)
-            await db.flush()
-            org.path = f"{current_parent_id}/{org.id}" if current_parent_id else str(org.id)
-            await db.flush()
-        current_parent_id = org.id
-        current_level = org.level
+            db.add(candidate)
+            new_orgs.append(candidate)
+            CreatedOrgs.add(path_str)
+        current_obj = candidate
 
-    return current_parent_id
+    if new_orgs:
+        # First flush: assign IDs
+        await db.flush()
+        # Set paths
+        for org in new_orgs:
+            org.path = (
+                f"{org.parent_id}/{org.id}" if org.parent_id
+                else str(org.id)
+            )
+        # Second flush: persist paths
+        await db.flush()
+
+    if current_obj is None:
+        raise ValueError(f"无法解析组织路径: {path_str}")
+
+    return current_obj.id
 
 
 def parse_status(value) -> Optional[str]:
@@ -67,11 +619,9 @@ def parse_status(value) -> Optional[str]:
 
     if isinstance(value, str):
         v = value.lower().strip()
-        # Direct status values
         for s in AssetStatus:
             if s.value == v:
                 return s.value
-        # Legacy Chinese
         if v in ("启用", "是"):
             return AssetStatus.RUNNING.value
         if v in ("禁用", "否"):
@@ -84,647 +634,373 @@ def parse_status(value) -> Optional[str]:
     return None
 
 
-# Host field definitions for templates
-# Format: (field_name, display_label, is_required)
-HOST_CREATE_FIELDS = [
-    ("name", "*资产名称", True),
-    ("asset_code", "资产编号", False),
-    ("organization", "节点", False),
-    ("platform", "*平台", True),
-    ("external_address", "外网地址", False),
-    ("internal_address", "*内网地址", True),
-    ("credentials", "*用户名密码", True),  # 格式：username:password，每行一个
-    ("cpu", "CPU", False),
-    ("memory", "内存", False),
-    ("system_disk", "系统盘", False),
-    ("data_disk", "数据盘", False),
-    ("model", "型号", False),
-    ("serial_number", "序列号", False),
-    ("oob", "OOB 地址", False),
-    ("oob_username", "OOB 用户名", False),
-    ("oob_password", "OOB 密码", False),
-    ("applicant", "申请人", False),
-    ("status", "状态", False),  # inventory/deploying/running/maintenance/deactivated/pending_scrap/scrapped/returned
-    ("notes", "描述", False),
-]
-
-HOST_UPDATE_FIELDS = [
-    ("id", "*ID", True),
-    ("name", "资产名称", False),
-    ("asset_code", "资产编号", False),
-    ("organization", "节点", False),
-    ("platform", "平台", False),
-    ("external_address", "外网地址", False),
-    ("internal_address", "内网地址", False),
-    ("credentials", "用户名密码", False),  # 格式：username:password，每行一个
-    ("cpu", "CPU", False),
-    ("memory", "内存", False),
-    ("system_disk", "系统盘", False),
-    ("data_disk", "数据盘", False),
-    ("model", "型号", False),
-    ("serial_number", "序列号", False),
-    ("oob", "OOB 地址", False),
-    ("oob_username", "OOB 用户名", False),
-    ("oob_password", "OOB 密码", False),
-    ("applicant", "申请人", False),
-    ("status", "状态", False),  # inventory/deploying/running/maintenance/deactivated/pending_scrap/scrapped/returned
-    ("notes", "描述", False),
-]
-
-# Network field definitions
-NETWORK_CREATE_FIELDS = [
-    ("name", "*资产名称", True),
-    ("asset_code", "资产编号", False),
-    ("organization", "节点", False),
-    ("device_type", "*设备类型", True),  # 交换机/路由器/防火墙/无线控制器
-    ("vendor", "*厂商", True),  # Cisco/Huawei/Aruba 等
-    ("model", "型号", False),
-    ("serial_number", "序列号", False),
-    ("external_address", "外网地址", False),  # 多行，每行一个
-    ("internal_address", "内网地址", False),  # 多行，每行一个
-    ("credentials", "*用户名密码", True),  # 格式：username:password，多行每行一个
-    ("status", "*状态", True),  # inventory/deploying/running/maintenance/deactivated/pending_scrap/scrapped/returned
-    ("notes", "描述", False),
-]
-
-NETWORK_UPDATE_FIELDS = [
-    ("id", "*ID", True),
-    ("name", "资产名称", False),
-    ("asset_code", "资产编号", False),
-    ("organization", "节点", False),
-    ("device_type", "设备类型", False),
-    ("vendor", "厂商", False),
-    ("model", "型号", False),
-    ("serial_number", "序列号", False),
-    ("external_address", "外网地址", False),
-    ("internal_address", "内网地址", False),
-    ("credentials", "用户名密码", False),
-    ("status", "状态", False),  # inventory/deploying/running/maintenance/deactivated/pending_scrap/scrapped/returned
-    ("notes", "描述", False),
-]
-
-# Database field definitions
-DATABASE_CREATE_FIELDS = [
-    ("name", "*资产名称", True),
-    ("asset_code", "资产编号", False),
-    ("organization", "节点", False),
-    ("platform", "*平台", True),  # 物理机/虚拟机/RDS/Docker/Kubernetes
-    ("db_type", "*数据库类型", True),  # MySQL/PostgreSQL/MongoDB/Redis
-    ("external_address", "外网地址", False),  # 外网访问地址（可选，可带端口）
-    ("internal_address", "内网地址", False),  # 内网访问地址（可选，可带端口）
-    ("credentials", "*用户名密码", True),  # 格式：username:password，每行一个
-    ("runs_on", "运行于", False),  # 格式：主机名称，每行一个
-    ("storage_locations", "存储位置", False),  # 格式：路径|类型|描述，每行一个
-    ("version", "版本", False),
-    ("namespace", "命名空间", False),  # 数据库 Schema/命名空间
-    ("applicant", "申请人", False),  # 申请人
-    ("status", "状态", False),  # inventory/deploying/running/maintenance/deactivated/pending_scrap/scrapped/returned
-    ("notes", "描述", False),
-]
-
-DATABASE_UPDATE_FIELDS = [
-    ("id", "*ID", True),
-    ("name", "资产名称", False),
-    ("asset_code", "资产编号", False),
-    ("organization", "节点", False),
-    ("platform", "平台", False),  # 物理机/虚拟机/RDS/Docker/Kubernetes
-    ("db_type", "数据库类型", False),  # MySQL/PostgreSQL/MongoDB/Redis
-    ("external_address", "外网地址", False),  # 外网访问地址（可带端口）
-    ("internal_address", "内网地址", False),  # 内网访问地址（可带端口）
-    ("credentials", "用户名密码", False),
-    ("runs_on", "运行于", False),  # 格式：主机名称，每行一个
-    ("storage_locations", "存储位置", False),  # 格式：路径|类型|描述，每行一个
-    ("version", "版本", False),
-    ("namespace", "命名空间", False),  # 数据库 Schema/命名空间
-    ("applicant", "申请人", False),  # 申请人
-    ("status", "状态", False),  # inventory/deploying/running/maintenance/deactivated/pending_scrap/scrapped/returned
-    ("notes", "描述", False),
-]
-
-# Cloud field definitions
-CLOUD_CREATE_FIELDS = [
-    ("name", "*资产名称", True),
-    ("asset_code", "资产编号", False),
-    ("organization", "节点", False),
-    ("platform", "*平台", True),  # AWS/阿里云/腾讯云/Azure
-    ("external_address", "外网地址", False),  # 多行，每行一个
-    ("internal_address", "内网地址", False),  # 多行，每行一个
-    ("credentials", "*用户名密码", True),  # 格式：AKID:Secret 或 username:password，每行一个
-    ("status", "状态", False),  # inventory/deploying/running/maintenance/deactivated/pending_scrap/scrapped/returned
-    ("notes", "描述", False),
-]
-
-CLOUD_UPDATE_FIELDS = [
-    ("id", "*ID", True),
-    ("name", "资产名称", False),
-    ("asset_code", "资产编号", False),
-    ("organization", "节点", False),
-    ("platform", "平台", False),
-    ("external_address", "外网地址", False),
-    ("internal_address", "内网地址", False),
-    ("credentials", "用户名密码", False),
-    ("status", "状态", False),
-    ("notes", "描述", False),
-]
-
-# Web field definitions
-WEB_CREATE_FIELDS = [
-    ("name", "*资产名称", True),
-    ("asset_code", "资产编号", False),
-    ("organization", "节点", False),
-    ("platform", "*平台", True),  # Nginx/Apache/IIS/Tomcat 等
-    ("external_address", "*外网地址", True),
-    ("internal_address", "内网地址", False),
-    ("credentials", "*用户名密码", True),  # 格式：username:password，每行一个
-    ("applicant", "申请人", False),
-    ("status", "状态", False),  # inventory/deploying/running/maintenance/deactivated/pending_scrap/scrapped/returned
-    ("notes", "描述", False),
-]
-
-WEB_UPDATE_FIELDS = [
-    ("id", "*ID", True),
-    ("name", "资产名称", False),
-    ("asset_code", "资产编号", False),
-    ("organization", "节点", False),
-    ("platform", "平台", False),
-    ("external_address", "外网地址", False),
-    ("internal_address", "内网地址", False),
-    ("credentials", "用户名密码", False),
-    ("applicant", "申请人", False),
-    ("status", "状态", False),
-    ("notes", "描述", False),
-]
-
-# GPT field definitions
-GPT_CREATE_FIELDS = [
-    ("name", "*名称", True),
-    ("asset_code", "资产编号", False),
-    ("organization", "节点", False),
-    ("platform", "*平台", True),  # OpenAI/Claude/GLM/Qwen/DeepSeek/Gemini/MiMo/MiniMax/Kimi/Gemma/ERNIE
-    ("external_address", "*外网地址", True),  # API 地址
-    ("internal_address", "内网地址", False),
-    ("credentials", "用户名密码", True),  # 格式：key_name:api_key，每行一个
-    ("applicant", "申请人", False),
-    ("status", "状态", False),  # inventory/deploying/running/maintenance/deactivated/pending_scrap/scrapped/returned
-    ("notes", "描述", False),
-]
-
-GPT_UPDATE_FIELDS = [
-    ("id", "*ID", True),
-    ("name", "名称", False),
-    ("asset_code", "资产编号", False),
-    ("organization", "节点", False),
-    ("platform", "平台", False),
-    ("external_address", "外网地址", False),
-    ("internal_address", "内网地址", False),
-    ("credentials", "用户名密码", False),
-    ("applicant", "申请人", False),
-    ("status", "状态", False),
-    ("notes", "描述", False),
-]
-
-# Category field mapping
-CATEGORY_FIELDS = {
-    "host": {"create": HOST_CREATE_FIELDS, "update": HOST_UPDATE_FIELDS},
-    "network": {"create": NETWORK_CREATE_FIELDS, "update": NETWORK_UPDATE_FIELDS},
-    "database": {"create": DATABASE_CREATE_FIELDS, "update": DATABASE_UPDATE_FIELDS},
-    "cloud": {"create": CLOUD_CREATE_FIELDS, "update": CLOUD_UPDATE_FIELDS},
-    "web": {"create": WEB_CREATE_FIELDS, "update": WEB_UPDATE_FIELDS},
-    "gpt": {"create": GPT_CREATE_FIELDS, "update": GPT_UPDATE_FIELDS},
-}
-
-# Category display names
-CATEGORY_NAMES = {
-    "host": "主机",
-    "network": "网络设备",
-    "database": "数据库",
-    "cloud": "云服务",
-    "web": "网站服务",
-    "gpt": "AI 服务",
-}
+def _create_credentials(asset, record: Dict[str, Any], cred_type: str, db):
+    """Create Credential objects for an asset from parsed record."""
+    creds = record.get("credentials")
+    if not creds:
+        return
+    for cred in creds:
+        db.add(Credential(
+            asset_id=asset.id,
+            username=cred["username"],
+            password_encrypted=encrypt_value(cred["password"]),
+            credential_type=cred_type,
+        ))
 
 
-def generate_host_create_template() -> BytesIO:
-    """Generate XLSX template for host creation"""
-    example_data = [
-        "test-server-01",      # 资产名称
-        "CI001",               # 资产编号
-        "Default/研发部/服务器组",     # 节点
-        "Linux",               # 平台
-        "192.168.1.100",       # 外网地址
-        "10.0.0.100",          # 内网地址
-        "admin:123456",        # 用户名密码 (格式：username:password，多行表示多个)
-        "8 核",                 # CPU
-        "16GB",                # 内存
-        "500GB SSD",           # 系统盘
-        "2TB HDD",             # 数据盘
-        "Dell R740",           # 型号
-        "SN123456",            # 序列号
-        "192.168.1.200",       # OOB 地址
-        "admin",               # OOB 用户名
-        "admin123",            # OOB 密码
-        "张三",                 # 申请人
-        "启用",                # 状态 (启用/禁用 或 True/False 或 1/0)
-        "测试服务器 - 开发环境"  # 描述
-    ]
-    return _generate_template("host", "create", "主机导入模板", HOST_CREATE_FIELDS, example_data)
+def _replace_credentials(asset_id, record: Dict[str, Any], cred_type: str, db):
+    """Delete existing credentials and create new ones from record."""
+    db.execute(delete(Credential).where(Credential.asset_id == asset_id))
+    if record.get("credentials"):
+        for cred in record["credentials"]:
+            db.add(Credential(
+                asset_id=asset_id,
+                username=cred["username"],
+                password_encrypted=encrypt_value(cred["password"]),
+                credential_type=cred_type,
+            ))
 
 
-# Generic template generation function
-def _generate_template(
+def _handle_database_relations(asset, record: Dict[str, Any], db):
+    """Handle runs_on hosts and storage_locations for database assets."""
+    if record.get("runs_on"):
+        for host_name in record["runs_on"]:
+            host_result = db.execute(
+                select(Asset).where(
+                    Asset.category == "host",
+                    Asset.name == host_name,
+                )
+            )
+            host = host_result.scalar_one_or_none()
+            if host:
+                db.add(AssetHostRelation(asset_id=asset.id, host_id=host.id))
+
+    if record.get("storage_locations"):
+        for loc in record["storage_locations"]:
+            db.add(StorageLocation(
+                asset_id=asset.id,
+                path=loc["path"],
+                path_type=loc["path_type"],
+                description=loc.get("description"),
+            ))
+
+
+def _replace_database_relations(asset_id, record: Dict[str, Any], db):
+    """Replace runs_on hosts and storage_locations for database assets."""
+    if "runs_on" in record:
+        db.execute(delete(AssetHostRelation).where(AssetHostRelation.asset_id == asset_id))
+        if record.get("runs_on"):
+            for host_name in record["runs_on"]:
+                host_result = db.execute(
+                    select(Asset).where(
+                        Asset.category == "host",
+                        Asset.name == host_name,
+                    )
+                )
+                host = host_result.scalar_one_or_none()
+                if host:
+                    db.add(AssetHostRelation(asset_id=asset_id, host_id=host.id))
+
+    if "storage_locations" in record:
+        db.execute(delete(StorageLocation).where(StorageLocation.asset_id == asset_id))
+        if record.get("storage_locations"):
+            for loc in record["storage_locations"]:
+                db.add(StorageLocation(
+                    asset_id=asset_id,
+                    path=loc["path"],
+                    path_type=loc["path_type"],
+                    description=loc.get("description"),
+                ))
+
+# ─── Generic batch operations ────────────────────────────────────────
+
+async def batch_create_assets(
     category: str,
-    mode: str,
-    title: str,
-    fields: List[Tuple[str, str, bool]],
-    example_data: List[str]
-) -> BytesIO:
-    """
-    Generic XLSX template generator
+    records: List[Dict[str, Any]],
+    db: AsyncSession,
+    user_id: Optional[int] = None,
+) -> Tuple[int, List[Dict[str, Any]]]:
+    """Batch create assets for any category.
 
-    Args:
-        category: Asset category (host, network, etc.)
-        mode: 'create' or 'update'
-        title: Sheet title
-        fields: List of (field_name, display_label, is_required)
-        example_data: Example row data
+    Replaces the 6 individual batch_create_* functions.
+    Uses a single query to check all duplicate names at once.
     """
-    wb = Workbook()
-    ws = wb.active
-    ws.title = title
+    cred_type = CATEGORY_CRED_TYPE[category]
+    create_fields = CATEGORY_CREATE_FIELDS[category]
+    success_count = 0
+    failed_records = []
 
-    # Header styles
-    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-    header_font = Font(bold=True, color="FFFFFF", size=11)
-    header_alignment = Alignment(horizontal="center", vertical="center")
-    header_border = Border(
-        left=Side(style='thin', color='B4C6E7'),
-        right=Side(style='thin', color='B4C6E7'),
-        top=Side(style='thin', color='B4C6E7'),
-        bottom=Side(style='thin', color='B4C6E7')
+    # Single batch query for duplicate names
+    names = [r["name"] for r in records]
+    existing_result = await db.execute(
+        select(Asset.name).where(
+            Asset.category == category,
+            Asset.name.in_(names),
+        )
     )
+    existing_names = {row.name for row in existing_result.fetchall()}
 
-    # Write headers
-    for col, (field_name, label, required) in enumerate(fields, 1):
-        cell = ws.cell(row=1, column=col, value=label)
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = header_alignment
-        cell.border = header_border
+    for record in records:
+        try:
+            if record["name"] in existing_names:
+                failed_records.append({
+                    "name": record["name"],
+                    "error": f"资产名称'{record['name']}'已存在",
+                })
+                continue
 
-    # Hint row (below headers, above example data)
-    hint_font = Font(italic=True, color="666666", size=9)
-    for col, (field_name, label, required) in enumerate(fields, 1):
-        cell = ws.cell(row=2, column=col, value="")
-        cell.font = hint_font
-        cell.border = Border(
-            left=Side(style='thin', color='E7E6E6'),
-            right=Side(style='thin', color='E7E6E6'),
-            top=Side(style='thin', color='E7E6E6'),
-            bottom=Side(style='thin', color='E7E6E6')
+            kwargs: Dict[str, Any] = {
+                "name": record["name"],
+                "category": category,
+                "created_by_id": user_id,
+            }
+            for field in create_fields:
+                val = record.get(field)
+                if val is not None:
+                    kwargs[field] = val
+
+            # OOB password encryption (host only)
+            if record.get("oob_password"):
+                kwargs["oob_password_encrypted"] = encrypt_value(record["oob_password"])
+
+            # Database: version → extra_data
+            if category == "database" and record.get("version"):
+                kwargs["extra_data"] = {"version": record["version"]}
+
+            asset = Asset(**kwargs)
+            db.add(asset)
+            await db.flush()
+
+            status = parse_status(record.get("status"))
+            if status:
+                asset.status = status
+
+            _create_credentials(asset, record, cred_type, db)
+
+            if category == "database":
+                _handle_database_relations(asset, record, db)
+
+            success_count += 1
+        except Exception as e:
+            failed_records.append({"name": record.get("name"), "error": str(e)})
+
+    if success_count > 0:
+        await db.commit()
+
+    return success_count, failed_records
+
+
+async def batch_update_assets(
+    category: str,
+    records: List[Dict[str, Any]],
+    db: AsyncSession,
+) -> Tuple[int, List[Dict[str, Any]]]:
+    """Batch update assets for any category.
+
+    Replaces the 6 individual batch_update_* functions.
+    """
+    cred_type = CATEGORY_CRED_TYPE[category]
+    update_fields = CATEGORY_UPDATE_FIELDS[category]
+    success_count = 0
+    failed_records = []
+
+    for record in records:
+        try:
+            result = await db.execute(select(Asset).where(Asset.id == record["id"]))
+            asset = result.scalar_one_or_none()
+            if not asset:
+                failed_records.append({"id": record.get("id"), "error": "资产不存在"})
+                continue
+
+            for field in update_fields:
+                if record.get(field) is not None:
+                    setattr(asset, field, record[field])
+
+            if record.get("organization_id"):
+                asset.organization_id = record["organization_id"]
+
+            # Host: OOB password
+            if category == "host" and record.get("oob_password") is not None:
+                if record["oob_password"]:
+                    asset.oob_password_encrypted = encrypt_value(record["oob_password"])
+                else:
+                    asset.oob_password_encrypted = None
+
+            # Database: version → extra_data
+            if category == "database" and record.get("version"):
+                current_extra = asset.extra_data or {}
+                asset.extra_data = {**current_extra, "version": record["version"]}
+
+            status = parse_status(record.get("status"))
+            if status:
+                asset.status = status
+
+            if "credentials" in record:
+                _replace_credentials(asset.id, record, cred_type, db)
+
+            if category == "database":
+                _replace_database_relations(asset.id, record, db)
+
+            success_count += 1
+        except Exception as e:
+            failed_records.append({"id": record.get("id"), "error": str(e)})
+
+    if success_count > 0:
+        await db.commit()
+
+    return success_count, failed_records
+
+# ─── Backward-compatible aliases ─────────────────────────────────────
+
+async def batch_create_hosts(records, db, user_id=None):
+    return await batch_create_assets("host", records, db, user_id)
+
+async def batch_update_hosts(records, db):
+    return await batch_update_assets("host", records, db)
+
+async def batch_create_networks(records, db, user_id=None):
+    return await batch_create_assets("network", records, db, user_id)
+
+async def batch_update_networks(records, db):
+    return await batch_update_assets("network", records, db)
+
+async def batch_create_databases(records, db, user_id=None):
+    return await batch_create_assets("database", records, db, user_id)
+
+async def batch_update_databases(records, db):
+    return await batch_update_assets("database", records, db)
+
+async def batch_create_clouds(records, db, user_id=None):
+    return await batch_create_assets("cloud", records, db, user_id)
+
+async def batch_update_clouds(records, db):
+    return await batch_update_assets("cloud", records, db)
+
+async def batch_create_webs(records, db, user_id=None):
+    return await batch_create_assets("web", records, db, user_id)
+
+async def batch_update_webs(records, db):
+    return await batch_update_assets("web", records, db)
+
+async def batch_create_gpts(records, db, user_id=None):
+    return await batch_create_assets("gpt", records, db, user_id)
+
+async def batch_update_gpts(records, db):
+    return await batch_update_assets("gpt", records, db)
+
+# ─── Parse import file ───────────────────────────────────────────────
+
+async def _load_relevant_orgs(db: AsyncSession, org_values: List[str]) -> Tuple[
+    Dict[str, int],  # org_name_map: name → id
+    Dict[str, int],  # org_path_map: path → id
+    Dict[str, int],  # org_display_path_map: display_path → id
+]:
+    """Load only organizations referenced by import data and their ancestors.
+
+    Avoids loading the full organizations table when most orgs are irrelevant.
+    """
+    if not org_values:
+        return {}, {}, {}
+
+    # Phase 1: find orgs matching values, collect ancestor IDs
+    names_set = set(org_values)
+    all_orgs: Dict[int, Organization] = {}
+    id_to_name: Dict[int, str] = {}
+
+    while names_set:
+        result = await db.execute(
+            select(Organization).where(Organization.name.in_(names_set))
         )
-        if field_name == "organization":
-            cell.value = "（填写完整路径，节点不存在时会自动创建）"
-        elif field_name == "runs_on":
-            cell.value = "（主机名称，每行一个）"
-        elif field_name == "storage_locations":
-            cell.value = "（路径|类型|描述，每行一个）"
+        new_names: set[str] = set()
+        for org in result.scalars().all():
+            if org.id not in all_orgs:
+                all_orgs[org.id] = org
+                id_to_name[org.id] = org.name
+                if org.parent_id and org.parent_id not in all_orgs:
+                    # Look up parent name from already-loaded orgs
+                    parent_name = id_to_name.get(org.parent_id)
+                    if parent_name:
+                        new_names.add(parent_name)
+        names_set = new_names - set(o.name for o in all_orgs.values())
 
-    # Example row
-    for col, value in enumerate(example_data, 1):
-        cell = ws.cell(row=3, column=col, value=value)
-        cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
-        cell.border = Border(
-            left=Side(style='thin', color='E7E6E6'),
-            right=Side(style='thin', color='E7E6E6'),
-            top=Side(style='thin', color='E7E6E6'),
-            bottom=Side(style='thin', color='E7E6E6')
+    # Phase 2: load any missing ancestors by ID
+    missing_ids = set()
+    for org in all_orgs.values():
+        if org.parent_id and org.parent_id not in all_orgs:
+            missing_ids.add(org.parent_id)
+    while missing_ids:
+        result = await db.execute(
+            select(Organization).where(Organization.id.in_(missing_ids))
         )
+        new_missing: set[int] = set()
+        for org in result.scalars().all():
+            if org.id not in all_orgs:
+                all_orgs[org.id] = org
+                id_to_name[org.id] = org.name
+                if org.parent_id and org.parent_id not in all_orgs:
+                    new_missing.add(org.parent_id)
+        missing_ids = new_missing
 
-    # Set column widths dynamically
-    default_width = 15
-    for idx in range(len(fields)):
-        col_letter = ws.cell(row=1, column=idx + 1).column_letter
-        # Wider columns for specific field types
-        field_name = fields[idx][0]
-        if field_name in ['id', 'address', 'external_address', 'internal_address']:
-            ws.column_dimensions[col_letter].width = 25
-        elif field_name == 'credentials':
-            ws.column_dimensions[col_letter].width = 20
-        elif field_name == 'organization':
-            ws.column_dimensions[col_letter].width = 18
-        elif field_name == 'storage_locations':
-            ws.column_dimensions[col_letter].width = 25
-        else:
-            ws.column_dimensions[col_letter].width = default_width
+    # Phase 3: build lookup maps
+    org_name_map = {org.name: org.id for org in all_orgs.values()}
+    org_path_map = {org.path: org.id for org in all_orgs.values() if org.path}
 
-    # Set row heights
-    ws.row_dimensions[1].height = 25
-    ws.row_dimensions[2].height = 18  # hint row
-    ws.row_dimensions[3].height = 20  # example row
+    org_display_path_map: Dict[str, int] = {}
 
-    buffer = BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
-    return buffer
+    for org in all_orgs.values():
+        if org.path:
+            name_parts = [id_to_name[int(p)] for p in org.path.split('/') if int(p) in id_to_name]
+            if name_parts:
+                dws = ' / '.join(name_parts)
+                dwo = '/'.join(name_parts)
+                org_display_path_map[dws] = org.id
+                org_display_path_map[dwo] = org.id
+                org_display_path_map[f'Default / {dws}'] = org.id
+                org_display_path_map[f'Default/{dwo}'] = org.id
+        org_display_path_map[org.name] = org.id
 
-
-def generate_host_update_template() -> BytesIO:
-    """Generate XLSX template for host update"""
-    example_data = [
-        "56c4d4cd-42ba-4397-abfa-36ecba64af13",  # ID
-        "test-server-01",        # 资产名称
-        "CI001",                 # 资产编号
-        "Default/研发部/服务器组",       # 节点
-        "Linux",                 # 平台
-        "192.168.1.100",         # 外网地址
-        "10.0.0.100",            # 内网地址
-        "admin:123456",          # 用户名密码 (格式：username:password，多行表示多个)
-        "8 核",                  # CPU
-        "16GB",                  # 内存
-        "500GB SSD",             # 系统盘
-        "2TB HDD",               # 数据盘
-        "Dell R740",             # 型号
-        "SN123456",              # 序列号
-        "192.168.1.200",         # OOB 地址
-        "admin",                 # OOB 用户名
-        "admin123",              # OOB 密码
-        "张三",                  # 申请人
-        "启用",                  # 状态 (启用/禁用 或 True/False 或 1/0)
-        "测试服务器 - 开发环境"   # 描述
-    ]
-    return _generate_template("host", "update", "主机更新模板", HOST_UPDATE_FIELDS, example_data)
-
-
-# Network templates
-def generate_network_create_template() -> BytesIO:
-    """Generate XLSX template for network device creation"""
-    example_data = [
-        "Core-SW-01",        # 资产名称
-        "NW001",             # 资产编号
-        "Default/研发部/网络设备",   # 节点
-        "交换机",            # 设备类型
-        "Cisco",             # 厂商
-        "C9300-48P",         # 型号
-        "FCW1234D001",       # 序列号
-        "10.0.0.1",          # 外网地址
-        "192.168.1.1",       # 内网地址
-        "admin:cisco123\nnetadmin:netpass123",  # 用户名密码 (格式：username:password，多行多个)
-        "启用",              # 状态 (True/False 或 1/0 或 启用/禁用)
-        "核心交换机 - 生产环境"  # 描述
-    ]
-    return _generate_template("network", "create", "网络设备导入模板", NETWORK_CREATE_FIELDS, example_data)
-
-
-def generate_network_update_template() -> BytesIO:
-    """Generate XLSX template for network device update"""
-    example_data = [
-        "56c4d4cd-42ba-4397-abfa-36ecba64af13",  # ID
-        "Core-SW-01",      # 资产名称
-        "NW001",           # 资产编号
-        "Default/研发部/网络设备", # 节点
-        "交换机",          # 设备类型
-        "Cisco",           # 厂商
-        "C9300-48P",       # 型号
-        "FCW1234D001",     # 序列号
-        "10.0.0.1",        # 外网地址
-        "192.168.1.1",     # 内网地址
-        "admin:cisco123\nnetadmin:netpass123",  # 用户名密码 (多行)
-        "启用",             # 状态 (支持：启用/禁用，True/False，1/0)
-        "核心交换机 - 生产环境"  # 描述
-    ]
-    return _generate_template("network", "update", "网络设备更新模板", NETWORK_UPDATE_FIELDS, example_data)
-
-
-# Database templates
-def generate_database_create_template() -> BytesIO:
-    """Generate XLSX template for database creation"""
-    example_data = [
-        "MySQL-Prod-01",     # 资产名称
-        "DB001",             # 资产编号
-        "Default/研发部/数据库",     # 节点
-        "RDS",               # 平台
-        "MySQL",             # 数据库类型
-        "",                  # 外网地址
-        "192.168.1.100:3306",  # 内网地址
-        "root:mysqlroot123\napp:apppass",  # 用户名密码 (格式：username:password，多行多个)
-        "web-server-01",           # 运行于 (格式：主机名称，每行一个)
-        "/var/lib/mysql|data|主数据目录",  # 存储位置 (格式：路径|类型|描述)
-        "8.0.32",            # 版本
-        "main",              # 命名空间
-        "张三",              # 申请人
-        "True",              # 状态 (True/False 或 1/0 或 启用/禁用)
-        "生产环境主数据库"    # 描述
-    ]
-    return _generate_template("database", "create", "数据库导入模板", DATABASE_CREATE_FIELDS, example_data)
-
-
-def generate_database_update_template() -> BytesIO:
-    """Generate XLSX template for database update"""
-    example_data = [
-        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "MySQL-Prod-01", "DB001", "Default/研发部/数据库", "RDS", "MySQL",
-        "",  # external_address
-        "192.168.1.100:3306",  # internal_address
-        "root:mysqlroot123\napp:apppass",  # credentials
-        "web-server-01",  # runs_on
-        "/var/lib/mysql|data|主数据目录",  # storage_locations
-        "8.0.32",
-        "main",  # namespace
-        "张三",  # applicant
-        "running",  # status
-        "生产环境主数据库"
-    ]
-    return _generate_template("database", "update", "数据库更新模板", DATABASE_UPDATE_FIELDS, example_data)
-
-
-# Cloud templates
-def generate_cloud_create_template() -> BytesIO:
-    """Generate XLSX template for cloud resource creation"""
-    example_data = [
-        "AWS-Prod-Account",  # 资产名称
-        "CL001",             # 资产编号
-        "Default/研发部/云服务",     # 节点
-        "AWS",               # 平台
-        "https://aws.amazon.com",  # 外网地址
-        "10.0.0.1",          # 内网地址
-        "AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",  # 用户名密码 (格式：AKID:Secret)
-        "True",              # 状态 (True/False 或 1/0 或 启用/禁用)
-        "生产环境 AWS 账号"   # 描述
-    ]
-    return _generate_template("cloud", "create", "云服务导入模板", CLOUD_CREATE_FIELDS, example_data)
-
-
-def generate_cloud_update_template() -> BytesIO:
-    """Generate XLSX template for cloud resource update"""
-    example_data = [
-        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "AWS-Prod-Account", "CL001", "Default/研发部/云服务", "AWS",
-        "https://aws.amazon.com",  # external_address - 外网地址
-        "10.0.0.1",  # internal_address - 内网地址
-        "AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",  # 用户名密码
-        "启用",  # 状态
-        "生产环境 AWS 账号"  # 描述
-    ]
-    return _generate_template("cloud", "update", "云服务更新模板", CLOUD_UPDATE_FIELDS, example_data)
-
-
-# Web templates
-def generate_web_create_template() -> BytesIO:
-    """Generate XLSX template for web application creation"""
-    example_data = [
-        "Jira",                        # 资产名称
-        "WB001",                       # 资产编号
-        "Default/研发部/应用系统",             # 节点
-        "Nginx",                       # 平台
-        "https://jira.example.com",    # 外网地址
-        "http://192.168.1.100:8080",   # 内网地址
-        "admin:jiraadmin\nreadonly:readonly123",  # 用户名密码 (格式：username:password，多行多个)
-        "张三",                        # 申请人
-        "True",                        # 状态 (True/False 或 1/0 或 启用/禁用)
-        "项目管理平台"                 # 描述
-    ]
-    return _generate_template("web", "create", "网站服务导入模板", WEB_CREATE_FIELDS, example_data)
-
-
-def generate_web_update_template() -> BytesIO:
-    """Generate XLSX template for web application update"""
-    example_data = [
-        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "Jira", "WB001", "Default/研发部/应用系统", "Nginx",
-        "https://jira.example.com",
-        "http://192.168.1.100:8080",
-        "admin:jiraadmin\nreadonly:readonly123",
-        "项目管理平台"
-    ]
-    return _generate_template("web", "update", "网站服务更新模板", WEB_UPDATE_FIELDS, example_data)
-
-
-# GPT templates
-def generate_gpt_create_template() -> BytesIO:
-    """Generate XLSX template for GPT/AI service creation"""
-    example_data = [
-        "OpenAI-API",              # 名称
-        "AI001",                   # 资产编号
-        "Default/研发部/AI 服务",          # 节点
-        "OpenAI",                  # 平台
-        "https://api.openai.com/v1",  # 外网地址
-        "",                        # 内网地址
-        "sk-key:sk-abc123xyz\nclue-key:sk-clue456",  # 用户名密码 (格式：key_name:api_key，多行多个)
-        "张三",                    # 申请人
-        "True",                    # 状态 (True/False 或 1/0 或 启用/禁用)
-        "AI 服务 API"               # 描述
-    ]
-    return _generate_template("gpt", "create", "AI 服务导入模板", GPT_CREATE_FIELDS, example_data)
-
-
-def generate_gpt_update_template() -> BytesIO:
-    """Generate XLSX template for GPT/AI service update"""
-    example_data = [
-        "56c4d4cd-42ba-4397-abfa-36ecba64af13", "OpenAI-API", "AI001", "Default/研发部/AI 服务", "OpenAI",
-        "https://api.openai.com/v1", "",  # external_address, internal_address
-        "sk-key:sk-abc123xyz\nclue-key:sk-clue456",
-        "张三",  # applicant
-        "running",  # status
-        "AI 服务 API"  # notes
-    ]
-    return _generate_template("gpt", "update", "AI 服务更新模板", GPT_UPDATE_FIELDS, example_data)
+    return org_name_map, org_path_map, org_display_path_map
 
 
 async def parse_import_file(
     file_content: bytes,
     category: str,
     mode: str,
-    db: AsyncSession
+    db: AsyncSession,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """
-    Parse XLSX file and validate data
-    Returns: (valid_records, error_records)
-    """
-    from openpyxl import load_workbook
+    """Parse XLSX file and validate data.
 
+    Returns: (valid_records, error_records)
+    Side effect: CreatedOrgs is cleared at start, populated with
+        auto-created org paths during parsing for audit reporting.
+    """
+    CreatedOrgs.clear()
     wb = load_workbook(BytesIO(file_content))
     ws = wb.active
 
-    # Get field mapping based on category and mode
-    field_maps = {
-        "host": (HOST_CREATE_FIELDS, HOST_UPDATE_FIELDS),
-        "network": (NETWORK_CREATE_FIELDS, NETWORK_UPDATE_FIELDS),
-        "database": (DATABASE_CREATE_FIELDS, DATABASE_UPDATE_FIELDS),
-        "cloud": (CLOUD_CREATE_FIELDS, CLOUD_UPDATE_FIELDS),
-        "web": (WEB_CREATE_FIELDS, WEB_UPDATE_FIELDS),
-        "gpt": (GPT_CREATE_FIELDS, GPT_UPDATE_FIELDS),
-    }
-
-    if category not in field_maps:
+    if category not in CATEGORY_FIELDS:
         raise ValueError(f"不支持的资产类型：{category}")
 
-    create_fields, update_fields = field_maps[category]
-    fields = create_fields if mode == "create" else update_fields
+    fields = CATEGORY_FIELDS[category][mode]
 
     valid_records = []
     error_records = []
 
-    # Get organizations for name lookup
-    org_result = await db.execute(select(Organization))
-    organizations = org_result.scalars().all()
-    org_name_map = {org.name: org.id for org in organizations}
-    org_path_map = {org.path: org.id for org in organizations if org.path}
-
-    # Build display path map (name-based hierarchy like "智昌集团/harvester" or "Default/智昌集团/harvester")
-    # Also support " / " separator like frontend uses: "Default / 智昌集团 / harvester"
-    org_display_path_map = {}
-    id_to_name = {org.id: org.name for org in organizations}
-
-    for org in organizations:
-        if org.path:
-            # Convert ID path "7/9" to name path "智昌集团/harvester"
-            id_parts = org.path.split('/')
-            name_parts = []
-            for id_part in id_parts:
-                if int(id_part) in id_to_name:
-                    name_parts.append(id_to_name[int(id_part)])
-            if name_parts:
-                # Support both " / " and "/" separators
-                display_path_with_space = ' / '.join(name_parts)
-                display_path_without_space = '/'.join(name_parts)
-                org_display_path_map[display_path_with_space] = org.id
-                org_display_path_map[display_path_without_space] = org.id
-
-                # Also add "Default/..." prefix versions (frontend shows Default as root)
-                default_with_space = f'Default / {display_path_with_space}'
-                default_without_space = f'Default/{display_path_without_space}'
-                org_display_path_map[default_with_space] = org.id
-                org_display_path_map[default_without_space] = org.id
-
-        # Also map simple name
-        org_display_path_map[org.name] = org.id
-
-    # Read header row to map columns by label (supports flexible column order)
+    # Header mapping
     header_row = ws.iter_rows(min_row=1, max_row=1, values_only=True).__next__()
-    # Create mapping from label (without * prefix) to column index (0-based)
-    # fields format: (field_name, "中文标签", is_required)
     header_map = {}
-    expected_labels = {field_label.lstrip('*').strip() for field_name, field_label, _ in fields}
+    expected_labels = {field_label.lstrip('*').strip() for _, field_label, _ in fields}
 
     for col_idx, header in enumerate(header_row):
         if header:
-            # Remove * and * (full/half-width) prefix and whitespace for comparison
             label_key = str(header).strip().replace('*', '').replace('*', '').strip()
             header_map[label_key] = col_idx
 
-    # Validate headers: check if all required fields are present in the Excel
-    missing_headers = []
-    unrecognized_headers = []
+    # Validate headers
+    missing_headers = [h for h in expected_labels if h not in header_map]
+    unrecognized_headers = [h for h in header_map.keys() if h not in expected_labels]
 
-    for label_key in expected_labels:
-        if label_key not in header_map:
-            missing_headers.append(label_key)
-
-    # Check for unrecognized headers (might indicate wrong template)
-    for label_key in header_map.keys():
-        if label_key not in expected_labels:
-            unrecognized_headers.append(label_key)
-
-    # If required fields are missing, return early with error
     if missing_headers:
-        # Add * prefix back for required fields in error message
         missing_display = []
         for h in missing_headers:
             for field_name, label, required in fields:
@@ -744,19 +1020,49 @@ async def parse_import_file(
         return [], [{
             "row": 1,
             "errors": [error_msg],
-            "data": {"提示": f"请检查是否使用了正确的{CATEGORY_NAMES.get(category, category)}{'创建' if mode == 'create' else '更新'}模板"}
+            "data": {"提示": f"请检查是否使用了正确的{CATEGORY_NAMES.get(category, category)}{'创建' if mode == 'create' else '更新'}模板"},
         }]
 
-    # Skip header row, process data rows
+    # Scan data rows for organization values (before loading from DB)
+    org_col_idx = None
+    for field_name, label, _ in fields:
+        if field_name == "organization":
+            org_col_idx = header_map.get(label.lstrip('*').strip())
+            break
+
+    raw_org_values: List[str] = []
+    if org_col_idx is not None:
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if org_col_idx < len(row) and row[org_col_idx]:
+                val = str(row[org_col_idx]).strip()
+                if val:
+                    raw_org_values.append(val)
+
+    # Extract individual org names from path-like values
+    # (e.g., "Default / 研发部 / 服务器组" → ["研发部", "服务器组"])
+    org_values: List[str] = []
+    for val in raw_org_values:
+        org_values.append(val)
+        # Try splitting on common path separators
+        for sep in ('/', ' / '):
+            if sep in val:
+                org_values.extend(n.strip() for n in val.split(sep) if n.strip() != 'Default')
+                break
+
+    # Load only relevant organizations on demand
+    org_name_map, org_path_map, org_display_path_map = await _load_relevant_orgs(
+        db, org_values
+    )
+
+    # Data rows
     for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
-        if not any(row):  # Skip empty rows
+        if not any(row):
             continue
 
         record = {}
         errors = []
 
         for field_name, label, required in fields:
-            # Get label without * for lookup
             label_key = label.lstrip('*').strip()
             col_idx = header_map.get(label_key)
 
@@ -765,36 +1071,32 @@ async def parse_import_file(
             else:
                 value = None
 
-            # Clean value
             if value is not None:
                 value = str(value).strip() if value else None
                 if value == '':
                     value = None
 
-            # Required field validation
             if required and not value:
                 errors.append(f"{label}为必填项")
 
-            # Special handling for organization field
             if field_name == "organization" and value:
-                # Try: display path (name-based like "智昌集团/harvester"), ID path (like "7/9"), then simple name
-                org_id = org_display_path_map.get(value) or org_path_map.get(value) or org_name_map.get(value)
+                org_id = (
+                    org_display_path_map.get(value)
+                    or org_path_map.get(value)
+                    or org_name_map.get(value)
+                )
                 if not org_id:
-                    # Try to auto-create the organization from the path
                     try:
                         org_id = await resolve_or_create_organization(db, value)
                         record["organization_id"] = org_id
                     except ValueError:
-                        # Check if value looks like an asset code (e.g., NW00111, CI001) - user might have filled wrong column
-                        import re
-                        if re.match(r'^[A-Z]+\d+$', value):
+                        if _ASSET_CODE_PATTERN.match(value):
                             errors.append(f"组织节点'{value}'不存在（提示：该值看起来像资产编号，请检查是否误填至节点列）")
                         else:
                             errors.append(f"组织节点'{value}'不存在且无法自动创建")
                 else:
                     record["organization_id"] = org_id
 
-            # Special handling for credentials field (format: username:password, one per line)
             elif field_name == "credentials" and value:
                 credentials_list = []
                 for line_num, line in enumerate(value.split('\n'), 1):
@@ -804,10 +1106,9 @@ async def parse_import_file(
                     if ':' not in line:
                         errors.append(f"用户名密码格式错误（第{line_num}行）：'{line}'，应为 username:password 格式")
                         continue
-                    # Split on first colon only
-                    idx = line.index(':')
-                    username = line[:idx].strip()
-                    password = line[idx+1:].strip()
+                    ci = line.index(':')
+                    username = line[:ci].strip()
+                    password = line[ci + 1:].strip()
                     if not username:
                         errors.append(f"用户名密码格式错误（第{line_num}行）：用户名为空")
                         continue
@@ -818,22 +1119,18 @@ async def parse_import_file(
                 if credentials_list:
                     record["credentials"] = credentials_list
 
-            # Map OOB fields to independent columns (not extra_data)
-            elif field_name in ["oob", "oob_username", "oob_password"]:
+            elif field_name in ("oob", "oob_username", "oob_password"):
                 if value:
-                    # Map 'oob' to 'oob_address' for the independent column
                     if field_name == "oob":
                         record["oob_address"] = value
                     else:
                         record[field_name] = value
 
-            # Special handling for runs_on field (format: host name, one per line)
             elif field_name == "runs_on" and value:
                 host_names = [h.strip() for h in value.split('\n') if h.strip()]
                 if host_names:
                     record["runs_on"] = host_names
 
-            # Special handling for storage_locations field (format: path|type|description, one per line)
             elif field_name == "storage_locations" and value:
                 locations = []
                 for line_num, line in enumerate(value.split('\n'), 1):
@@ -861,895 +1158,28 @@ async def parse_import_file(
                 if locations:
                     record["storage_locations"] = locations
 
-            elif field_name not in ["organization"]:
-                # Field name is already clean
-                # Convert id to string for UUID format (update mode)
-                if field_name == "id" and value:
-                    value = str(value).strip()
-                    if not value:
-                        errors.append("ID 不能为空")
-                        value = None
-                    elif mode == "update":
-                        # Validate UUID format for update mode
-                        import re
-                        uuid_pattern = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-                        if not re.match(uuid_pattern, value.lower()):
-                            errors.append(f"ID 格式无效：'{value}'，应为 UUID 格式（如：56c4d4cd-42ba-4397-abfa-36ecba64af13）")
+            elif field_name == "id" and value:
+                value = str(value).strip()
+                if not value:
+                    errors.append("ID 不能为空")
+                elif mode == "update" and not UUID_PATTERN.match(value.lower()):
+                    errors.append(f"ID 格式无效：'{value}'，应为 UUID 格式")
+                record["id"] = value
+
+            elif field_name != "organization":
                 record[field_name] = value
 
         if errors:
-            # Collect non-empty fields for better error context
-            context = {k: v for k, v in record.items() if v is not None and k in ['name', 'id', 'asset_code']}
-            if len(row) > 0 and any(row):
-                # Add first few non-empty cell values for reference
-                first_non_empty = next((str(v) for v in row if v), None)
-                if first_non_empty:
-                    context['row_data_preview'] = first_non_empty[:50]
-
+            context = {k: v for k, v in record.items() if v is not None and k in ('name', 'id', 'asset_code')}
+            first_non_empty = next((str(v) for v in row if v), None)
+            if first_non_empty:
+                context['row_data_preview'] = first_non_empty[:50]
             error_records.append({
                 "row": row_num,
                 "errors": errors,
-                "data": context or {"row_content": " | ".join(str(v) for v in row[:5] if v)}
+                "data": context or {"row_content": " | ".join(str(v) for v in row[:5] if v)},
             })
         else:
             valid_records.append(record)
 
     return valid_records, error_records
-
-
-async def batch_create_hosts(
-    records: List[Dict[str, Any]],
-    db: AsyncSession,
-    user_id: Optional[int] = None
-) -> Tuple[int, List[Dict[str, Any]]]:
-    """
-    Batch create host assets
-    Returns: (success_count, failed_records)
-    """
-    from app.models import Credential
-
-    success_count = 0
-    failed_records = []
-
-    for record in records:
-        try:
-            # Check for duplicate name
-            existing = await db.execute(
-                select(Asset).where(
-                    Asset.category == "host",
-                    Asset.name == record["name"]
-                )
-            )
-            if existing.scalar_one_or_none():
-                failed_records.append({
-                    "name": record.get("name"),
-                    "error": f"资产名称'{record['name']}'已存在"
-                })
-                continue
-
-            # Encrypt OOB password if provided
-            oob_password_encrypted = None
-            if record.get("oob_password"):
-                oob_password_encrypted = encrypt_value(record["oob_password"])
-
-            asset = Asset(
-                name=record["name"],
-                asset_code=record.get("asset_code"),
-                category="host",
-                created_by_id=user_id,
-                platform=record.get("platform"),
-                external_address=record.get("external_address"),
-                internal_address=record.get("internal_address"),
-                model=record.get("model"),
-                serial_number=record.get("serial_number"),
-                cpu=record.get("cpu"),
-                memory=record.get("memory"),
-                system_disk=record.get("system_disk"),
-                data_disk=record.get("data_disk"),
-                applicant=record.get("applicant"),
-                organization_id=record.get("organization_id"),
-                notes=record.get("notes"),
-                extra_data=record.get("extra_data"),
-                # OOB independent fields
-                oob_address=record.get("oob_address"),
-                oob_username=record.get("oob_username"),
-                oob_password_encrypted=oob_password_encrypted,
-            )
-            db.add(asset)
-            await db.flush()  # Get asset ID
-
-            # Handle status field
-            status = parse_status(record.get("status"))
-            if status:
-                asset.status = status
-
-            # Create credentials if provided
-            if record.get("credentials"):
-                for cred in record["credentials"]:
-                    credential = Credential(
-                        asset_id=asset.id,
-                        username=cred["username"],
-                        password_encrypted=encrypt_value(cred["password"]),
-                        credential_type="password"
-                    )
-                    db.add(credential)
-
-            success_count += 1
-        except Exception as e:
-            failed_records.append({
-                "name": record.get("name"),
-                "error": str(e)
-            })
-
-    if success_count > 0:
-        await db.commit()
-
-    return success_count, failed_records
-
-
-async def batch_create_networks(
-    records: List[Dict[str, Any]],
-    db: AsyncSession,
-    user_id: Optional[int] = None
-) -> Tuple[int, List[Dict[str, Any]]]:
-    """
-    Batch create network assets
-    Returns: (success_count, failed_records)
-    """
-    from app.models import Credential
-
-    success_count = 0
-    failed_records = []
-
-    for record in records:
-        try:
-            # Check for duplicate name
-            existing = await db.execute(
-                select(Asset).where(
-                    Asset.category == "network",
-                    Asset.name == record["name"]
-                )
-            )
-            if existing.scalar_one_or_none():
-                failed_records.append({
-                    "name": record.get("name"),
-                    "error": f"资产名称'{record['name']}'已存在"
-                })
-                continue
-
-            asset = Asset(
-                name=record["name"],
-                asset_code=record.get("asset_code"),
-                category="network",
-                created_by_id=user_id,
-                device_type=record.get("device_type"),
-                vendor=record.get("vendor"),
-                model=record.get("model"),
-                serial_number=record.get("serial_number"),
-                external_address=record.get("external_address"),
-                internal_address=record.get("internal_address"),
-                applicant=record.get("applicant"),
-                organization_id=record.get("organization_id"),
-                notes=record.get("notes"),
-            )
-            db.add(asset)
-            await db.flush()
-
-            # Handle status field
-            status = parse_status(record.get("status"))
-            if status:
-                asset.status = status  # Get asset ID
-
-            # Create credentials if provided
-            if record.get("credentials"):
-                for cred in record["credentials"]:
-                    credential = Credential(
-                        asset_id=asset.id,
-                        username=cred["username"],
-                        password_encrypted=encrypt_value(cred["password"]),
-                        credential_type="password"
-                    )
-                    db.add(credential)
-
-            success_count += 1
-        except Exception as e:
-            failed_records.append({
-                "name": record.get("name"),
-                "error": str(e)
-            })
-
-    if success_count > 0:
-        await db.commit()
-
-    return success_count, failed_records
-
-
-async def batch_update_networks(
-    records: List[Dict[str, Any]],
-    db: AsyncSession
-) -> Tuple[int, List[Dict[str, Any]]]:
-    """
-    Batch update network assets by ID
-    Returns: (success_count, failed_records)
-    """
-    from app.models import Credential
-    from sqlalchemy import delete
-
-    success_count = 0
-    failed_records = []
-
-    for record in records:
-        try:
-            result = await db.execute(
-                select(Asset).where(Asset.id == record["id"])
-            )
-            asset = result.scalar_one_or_none()
-
-            if not asset:
-                failed_records.append({
-                    "id": record.get("id"),
-                    "error": "资产不存在"
-                })
-                continue
-
-            # Update fields
-            for field in ["name", "asset_code", "device_type", "vendor", "model",
-                          "serial_number", "external_address", "internal_address", "applicant", "notes"]:
-                if record.get(field):
-                    setattr(asset, field, record[field])
-
-            if record.get("organization_id"):
-                asset.organization_id = record["organization_id"]
-
-            # Handle status field
-            status = parse_status(record.get("status"))
-            if status:
-                asset.status = status
-
-            # Handle credentials update
-            if "credentials" in record:
-                await db.execute(
-                    delete(Credential).where(Credential.asset_id == asset.id)
-                )
-                if record["credentials"]:
-                    for cred in record["credentials"]:
-                        credential = Credential(
-                            asset_id=asset.id,
-                            username=cred["username"],
-                            password_encrypted=encrypt_value(cred["password"]),
-                            credential_type="password"
-                        )
-                        db.add(credential)
-
-            success_count += 1
-        except Exception as e:
-            failed_records.append({
-                "id": record.get("id"),
-                "error": str(e)
-            })
-
-    if success_count > 0:
-        await db.commit()
-
-    return success_count, failed_records
-
-
-# Database batch operations
-async def batch_create_databases(
-    records: List[Dict[str, Any]],
-    db: AsyncSession,
-    user_id: Optional[int] = None
-) -> Tuple[int, List[Dict[str, Any]]]:
-    from app.models import Credential
-
-    success_count = 0
-    failed_records = []
-
-    for record in records:
-        try:
-            # Check for duplicate name
-            existing = await db.execute(
-                select(Asset).where(
-                    Asset.category == "database",
-                    Asset.name == record["name"]
-                )
-            )
-            if existing.scalar_one_or_none():
-                failed_records.append({
-                    "name": record.get("name"),
-                    "error": f"资产名称'{record['name']}'已存在"
-                })
-                continue
-
-            asset = Asset(
-                name=record["name"],
-                asset_code=record.get("asset_code"),
-                category="database",
-                created_by_id=user_id,
-                platform=record.get("platform"),
-                db_type=record.get("db_type"),
-                external_address=record.get("external_address"),
-                internal_address=record.get("internal_address"),
-                applicant=record.get("applicant"),
-                namespace=record.get("namespace"),  # 命名空间字段
-                organization_id=record.get("organization_id"),
-                notes=record.get("notes"),
-                extra_data={
-                    "version": record.get("version")
-                } if record.get("version") else None,
-            )
-            db.add(asset)
-            await db.flush()
-
-            # Handle status field
-            status = parse_status(record.get("status"))
-            if status:
-                asset.status = status
-
-            if record.get("credentials"):
-                for cred in record["credentials"]:
-                    credential = Credential(
-                        asset_id=asset.id,
-                        username=cred["username"],
-                        password_encrypted=encrypt_value(cred["password"]),
-                        credential_type="password"
-                    )
-                    db.add(credential)
-
-            # Handle runs_on - resolve host names to host IDs
-            if record.get("runs_on"):
-                from app.models import AssetHostRelation
-                for host_name in record["runs_on"]:
-                    host_result = await db.execute(
-                        select(Asset).where(
-                            Asset.category == "host",
-                            Asset.name == host_name,
-                        )
-                    )
-                    host = host_result.scalar_one_or_none()
-                    if host:
-                        relation = AssetHostRelation(
-                            asset_id=asset.id,
-                            host_id=host.id,
-                        )
-                        db.add(relation)
-
-            # Handle storage_locations
-            if record.get("storage_locations"):
-                from app.models import StorageLocation
-                for loc in record["storage_locations"]:
-                    storage_loc = StorageLocation(
-                        asset_id=asset.id,
-                        path=loc["path"],
-                        path_type=loc["path_type"],
-                        description=loc.get("description"),
-                    )
-                    db.add(storage_loc)
-
-            success_count += 1
-        except Exception as e:
-            failed_records.append({"name": record.get("name"), "error": str(e)})
-
-    if success_count > 0:
-        await db.commit()
-    return success_count, failed_records
-
-
-async def batch_update_databases(
-    records: List[Dict[str, Any]],
-    db: AsyncSession
-) -> Tuple[int, List[Dict[str, Any]]]:
-    from app.models import Credential
-    from sqlalchemy import delete
-
-    success_count = 0
-    failed_records = []
-
-    for record in records:
-        try:
-            result = await db.execute(select(Asset).where(Asset.id == record["id"]))
-            asset = result.scalar_one_or_none()
-            if not asset:
-                failed_records.append({"id": record.get("id"), "error": "资产不存在"})
-                continue
-
-            for field in ["name", "asset_code", "platform", "db_type", "external_address", "internal_address", "applicant", "namespace", "notes"]:
-                if record.get(field):
-                    setattr(asset, field, record[field])
-
-            if record.get("organization_id"):
-                asset.organization_id = record["organization_id"]
-
-            # Handle status field
-            status = parse_status(record.get("status"))
-            if status:
-                asset.status = status
-
-            # Handle version in extra_data
-            if record.get("version"):
-                current_extra = asset.extra_data or {}
-                asset.extra_data = {**current_extra, "version": record["version"]}
-
-            if "credentials" in record:
-                await db.execute(delete(Credential).where(Credential.asset_id == asset.id))
-                if record["credentials"]:
-                    for cred in record["credentials"]:
-                        db.add(Credential(
-                            asset_id=asset.id,
-                            username=cred["username"],
-                            password_encrypted=encrypt_value(cred["password"]),
-                            credential_type="password"
-                        ))
-
-            # Handle runs_on - replace existing relations
-            if "runs_on" in record:
-                from app.models import AssetHostRelation
-                await db.execute(delete(AssetHostRelation).where(AssetHostRelation.asset_id == asset.id))
-                if record["runs_on"]:
-                    for host_name in record["runs_on"]:
-                        host_result = await db.execute(
-                            select(Asset).where(
-                                Asset.category == "host",
-                                Asset.name == host_name,
-                            )
-                        )
-                        host = host_result.scalar_one_or_none()
-                        if host:
-                            db.add(AssetHostRelation(asset_id=asset.id, host_id=host.id))
-
-            # Handle storage_locations - replace existing locations
-            if "storage_locations" in record:
-                from app.models import StorageLocation
-                await db.execute(delete(StorageLocation).where(StorageLocation.asset_id == asset.id))
-                if record["storage_locations"]:
-                    for loc in record["storage_locations"]:
-                        db.add(StorageLocation(
-                            asset_id=asset.id,
-                            path=loc["path"],
-                            path_type=loc["path_type"],
-                            description=loc.get("description"),
-                        ))
-
-            success_count += 1
-        except Exception as e:
-            failed_records.append({"id": record.get("id"), "error": str(e)})
-
-    if success_count > 0:
-        await db.commit()
-    return success_count, failed_records
-
-
-# Cloud batch operations
-async def batch_create_clouds(
-    records: List[Dict[str, Any]],
-    db: AsyncSession,
-    user_id: Optional[int] = None
-) -> Tuple[int, List[Dict[str, Any]]]:
-    from app.models import Credential
-
-    success_count = 0
-    failed_records = []
-
-    for record in records:
-        try:
-            # Check for duplicate name
-            existing = await db.execute(
-                select(Asset).where(
-                    Asset.category == "cloud",
-                    Asset.name == record["name"]
-                )
-            )
-            if existing.scalar_one_or_none():
-                failed_records.append({
-                    "name": record.get("name"),
-                    "error": f"资产名称'{record['name']}'已存在"
-                })
-                continue
-
-            asset = Asset(
-                name=record["name"],
-                asset_code=record.get("asset_code"),
-                category="cloud",
-                created_by_id=user_id,
-                platform=record.get("platform"),
-                external_address=record.get("external_address"),
-                internal_address=record.get("internal_address"),
-                organization_id=record.get("organization_id"),
-                notes=record.get("notes"),
-            )
-            db.add(asset)
-            await db.flush()
-
-            # Handle status field
-            status = parse_status(record.get("status"))
-            if status:
-                asset.status = status
-
-            if record.get("credentials"):
-                for cred in record["credentials"]:
-                    credential = Credential(
-                        asset_id=asset.id,
-                        username=cred["username"],  # AKID/SecretId
-                        password_encrypted=encrypt_value(cred["password"]),  # Secret/SecretKey
-                        credential_type="api_key"
-                    )
-                    db.add(credential)
-
-            success_count += 1
-        except Exception as e:
-            failed_records.append({"name": record.get("name"), "error": str(e)})
-
-    if success_count > 0:
-        await db.commit()
-    return success_count, failed_records
-
-
-async def batch_update_clouds(
-    records: List[Dict[str, Any]],
-    db: AsyncSession
-) -> Tuple[int, List[Dict[str, Any]]]:
-    from app.models import Credential
-    from sqlalchemy import delete
-
-    success_count = 0
-    failed_records = []
-
-    for record in records:
-        try:
-            result = await db.execute(select(Asset).where(Asset.id == record["id"]))
-            asset = result.scalar_one_or_none()
-            if not asset:
-                failed_records.append({"id": record.get("id"), "error": "资产不存在"})
-                continue
-
-            for field in ["name", "asset_code", "platform", "external_address", "internal_address", "notes"]:
-                if record.get(field):
-                    setattr(asset, field, record[field])
-
-            if record.get("organization_id"):
-                asset.organization_id = record["organization_id"]
-
-            # Handle status field
-            status = parse_status(record.get("status"))
-            if status:
-                asset.status = status
-
-            if "credentials" in record:
-                await db.execute(delete(Credential).where(Credential.asset_id == asset.id))
-                if record["credentials"]:
-                    for cred in record["credentials"]:
-                        db.add(Credential(
-                            asset_id=asset.id,
-                            username=cred["username"],
-                            password_encrypted=encrypt_value(cred["password"]),
-                            credential_type="api_key"
-                        ))
-
-            success_count += 1
-        except Exception as e:
-            failed_records.append({"id": record.get("id"), "error": str(e)})
-
-    if success_count > 0:
-        await db.commit()
-    return success_count, failed_records
-
-
-# Web batch operations
-async def batch_create_webs(
-    records: List[Dict[str, Any]],
-    db: AsyncSession,
-    user_id: Optional[int] = None
-) -> Tuple[int, List[Dict[str, Any]]]:
-    from app.models import Credential
-
-    success_count = 0
-    failed_records = []
-
-    for record in records:
-        try:
-            # Check for duplicate name
-            existing = await db.execute(
-                select(Asset).where(
-                    Asset.category == "web",
-                    Asset.name == record["name"]
-                )
-            )
-            if existing.scalar_one_or_none():
-                failed_records.append({
-                    "name": record.get("name"),
-                    "error": f"资产名称'{record['name']}'已存在"
-                })
-                continue
-
-            asset = Asset(
-                name=record["name"],
-                asset_code=record.get("asset_code"),
-                category="web",
-                created_by_id=user_id,
-                platform=record.get("platform"),
-                external_address=record.get("external_address"),
-                internal_address=record.get("internal_address"),
-                applicant=record.get("applicant"),
-                organization_id=record.get("organization_id"),
-                notes=record.get("notes"),
-            )
-            db.add(asset)
-            await db.flush()
-
-            # Handle status field
-            status = parse_status(record.get("status"))
-            if status:
-                asset.status = status
-
-            if record.get("credentials"):
-                for cred in record["credentials"]:
-                    credential = Credential(
-                        asset_id=asset.id,
-                        username=cred["username"],
-                        password_encrypted=encrypt_value(cred["password"]),
-                        credential_type="password"
-                    )
-                    db.add(credential)
-
-            success_count += 1
-        except Exception as e:
-            failed_records.append({"name": record.get("name"), "error": str(e)})
-
-    if success_count > 0:
-        await db.commit()
-    return success_count, failed_records
-
-
-async def batch_update_webs(
-    records: List[Dict[str, Any]],
-    db: AsyncSession
-) -> Tuple[int, List[Dict[str, Any]]]:
-    from app.models import Credential
-    from sqlalchemy import delete
-
-    success_count = 0
-    failed_records = []
-
-    for record in records:
-        try:
-            result = await db.execute(select(Asset).where(Asset.id == record["id"]))
-            asset = result.scalar_one_or_none()
-            if not asset:
-                failed_records.append({"id": record.get("id"), "error": "资产不存在"})
-                continue
-
-            for field in ["name", "asset_code", "platform", "external_address", "internal_address", "applicant", "notes"]:
-                if record.get(field):
-                    setattr(asset, field, record[field])
-
-            if record.get("organization_id"):
-                asset.organization_id = record["organization_id"]
-
-            # Handle status field
-            status = parse_status(record.get("status"))
-            if status:
-                asset.status = status
-
-            if "credentials" in record:
-                await db.execute(delete(Credential).where(Credential.asset_id == asset.id))
-                if record["credentials"]:
-                    for cred in record["credentials"]:
-                        db.add(Credential(
-                            asset_id=asset.id,
-                            username=cred["username"],
-                            password_encrypted=encrypt_value(cred["password"]),
-                            credential_type="password"
-                        ))
-
-            success_count += 1
-        except Exception as e:
-            failed_records.append({"id": record.get("id"), "error": str(e)})
-
-    if success_count > 0:
-        await db.commit()
-    return success_count, failed_records
-
-
-# GPT batch operations
-async def batch_create_gpts(
-    records: List[Dict[str, Any]],
-    db: AsyncSession,
-    user_id: Optional[int] = None
-) -> Tuple[int, List[Dict[str, Any]]]:
-    from app.models import Credential
-
-    success_count = 0
-    failed_records = []
-
-    for record in records:
-        try:
-            # Check for duplicate name
-            existing = await db.execute(
-                select(Asset).where(
-                    Asset.category == "gpt",
-                    Asset.name == record["name"]
-                )
-            )
-            if existing.scalar_one_or_none():
-                failed_records.append({
-                    "name": record.get("name"),
-                    "error": f"资产名称'{record['name']}'已存在"
-                })
-                continue
-
-            asset = Asset(
-                name=record["name"],
-                asset_code=record.get("asset_code"),
-                category="gpt",
-                created_by_id=user_id,
-                platform=record.get("platform"),
-                external_address=record.get("external_address"),
-                internal_address=record.get("internal_address"),
-                applicant=record.get("applicant"),
-                organization_id=record.get("organization_id"),
-                notes=record.get("notes"),
-            )
-            db.add(asset)
-            await db.flush()
-
-            # Handle status field
-            status = parse_status(record.get("status"))
-            if status:
-                asset.status = status
-
-            if record.get("credentials"):
-                for cred in record["credentials"]:
-                    credential = Credential(
-                        asset_id=asset.id,
-                        username=cred["username"],  # API key name/label
-                        password_encrypted=encrypt_value(cred["password"]),  # API key value
-                        credential_type="api_key"
-                    )
-                    db.add(credential)
-
-            success_count += 1
-        except Exception as e:
-            failed_records.append({"name": record.get("name"), "error": str(e)})
-
-    if success_count > 0:
-        await db.commit()
-    return success_count, failed_records
-
-
-async def batch_update_gpts(
-    records: List[Dict[str, Any]],
-    db: AsyncSession
-) -> Tuple[int, List[Dict[str, Any]]]:
-    from app.models import Credential
-    from sqlalchemy import delete
-
-    success_count = 0
-    failed_records = []
-
-    for record in records:
-        try:
-            result = await db.execute(select(Asset).where(Asset.id == record["id"]))
-            asset = result.scalar_one_or_none()
-            if not asset:
-                failed_records.append({"id": record.get("id"), "error": "资产不存在"})
-                continue
-
-            for field in ["name", "asset_code", "platform", "external_address", "internal_address", "applicant", "notes"]:
-                if record.get(field):
-                    setattr(asset, field, record[field])
-
-            if record.get("organization_id"):
-                asset.organization_id = record["organization_id"]
-
-            # Handle status field
-            status = parse_status(record.get("status"))
-            if status:
-                asset.status = status
-
-            if "credentials" in record:
-                await db.execute(delete(Credential).where(Credential.asset_id == asset.id))
-                if record["credentials"]:
-                    for cred in record["credentials"]:
-                        db.add(Credential(
-                            asset_id=asset.id,
-                            username=cred["username"],
-                            password_encrypted=encrypt_value(cred["password"]),
-                            credential_type="api_key"
-                        ))
-
-            success_count += 1
-        except Exception as e:
-            failed_records.append({"id": record.get("id"), "error": str(e)})
-
-    if success_count > 0:
-        await db.commit()
-    return success_count, failed_records
-
-
-async def batch_update_hosts(
-    records: List[Dict[str, Any]],
-    db: AsyncSession
-) -> Tuple[int, List[Dict[str, Any]]]:
-    """
-    Batch update host assets by ID
-    Returns: (success_count, failed_records)
-    """
-    from app.models import Credential
-    from sqlalchemy import delete
-
-    success_count = 0
-    failed_records = []
-
-    for record in records:
-        try:
-            result = await db.execute(
-                select(Asset).where(Asset.id == record["id"])
-            )
-            asset = result.scalar_one_or_none()
-
-            if not asset:
-                failed_records.append({
-                    "id": record.get("id"),
-                    "error": "资产不存在"
-                })
-                continue
-
-            # Update fields (only non-null values)
-            for field in ["name", "asset_code", "platform", "external_address",
-                          "internal_address", "model", "serial_number", "cpu", "memory",
-                          "system_disk", "data_disk", "applicant", "notes"]:
-                if record.get(field):
-                    setattr(asset, field, record[field])
-
-            if record.get("organization_id"):
-                asset.organization_id = record["organization_id"]
-
-            # Update OOB independent fields
-            if record.get("oob_address") is not None:
-                asset.oob_address = record["oob_address"] if record["oob_address"] else None
-            if record.get("oob_username") is not None:
-                asset.oob_username = record["oob_username"] if record["oob_username"] else None
-            if record.get("oob_password") is not None:
-                if record["oob_password"]:
-                    asset.oob_password_encrypted = encrypt_value(record["oob_password"])
-                else:
-                    asset.oob_password_encrypted = None
-
-            # Handle status field
-            status = parse_status(record.get("status"))
-            if status:
-                asset.status = status
-
-            if record.get("extra_data"):
-                # Merge extra_data
-                current_extra = asset.extra_data or {}
-                asset.extra_data = {**current_extra, **record["extra_data"]}
-
-            # Handle credentials update (replace all)
-            if "credentials" in record:
-                # Delete existing credentials
-                await db.execute(
-                    delete(Credential).where(Credential.asset_id == asset.id)
-                )
-                # Create new credentials
-                if record["credentials"]:
-                    for cred in record["credentials"]:
-                        credential = Credential(
-                            asset_id=asset.id,
-                            username=cred["username"],
-                            password_encrypted=encrypt_value(cred["password"]),
-                            credential_type="password"
-                        )
-                        db.add(credential)
-
-            success_count += 1
-        except Exception as e:
-            failed_records.append({
-                "id": record.get("id"),
-                "error": str(e)
-            })
-
-    if success_count > 0:
-        await db.commit()
-
-    return success_count, failed_records

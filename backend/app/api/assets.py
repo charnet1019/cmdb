@@ -24,36 +24,23 @@ from app.schemas import (
 from app.api.deps import get_current_user, PermissionChecker
 from app.core.encryption import encrypt_value, decrypt_value
 from app.services.import_service import (
-    generate_host_create_template,
-    generate_host_update_template,
-    generate_network_create_template,
-    generate_network_update_template,
-    generate_database_create_template,
-    generate_database_update_template,
-    generate_cloud_create_template,
-    generate_cloud_update_template,
-    generate_web_create_template,
-    generate_web_update_template,
-    generate_gpt_create_template,
-    generate_gpt_update_template,
+    generate_category_template,
     parse_import_file,
-    batch_create_hosts,
-    batch_update_hosts,
-    batch_create_networks,
-    batch_update_networks,
-    batch_create_databases,
-    batch_update_databases,
-    batch_create_clouds,
-    batch_update_clouds,
-    batch_create_webs,
-    batch_update_webs,
-    batch_create_gpts,
-    batch_update_gpts,
+    batch_create_assets,
+    batch_update_assets,
+    CATEGORY_FIELDS,
+    get_created_orgs,
 )
 from app.services.export_service import (
     export_assets_to_excel,
-    export_assets_to_csv
+    export_assets_to_csv,
+    _export_excel_stream,
+    _export_csv_stream,
+    CATEGORY_COLUMNS,
+    DEFAULT_COLUMNS,
 )
+from app.utils.audit import log_operation
+from app.utils.rate_limit import check_rate_limit
 
 
 # Request models
@@ -669,57 +656,23 @@ async def download_import_template(
     mode: str = Query("create", description="create or update"),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Download XLSX import template for specified category
-    Supports: host, network, database, cloud, web, gpt
-    """
-    # Category mapping for template generators
-    template_map = {
-        "host": {
-            "create": (generate_host_create_template, "主机创建模板.xlsx"),
-            "update": (generate_host_update_template, "主机更新模板.xlsx"),
-        },
-        "network": {
-            "create": (generate_network_create_template, "网络设备创建模板.xlsx"),
-            "update": (generate_network_update_template, "网络设备更新模板.xlsx"),
-        },
-        "database": {
-            "create": (generate_database_create_template, "数据库创建模板.xlsx"),
-            "update": (generate_database_update_template, "数据库更新模板.xlsx"),
-        },
-        "cloud": {
-            "create": (generate_cloud_create_template, "云服务创建模板.xlsx"),
-            "update": (generate_cloud_update_template, "云服务更新模板.xlsx"),
-        },
-        "web": {
-            "create": (generate_web_create_template, "网站服务创建模板.xlsx"),
-            "update": (generate_web_update_template, "网站服务更新模板.xlsx"),
-        },
-        "gpt": {
-            "create": (generate_gpt_create_template, "AI 服务创建模板.xlsx"),
-            "update": (generate_gpt_update_template, "AI 服务更新模板.xlsx"),
-        },
-    }
-
-    if category not in template_map:
+    """Download XLSX import template for specified category."""
+    if category not in CATEGORY_FIELDS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"不支持的资产类型：{category}"
         )
-
-    if mode not in ["create", "update"]:
+    if mode not in ("create", "update"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="mode 参数必须是 create 或 update"
         )
 
-    generator, filename = template_map[category][mode]
-    buffer = generator()
-
+    buffer, filename = generate_category_template(category, mode)
     return StreamingResponse(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{quote(filename)}"'}
+        headers={"Content-Disposition": f'attachment; filename="{quote(filename)}"'},
     )
 
 
@@ -729,20 +682,22 @@ async def import_assets(
     mode: str = Query("create", description="create or update"),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("manage")),
 ):
-    """
-    Import assets from XLSX file
-    Supported categories: host, network, database, cloud, web, gpt
-    """
-    supported_categories = ["host", "network", "database", "cloud", "web", "gpt"]
-    if category not in supported_categories:
+    """Import assets from XLSX file."""
+    # Validate category before reading file
+    if category not in CATEGORY_FIELDS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"不支持的资产类型：{category}。支持的类型：{', '.join(supported_categories)}"
+            detail=f"不支持的资产类型：{category}。支持的类型：{', '.join(CATEGORY_FIELDS.keys())}"
+        )
+    if mode not in ("create", "update"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="mode 参数必须是 create 或 update"
         )
 
-    # Validate file type
+    # Validate file type by extension and magic bytes
     if not file.filename or not file.filename.endswith(".xlsx"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -759,46 +714,46 @@ async def import_assets(
             detail="文件大小不能超过10MB"
         )
 
+    # Validate XLSX magic bytes (ZIP archive starting with PK)
+    if not content.startswith(b'PK'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="文件格式不正确，请上传有效的 xlsx 文件"
+        )
+
     try:
-        # Parse and validate
         valid_records, parse_errors = await parse_import_file(content, category, mode, db)
 
-        # Process valid records based on category
-        if category == "host":
-            if mode == "create":
-                success_count, process_errors = await batch_create_hosts(valid_records, db, current_user.id)
-            else:
-                success_count, process_errors = await batch_update_hosts(valid_records, db)
-        elif category == "network":
-            if mode == "create":
-                success_count, process_errors = await batch_create_networks(valid_records, db, current_user.id)
-            else:
-                success_count, process_errors = await batch_update_networks(valid_records, db)
-        elif category == "database":
-            if mode == "create":
-                success_count, process_errors = await batch_create_databases(valid_records, db, current_user.id)
-            else:
-                success_count, process_errors = await batch_update_databases(valid_records, db)
-        elif category == "cloud":
-            if mode == "create":
-                success_count, process_errors = await batch_create_clouds(valid_records, db, current_user.id)
-            else:
-                success_count, process_errors = await batch_update_clouds(valid_records, db)
-        elif category == "web":
-            if mode == "create":
-                success_count, process_errors = await batch_create_webs(valid_records, db, current_user.id)
-            else:
-                success_count, process_errors = await batch_update_webs(valid_records, db)
-        elif category == "gpt":
-            if mode == "create":
-                success_count, process_errors = await batch_create_gpts(valid_records, db, current_user.id)
-            else:
-                success_count, process_errors = await batch_update_gpts(valid_records, db)
-        else:
-            raise HTTPException(400, f"不支持的资产类型：{category}")
+        # Dispatch to unified batch handler
+        batch_fn = (
+            batch_create_assets if mode == "create"
+            else batch_update_assets
+        )
 
-        # Combine errors
+        if mode == "create":
+            success_count, process_errors = await batch_fn(category, valid_records, db, current_user.id)
+        else:
+            success_count, process_errors = await batch_fn(category, valid_records, db)
+
         all_errors = parse_errors + process_errors
+
+        # Audit log
+        created_orgs = get_created_orgs()
+        await log_operation(
+            db=db,
+            user_id=current_user.id,
+            action="import",
+            resource_type="asset",
+            resource_id=0,
+            details={
+                "category": category,
+                "mode": mode,
+                "total_rows": len(valid_records) + len(parse_errors),
+                "success_count": success_count,
+                "failed_count": len(all_errors),
+                "created_orgs": list(created_orgs) if created_orgs else None,
+            },
+        )
 
         return ImportResponse(
             data=ImportResult(
@@ -840,17 +795,18 @@ async def export_assets(
     search: Optional[str] = Query(None, description="Search query"),
     ids: Optional[str] = Query(None, description="Comma-separated asset IDs for selected scope"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("manage")),
 ):
     """
-    Export assets to Excel or CSV
+    Export assets to Excel or CSV with chunked streaming.
     scope: all (all assets), selected (specific IDs), filtered (current search/filter)
     """
+    CHUNK_SIZE = 500
+
     # Build query based on scope
     query = select(Asset)
 
     if scope == "selected" and ids:
-        # Export only selected assets
         asset_ids = [id.strip() for id in ids.split(",") if id.strip()]
         if not asset_ids:
             raise HTTPException(
@@ -859,7 +815,6 @@ async def export_assets(
             )
         query = query.where(Asset.id.in_(asset_ids))
     else:
-        # Apply filters for 'all' or 'filtered' scope
         if category:
             query = query.where(Asset.category == category)
         if organization_id is not None:
@@ -868,113 +823,156 @@ async def export_assets(
         if search:
             query = apply_search_filter(query, search)
 
-    # Execute query with credentials loaded
+    # Add eager loading
     query = query.options(selectinload(Asset.credentials))
-
-    # For database assets, also load runs_on hosts and storage locations
     if category == "database":
         query = query.options(
             selectinload(Asset.database_hosts).selectinload(AssetHostRelation.host_asset),
             selectinload(Asset.storage_locations),
         )
 
-    result = await db.execute(query)
-    assets = result.scalars().all()
-
-    if not assets:
+    # Count for 404 check and audit
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(count_query)).scalar() or 0
+    if total == 0:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="未找到要导出的资产"
         )
 
-    # Get organization data for full path building
-    org_ids = set(a.organization_id for a in assets if a.organization_id is not None)
-    org_map = {}  # id -> (name, parent_id)
-    if org_ids:
-        # Collect all ancestor orgs so paths are complete
-        all_org_ids = set(org_ids)
+    # Execute with chunking
+    query = query.limit(CHUNK_SIZE)
+
+    # Column config
+    export_category = category if category else None
+    export_columns = (
+        CATEGORY_COLUMNS.get(export_category, DEFAULT_COLUMNS)
+        if export_category
+        else DEFAULT_COLUMNS
+    )
+
+    # --- async generator: yields formatted asset dicts chunk by chunk ---
+
+    org_map: Dict[int, tuple] = {}
+    creator_names: Dict[int, str] = {}
+
+    async def _asset_data_gen():
+        nonlocal org_map, creator_names
+        offset = 0
         while True:
-            org_result = await db.execute(
-                select(Organization.id, Organization.name, Organization.parent_id)
-                .where(Organization.id.in_(all_org_ids))
-            )
-            rows = org_result.fetchall()
-            for row in rows:
-                org_map[row.id] = (row.name, row.parent_id)
-                if row.parent_id and row.parent_id not in all_org_ids:
-                    all_org_ids.add(row.parent_id)
-            if not any(row.parent_id and row.parent_id not in org_map for row in rows):
+            chunk_query = query.offset(offset).order_by(Asset.id)
+            result = await db.execute(chunk_query)
+            assets = result.scalars().all()
+            if not assets:
                 break
 
-    # Get creator names
-    creator_ids = set(a.created_by_id for a in assets if a.created_by_id)
-    creator_names = {}
-    if creator_ids:
-        creator_result = await db.execute(
-            select(User.id, User.username).where(User.id.in_(creator_ids))
-        )
-        creator_names = {row.id: row.username for row in creator_result}
+            # First chunk: load org_map for full-path building
+            if not org_map:
+                org_ids = set(
+                    a.organization_id for a in assets if a.organization_id is not None
+                )
+                if org_ids:
+                    all_org_ids = set(org_ids)
+                    while True:
+                        org_result = await db.execute(
+                            select(Organization.id, Organization.name, Organization.parent_id)
+                            .where(Organization.id.in_(all_org_ids))
+                        )
+                        rows = org_result.fetchall()
+                        for row in rows:
+                            org_map[row.id] = (row.name, row.parent_id)
+                            if row.parent_id and row.parent_id not in all_org_ids:
+                                all_org_ids.add(row.parent_id)
+                        if not any(
+                            row.parent_id and row.parent_id not in org_map
+                            for row in rows
+                        ):
+                            break
 
-    # Prepare asset data
-    asset_data = []
-    for asset in assets:
-        # Decrypt credentials
-        credentials = []
-        for cred in asset.credentials:
-            try:
-                decrypted_password = decrypt_value(cred.password_encrypted)
-                credentials.append({
-                    "username": cred.username,
-                    "password": decrypted_password
-                })
-            except Exception:
-                # Skip if decryption fails
-                credentials.append({
-                    "username": cred.username,
-                    "password": ""  # Empty password if decryption fails
-                })
+            # Per-chunk: load creator names
+            chunk_creator_ids = set(
+                a.created_by_id for a in assets if a.created_by_id
+            )
+            if chunk_creator_ids:
+                cr = await db.execute(
+                    select(User.id, User.username).where(User.id.in_(chunk_creator_ids))
+                )
+                creator_names.update({row.id: row.username for row in cr})
 
-        # Get full organization path for export
-        org_name = build_org_full_path(asset.organization_id, org_map)
+            # For database assets, load relations per chunk
+            if category == "database":
+                db_query = (
+                    select(Asset)
+                    .options(
+                        selectinload(Asset.database_hosts)
+                        .selectinload(AssetHostRelation.host_asset),
+                        selectinload(Asset.storage_locations),
+                    )
+                    .where(Asset.id.in_([a.id for a in assets]))
+                )
+                assets = (await db.execute(db_query)).scalars().all()
 
-        # Decrypt OOB password
-        decrypted_oob_password = None
-        if asset.oob_password_encrypted:
-            try:
-                decrypted_oob_password = decrypt_value(asset.oob_password_encrypted)
-            except Exception:
-                decrypted_oob_password = ""
+            for asset in assets:
+                # Decrypt credentials
+                credentials = []
+                for cred in asset.credentials:
+                    try:
+                        dp = decrypt_value(cred.password_encrypted)
+                        credentials.append({"username": cred.username, "password": dp})
+                    except Exception:
+                        credentials.append({"username": cred.username, "password": ""})
 
-        asset_data.append(build_asset_response(
-            asset,
-            org_name=org_name,
-            include_credentials=True,
-            credentials_data=credentials,
-            include_decrypted_passwords=True,  # For export, include decrypted passwords
-            oob_password=decrypted_oob_password,
-            creator_name=creator_names.get(asset.created_by_id)
-        ))
+                org_name = build_org_full_path(asset.organization_id, org_map)
 
-    # Generate file based on format
-    # Determine category for column filtering
-    export_category = category if category else None
+                decrypted_oob_password = None
+                if asset.oob_password_encrypted:
+                    try:
+                        decrypted_oob_password = decrypt_value(asset.oob_password_encrypted)
+                    except Exception:
+                        decrypted_oob_password = ""
 
+                yield build_asset_response(
+                    asset,
+                    org_name=org_name,
+                    include_credentials=True,
+                    credentials_data=credentials,
+                    include_decrypted_passwords=True,
+                    oob_password=decrypted_oob_password,
+                    creator_name=creator_names.get(asset.created_by_id),
+                )
+
+            offset += CHUNK_SIZE
+
+    # Stream to file
     if format == "csv":
-        buffer = export_assets_to_csv(asset_data, category=export_category)
+        buffer, count = await _export_csv_stream(_asset_data_gen(), export_columns)
         filename = f"资产导出_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        return StreamingResponse(
-            BytesIO(buffer.getvalue()),
-            media_type="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="{quote(filename)}"'}
-        )
+        media_type = "text/csv"
     else:
-        buffer = export_assets_to_excel(asset_data, category=export_category)
+        buffer, count = await _export_excel_stream(_asset_data_gen(), export_columns)
         filename = f"资产导出_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        return StreamingResponse(
-            BytesIO(buffer.getvalue()),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f'attachment; filename="{quote(filename)}"'}
-        )
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    # Audit log
+    await log_operation(
+        db=db,
+        user_id=current_user.id,
+        action="export",
+        resource_type="asset",
+        resource_id=0,
+        details={
+            "format": format,
+            "scope": scope,
+            "category": export_category,
+            "count": count,
+        },
+    )
+
+    return StreamingResponse(
+        buffer,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{quote(filename)}"'},
+    )
 
 
 @router.get("/{asset_id}")
@@ -1486,6 +1484,7 @@ async def decrypt_oob_password(
     current_user: User = Depends(PermissionChecker("view_pwd")),
 ):
     """Decrypt OOB password for host asset (requires view_pwd permission)"""
+    check_rate_limit(current_user.id, detail="解密操作过于频繁，请稍后再试")
     result = await db.execute(
         select(Asset).where(Asset.id == asset_id)
     )
@@ -1544,6 +1543,7 @@ async def decrypt_credential(
     current_user: User = Depends(PermissionChecker("view_pwd")),
 ):
     """Decrypt credential password (requires view_pwd permission)"""
+    check_rate_limit(current_user.id, detail="解密操作过于频繁，请稍后再试")
     result = await db.execute(
         select(Credential).where(Credential.id == credential_id)
     )
