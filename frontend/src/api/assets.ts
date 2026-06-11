@@ -7,6 +7,7 @@ export interface AssetStats {
   by_category: Record<string, number>
   by_platform: Record<string, number>
   by_device_type: Record<string, number>
+  by_db_type: Record<string, number>
 }
 
 // Asset APIs
@@ -23,6 +24,9 @@ export async function getAssets(params: {
   search?: string
   is_active?: boolean
   status?: string
+  platform?: string
+  device_type?: string
+  db_type?: string
 }) {
   return getPaginated<Asset>('/assets', params)
 }
@@ -65,11 +69,6 @@ export interface OrganizationResponse {
   total_assets: number
 }
 
-export async function getOrganizations(): Promise<Organization[]> {
-  const response = await api.get('/organizations')
-  return response.data.data
-}
-
 export async function getOrganizationsWithStats(): Promise<OrganizationResponse> {
   const response = await api.get('/organizations')
   return {
@@ -95,13 +94,6 @@ export async function updateOrganization(orgId: number, name: string): Promise<O
 
 export async function deleteOrganization(orgId: number): Promise<void> {
   await api.delete(`/organizations/${orgId}`)
-}
-
-export async function reorderOrganizations(parentId: number | null, orderedIds: number[]): Promise<void> {
-  await api.post('/organizations/reorder', {
-    parent_id: parentId,
-    ordered_ids: orderedIds
-  })
 }
 
 // Credential APIs
@@ -143,6 +135,11 @@ export async function decryptCredential(credentialId: number): Promise<Credentia
 
 export async function deleteCredential(id: number): Promise<void> {
   await api.delete(`/credentials/${id}`)
+}
+
+export async function decryptOobPassword(assetId: string): Promise<{ oob_password: string }> {
+  const response = await api.post(`/assets/${assetId}/decrypt-oob`)
+  return response.data
 }
 
 // Import APIs

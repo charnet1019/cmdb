@@ -26,6 +26,7 @@ export interface AssetStats {
   by_category: Record<string, number>
   by_platform: Record<string, number>
   by_device_type: Record<string, number>
+  by_db_type: Record<string, number>
 }
 
 export const PAGE_SIZE_OPTIONS = [15, 30, 50, 100]
@@ -54,7 +55,8 @@ export function useAssets() {
     total: 0,
     by_category: {},
     by_platform: {},
-    by_device_type: {}
+    by_device_type: {},
+    by_db_type: {}
   })
 
   // Bulk selection
@@ -70,6 +72,9 @@ export function useAssets() {
     search?: string
     organizationId?: number | null
     status?: string
+    platform?: string
+    deviceType?: string
+    dbType?: string
   }) {
     loading.value = true
     try {
@@ -79,7 +84,10 @@ export function useAssets() {
         category: params.category !== 'all' ? params.category : undefined,
         search: params.search || undefined,
         organization_id: params.organizationId || undefined,
-        status: params.status || undefined
+        status: params.status || undefined,
+        platform: params.platform || undefined,
+        device_type: params.deviceType || undefined,
+        db_type: params.dbType || undefined
       })
       assets.value = (result.items || []).map(asset => ({
         ...asset,

@@ -8,8 +8,7 @@ import {
   getOrganizationsWithStats,
   createOrganization,
   updateOrganization,
-  deleteOrganization,
-  reorderOrganizations
+  deleteOrganization
 } from '@/api/assets'
 import type { Organization } from '@/types'
 
@@ -287,40 +286,7 @@ export function useOrganizations() {
       return
     }
 
-    const parentId = targetOrgId || null
-
-    let siblings: Organization[]
-    if (parentId === null) {
-      siblings = organizations.value
-    } else {
-      const parent = organizations.value.find(o => o.id === parentId)
-      siblings = parent?.children || []
-    }
-
-    const draggedIndex = siblings.findIndex(o => o.id === draggedOrgId.value)
-    if (draggedIndex === -1) {
-      siblings = [...siblings, organizations.value.find(o => o.id === draggedOrgId.value)!]
-    }
-
-    const orderedIds = siblings
-      .filter(o => o.id !== draggedOrgId.value)
-      .map(o => o.id)
-
-    if (targetOrgId !== null) {
-      const targetIndex = orderedIds.indexOf(targetOrgId)
-      orderedIds.splice(targetIndex + 1, 0, draggedOrgId.value)
-    } else {
-      orderedIds.push(draggedOrgId.value)
-    }
-
-    try {
-      await reorderOrganizations(parentId, orderedIds)
-      message.success('排序已更新')
-      fetchOrganizations()
-    } catch (error: any) {
-      message.error(error.response?.data?.detail || '排序失败')
-    }
-
+    // Reorder not yet implemented — just reset drag state
     draggedOrgId.value = null
   }
 

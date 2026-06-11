@@ -29,7 +29,7 @@ import { useOrganizations } from './composables/useOrganizations'
 import { useCredentials } from './composables/useCredentials'
 import { useTypeTree, categories, platformOptions, categoryOptions, dbTypeOptions } from './composables/useTypeTree'
 import { useColumnConfig } from './composables/useColumnConfig'
-import { createAsset, updateAsset, createCredential, updateCredential, getAssets } from '@/api/assets'
+import { createAsset, updateAsset, createCredential, updateCredential, getAssets, decryptOobPassword } from '@/api/assets'
 import { getUsers } from '@/api/users'
 import ColumnCustomizer from './components/ColumnCustomizer.vue'
 import { formatDateTime } from '@/utils/datetime'
@@ -258,24 +258,12 @@ async function showOobPasswordPopover(asset: any, event: MouseEvent) {
     passwordPopover.value = null
     return
   }
-  // Call decrypt API to get plain text password
   try {
-    const token = localStorage.getItem('token')
-    const response = await fetch(`/api/v1/assets/${asset.id}/decrypt-oob`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    })
-    if (!response.ok) {
-      throw new Error('解密失败')
-    }
-    const data = await response.json()
+    const data = await decryptOobPassword(asset.id)
     const rect = (event.target as HTMLElement).getBoundingClientRect()
     passwordPopover.value = { credId: -asset.id, password: data.oob_password, x: rect.left, y: rect.top }
-  } catch (error: any) {
-    message.error(error.message || '解密失败')
+  } catch {
+    message.error('解密失败')
   }
 }
 
@@ -417,11 +405,15 @@ const form = ref({
 const modalTitle = computed(() => editingAsset.value ? '编辑资产' : '创建资产')
 // Fetch data function
 function fetchData() {
+  const subCat = selectedTypeNode.value?.subCategory
   fetchAssets({
     category: activeCategory.value,
     search: searchQuery.value,
     organizationId: selectedOrgId.value,
-    status: statusFilter.value || undefined
+    status: statusFilter.value || undefined,
+    platform: subCat && activeCategory.value !== 'network' && activeCategory.value !== 'database' ? subCat : undefined,
+    deviceType: subCat && activeCategory.value === 'network' ? subCat : undefined,
+    dbType: subCat && activeCategory.value === 'database' ? subCat : undefined
   })
 }
 
@@ -454,7 +446,13 @@ function switchTreeView(mode: 'asset' | 'type') {
     selectedTypeNodeId.value = 'all'
     activeCategory.value = 'all'
     selectedOrgId.value = null
+    // Ensure root is expanded when switching to type tree
+    if (!expandedTypeIds.value.includes('all')) {
+      expandedTypeIds.value.push('all')
+    }
     updateUrlState({ tree: 'type', type: 'all' })
+    // Refresh stats in case assets changed while in asset-tree mode
+    fetchAssetStats()
   }
   fetchData()
 }
@@ -470,6 +468,9 @@ function changeCategory(category: AssetCategory | 'all') {
     updateUrlState({ tree: 'asset', org: null })
   } else {
     treeViewMode.value = 'type'
+    if (!expandedTypeIds.value.includes('all')) {
+      expandedTypeIds.value.push('all')
+    }
     updateUrlState({ tree: 'type', type: category })
   }
   page.value = 1
@@ -479,6 +480,7 @@ function changeCategory(category: AssetCategory | 'all') {
 // Handle root click - select root and refresh assets
 function handleRootClick() {
   selectedOrgId.value = null
+  selectedTypeNodeId.value = 'all'
   activeCategory.value = 'all'
   page.value = 1
   updateUrlState({ tree: 'asset', org: null })
@@ -604,22 +606,12 @@ async function openEditModal(asset: Asset) {
   // Decrypt OOB password for host assets when editing
   if (asset.category === 'host' && (asset.oob_username || asset.oob_address)) {
     try {
-      const token = localStorage.getItem('token')
-      const response = await fetch(`/api/v1/assets/${asset.id}/decrypt-oob`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      if (response.ok) {
-        const data = await response.json()
-        if (data.oob_password) {
-          form.value.oob_password = data.oob_password
-        }
+      const data = await decryptOobPassword(asset.id)
+      if (data.oob_password) {
+        form.value.oob_password = data.oob_password
       }
-    } catch (error) {
-      console.error('Failed to decrypt OOB password:', error)
+    } catch {
+      // Ignore — password field will remain empty
     }
   }
   await loadUsers()
@@ -769,6 +761,10 @@ onMounted(async () => {
     // Type tree mode with specific type node
     treeViewMode.value = 'type'
     selectedTypeNodeId.value = urlType
+    // Ensure root is expanded so type tree is visible
+    if (!expandedTypeIds.value.includes('all')) {
+      expandedTypeIds.value.push('all')
+    }
     // Determine category from type node
     if (urlType.includes('-')) {
       // Sub-category like 'network-交换机'

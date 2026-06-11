@@ -57,11 +57,6 @@ from app.services.export_service import (
 
 
 # Request models
-class ReorderOrganizationsRequest(BaseModel):
-    parent_id: Optional[int] = None
-    ordered_ids: List[int]
-
-
 class ImportResult(BaseModel):
     """Import result data"""
     total_rows: int
@@ -264,6 +259,21 @@ async def get_descendant_org_ids(db: AsyncSession, org_id: int) -> List[int]:
     return ids if ids else [org_id]
 
 
+def apply_search_filter(query, search):
+    """Apply search filter to asset query — shared by list and export endpoints"""
+    if not search:
+        return query
+    return query.where(
+        or_(
+            Asset.name.ilike(f"%{search}%"),
+            Asset.asset_code.ilike(f"%{search}%"),
+            Asset.internal_address.ilike(f"%{search}%"),
+            Asset.external_address.ilike(f"%{search}%"),
+            Asset.notes.ilike(f"%{search}%"),
+        )
+    )
+
+
 # ============== Asset Statistics API ==============
 @router.get("/stats")
 async def get_asset_stats(
@@ -301,13 +311,22 @@ async def get_asset_stats(
     )
     device_type_counts = {row.device_type: row.count for row in device_type_result}
 
+    # Get count by db_type (for database)
+    db_type_result = await db.execute(
+        select(Asset.db_type, func.count().label('count'))
+        .where(Asset.db_type.isnot(None))
+        .group_by(Asset.db_type)
+    )
+    db_type_counts = {row.db_type: row.count for row in db_type_result}
+
     return {
         "code": 0,
         "data": {
             "total": total,
             "by_category": category_counts,
             "by_platform": platform_counts,
-            "by_device_type": device_type_counts
+            "by_device_type": device_type_counts,
+            "by_db_type": db_type_counts
         }
     }
 
@@ -325,21 +344,36 @@ async def list_assets(
     owner_name: Optional[str] = None,
     search: Optional[str] = None,
     status: Optional[str] = None,
+    platform: Optional[str] = None,
+    device_type: Optional[str] = None,
+    db_type: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """List all assets with pagination and filters"""
     query = select(Asset).options(
         selectinload(Asset.credentials),
-        selectinload(Asset.created_by),
-        selectinload(Asset.owner),
-        selectinload(Asset.database_hosts).selectinload(AssetHostRelation.host_asset),
-        selectinload(Asset.storage_locations),
     )
+
+    # Only eager-load database-specific relations when needed
+    if category is None or category == "database":
+        query = query.options(
+            selectinload(Asset.database_hosts).selectinload(AssetHostRelation.host_asset),
+            selectinload(Asset.storage_locations),
+        )
 
     # Apply filters
     if category:
         query = query.where(Asset.category == category)
+
+    if platform:
+        query = query.where(Asset.platform == platform)
+
+    if device_type:
+        query = query.where(Asset.device_type == device_type)
+
+    if db_type:
+        query = query.where(Asset.db_type == db_type)
 
     if organization_id is not None:
         # Get all descendant organization IDs and filter by them
@@ -353,15 +387,7 @@ async def list_assets(
         query = query.where(Asset.owner_name.ilike(f"%{owner_name}%"))
 
     if search:
-        query = query.where(
-            or_(
-                Asset.name.ilike(f"%{search}%"),
-                Asset.asset_code.ilike(f"%{search}%"),
-                Asset.internal_address.ilike(f"%{search}%"),
-                Asset.external_address.ilike(f"%{search}%"),
-                Asset.notes.ilike(f"%{search}%"),
-            )
-        )
+        query = apply_search_filter(query, search)
 
     if status is not None:
         query = query.where(Asset.status == status)
@@ -840,15 +866,7 @@ async def export_assets(
             org_ids = await get_descendant_org_ids(db, organization_id)
             query = query.where(Asset.organization_id.in_(org_ids))
         if search:
-            query = query.where(
-                or_(
-                    Asset.name.ilike(f"%{search}%"),
-                    Asset.asset_code.ilike(f"%{search}%"),
-                    Asset.internal_address.ilike(f"%{search}%"),
-                    Asset.external_address.ilike(f"%{search}%"),
-                    Asset.notes.ilike(f"%{search}%"),
-                )
-            )
+            query = apply_search_filter(query, search)
 
     # Execute query with credentials loaded
     query = query.options(selectinload(Asset.credentials))
@@ -1185,19 +1203,18 @@ async def list_organizations(
     )
     organizations = result.scalars().all()
 
-    # Get asset count for each organization
-    org_asset_counts = {}
-    for org in organizations:
-        count_result = await db.execute(
-            select(func.count()).select_from(Asset).where(Asset.organization_id == org.id)
-        )
-        org_asset_counts[org.id] = count_result.scalar() or 0
+    # Get asset count for each organization in a single query
+    org_asset_counts_result = await db.execute(
+        select(Asset.organization_id, func.count().label('count'))
+        .where(Asset.organization_id.isnot(None))
+        .group_by(Asset.organization_id)
+    )
+    org_asset_counts = {row.organization_id: row.count for row in org_asset_counts_result}
 
     # Get asset count for root (organization_id is null)
-    root_count_result = await db.execute(
+    root_asset_count = await db.scalar(
         select(func.count()).select_from(Asset).where(Asset.organization_id.is_(None))
-    )
-    root_asset_count = root_count_result.scalar() or 0
+    ) or 0
 
     # Build tree structure and calculate total counts (including children)
     org_map = {}
@@ -1356,29 +1373,6 @@ async def delete_organization(
     await db.commit()
 
     return {"code": 0, "message": "节点已删除"}
-
-
-@org_router.post("/reorder")
-async def reorder_organizations(
-    request: ReorderOrganizationsRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Reorder organization nodes under same parent"""
-    # Update sort order based on position in list
-    for index, org_id in enumerate(request.ordered_ids):
-        result = await db.execute(
-            select(Organization).where(Organization.id == org_id)
-        )
-        org = result.scalar_one_or_none()
-        if org:
-            # Use path to store order info (append sort index)
-            # For simplicity, we just ensure the order is reflected in the response
-            pass
-
-    await db.commit()
-
-    return {"code": 0, "message": "排序已更新"}
 
 
 # ============== Credential APIs ==============

@@ -42,19 +42,12 @@ export const deviceTypeOptions = ['交换机', '路由器', '防火墙', '无线
 // Database type options
 export const dbTypeOptions = ['MySQL', 'MongoDB', 'Redis', 'PostgreSQL', 'Oracle', 'SQL Server', 'InfluxDB', 'Elasticsearch', 'RabbitMQ', 'RocketMQ', 'Kafka', 'ClickHouse', 'EMQ', '达梦', 'TiDB', 'IoTDB', 'TDengine', 'Prometheus', 'Neo4j', 'Milvus', 'Weaviate', 'Qdrant']
 
-// Subcategories for each type
-const hostSubCategories = ['Linux', 'Unix', 'Windows', 'MacOS', 'NAS', 'SAN']
-const networkSubCategories = ['交换机', '路由器', '防火墙', '负载均衡', '无线控制器']
-const databaseSubCategories = ['MySQL', 'MongoDB', 'Redis', 'PostgreSQL', 'Oracle', 'SQL Server', 'InfluxDB', 'Elasticsearch', 'RabbitMQ', 'RocketMQ', 'Kafka', 'ClickHouse', 'EMQ', '达梦', 'TiDB', 'IoTDB', 'TDengine', 'Prometheus', 'Neo4j', 'Milvus', 'Weaviate', 'Qdrant']
-const cloudSubCategories = ['Proxmox', 'Kubernetes', 'KubeSphere', 'Rancher', 'Harvester', 'OpenStack', 'ZStack', 'CloudStack', 'VMware', 'oVirt', 'KVM', 'AWS', 'Azure', 'GCP', '阿里云', '腾讯云', '青云', 'UCloud', '火山云', '天翼云', '移动云', '华为云']
-const webSubCategories = ['Nginx', 'Apache', 'IIS', 'Tomcat', 'Nginx Ingress', 'Higress', 'Traefik', 'APISIX', 'Loadbalancer', 'F5']
-const gptSubCategories = ['OpenAI', 'Claude', 'GLM', 'Qwen', 'DeepSeek', 'Gemini', 'MiMo', 'MiniMax', 'Kimi', 'Gemma', 'ERNIE']
-
 export interface AssetStats {
   total: number
   by_category: Record<string, number>
   by_platform: Record<string, number>
   by_device_type: Record<string, number>
+  by_db_type: Record<string, number>
 }
 
 export function useTypeTree(assetStats: { value: AssetStats }) {
@@ -65,132 +58,66 @@ export function useTypeTree(assetStats: { value: AssetStats }) {
 
   // Type tree structure
   const typeTreeStructure = computed(() => {
-    const treeData = []
-
-    treeData.push({
-      id: 'all',
-      name: '所有类型',
-      count: assetStats.value.total,
-      level: 0,
-      hasChildren: true,
-      isRoot: true
-    })
+    const treeData: any[] = [
+      {
+        id: 'all',
+        name: '所有类型',
+        count: assetStats.value.total,
+        level: 0,
+        hasChildren: true,
+        isRoot: true
+      }
+    ]
 
     categories.forEach(cat => {
-      if (cat.key !== 'all') {
-        const categoryCount = assetStats.value.by_category[cat.key] || 0
+      if (cat.key === 'all') return
+      const categoryCount = assetStats.value.by_category[cat.key] || 0
 
-        let subCategories: string[] = []
-        if (cat.key === 'host') subCategories = hostSubCategories
-        else if (cat.key === 'network') subCategories = networkSubCategories
-        else if (cat.key === 'database') subCategories = databaseSubCategories
-        else if (cat.key === 'cloud') subCategories = cloudSubCategories
-        else if (cat.key === 'web') subCategories = webSubCategories
-        else if (cat.key === 'gpt') subCategories = gptSubCategories
+      // Determine sub-categories for this type
+      let subCategories: string[] = []
+      if (cat.key === 'host') subCategories = platformOptions.host
+      else if (cat.key === 'network') subCategories = deviceTypeOptions
+      else if (cat.key === 'database') subCategories = dbTypeOptions
+      else if (cat.key === 'cloud') subCategories = platformOptions.cloud
+      else if (cat.key === 'web') subCategories = platformOptions.web
+      else if (cat.key === 'gpt') subCategories = platformOptions.gpt
 
-        const hasChildren = subCategories.length > 0
+      const hasChildren = subCategories.length > 0
 
+      treeData.push({
+        id: cat.key,
+        name: `${cat.label} (${categoryCount})`,
+        count: categoryCount,
+        level: 1,
+        hasChildren,
+        parentId: 'all',
+        category: cat.key
+      })
+
+      subCategories.forEach(subCat => {
+        // Determine count from stats
+        let subCatCount = 0
+        if (cat.key === 'network') {
+          subCatCount = assetStats.value.by_device_type[subCat] || 0
+        } else if (cat.key === 'database') {
+          subCatCount = assetStats.value.by_db_type[subCat] || 0
+        } else {
+          const platformKey = `${cat.key}:${subCat}`
+          subCatCount = assetStats.value.by_platform[platformKey] || 0
+        }
+
+        const idSuffix = subCat.toLowerCase().replace(/\s+/g, '')
         treeData.push({
-          id: cat.key,
-          name: `${cat.label} (${categoryCount})`,
-          count: categoryCount,
-          level: 1,
-          hasChildren,
-          parentId: 'all',
+          id: `${cat.key}-${idSuffix}`,
+          name: `${subCat} (${subCatCount})`,
+          count: subCatCount,
+          level: 2,
+          hasChildren: false,
+          parentId: cat.key,
+          subCategory: subCat,
           category: cat.key
         })
-
-        if (cat.key === 'host') {
-          hostSubCategories.forEach(subCat => {
-            const platformKey = `host:${subCat}`
-            const subCatCount = assetStats.value.by_platform[platformKey] || 0
-            treeData.push({
-              id: `host-${subCat.toLowerCase().replace(/\s+/g, '')}`,
-              name: `${subCat} (${subCatCount})`,
-              count: subCatCount,
-              level: 2,
-              hasChildren: false,
-              parentId: cat.key,
-              subCategory: subCat,
-              category: cat.key
-            })
-          })
-        } else if (cat.key === 'network') {
-          networkSubCategories.forEach(subCat => {
-            const subCatCount = assetStats.value.by_device_type[subCat] || 0
-            treeData.push({
-              id: `network-${subCat.replace(/\s+/g, '')}`,
-              name: `${subCat} (${subCatCount})`,
-              count: subCatCount,
-              level: 2,
-              hasChildren: false,
-              parentId: cat.key,
-              subCategory: subCat,
-              category: cat.key
-            })
-          })
-        } else if (cat.key === 'database') {
-          databaseSubCategories.forEach(subCat => {
-            const platformKey = `database:${subCat}`
-            const subCatCount = assetStats.value.by_platform[platformKey] || 0
-            treeData.push({
-              id: `database-${subCat.toLowerCase().replace(/\s+/g, '')}`,
-              name: `${subCat} (${subCatCount})`,
-              count: subCatCount,
-              level: 2,
-              hasChildren: false,
-              parentId: cat.key,
-              subCategory: subCat,
-              category: cat.key
-            })
-          })
-        } else if (cat.key === 'cloud') {
-          cloudSubCategories.forEach(subCat => {
-            const platformKey = `cloud:${subCat}`
-            const subCatCount = assetStats.value.by_platform[platformKey] || 0
-            treeData.push({
-              id: `cloud-${subCat.replace(/\s+/g, '')}`,
-              name: `${subCat} (${subCatCount})`,
-              count: subCatCount,
-              level: 2,
-              hasChildren: false,
-              parentId: cat.key,
-              subCategory: subCat,
-              category: cat.key
-            })
-          })
-        } else if (cat.key === 'web') {
-          webSubCategories.forEach(subCat => {
-            const platformKey = `web:${subCat}`
-            const subCatCount = assetStats.value.by_platform[platformKey] || 0
-            treeData.push({
-              id: `web-${subCat.toLowerCase().replace(/\s+/g, '')}`,
-              name: `${subCat} (${subCatCount})`,
-              count: subCatCount,
-              level: 2,
-              hasChildren: false,
-              parentId: cat.key,
-              subCategory: subCat,
-              category: cat.key
-            })
-          })
-        } else if (cat.key === 'gpt') {
-          gptSubCategories.forEach(subCat => {
-            const platformKey = `gpt:${subCat}`
-            const subCatCount = assetStats.value.by_platform[platformKey] || 0
-            treeData.push({
-              id: `gpt-${subCat.toLowerCase().replace(/\s+/g, '')}`,
-              name: `${subCat} (${subCatCount})`,
-              count: subCatCount,
-              level: 2,
-              hasChildren: false,
-              parentId: cat.key,
-              subCategory: subCat,
-              category: cat.key
-            })
-          })
-        }
-      }
+      })
     })
 
     return treeData
