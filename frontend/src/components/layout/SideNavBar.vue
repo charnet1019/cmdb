@@ -11,15 +11,51 @@ import {
   DownOutlined
 } from '@ant-design/icons-vue'
 
-defineProps<{
+withDefaults(defineProps<{
   collapsed?: boolean
-}>()
+}>(), {
+  collapsed: false
+})
 
 const route = useRoute()
 const router = useRouter()
 
 // 当前展开的父菜单ID（手风琴模式：只允许一个展开）
 const expandedParentId = ref<string | null>(null)
+// 折叠状态下当前悬停的父菜单ID
+const hoveredParentId = ref<string | null>(null)
+// 折叠状态下当前悬停的单级菜单ID
+const hoveredSingleId = ref<string | null>(null)
+// 浮动面板的 top 位置（px）
+const hoverPanelTop = ref<number>(0)
+const hoverSingleTop = ref<number>(0)
+let hoverHideTimer: ReturnType<typeof setTimeout> | null = null
+// Store refs for parent menu items by id
+const parentItemRefs = ref<Record<string, HTMLElement>>({})
+const singleItemRefs = ref<Record<string, HTMLElement>>({})
+
+function setParentItemRef(id: string) {
+  return (el: HTMLElement | null) => { if (el) parentItemRefs.value[id] = el }
+}
+
+function setSingleItemRef(id: string) {
+  return (el: HTMLElement | null) => { if (el) singleItemRefs.value[id] = el }
+}
+
+function onSingleEnter(item: any) {
+  if (hoverHideTimer) { clearTimeout(hoverHideTimer); hoverHideTimer = null }
+  hoveredSingleId.value = item.id
+  hoveredParentId.value = null  // 清除父菜单悬停
+  const el = singleItemRefs.value[item.id]
+  if (el) hoverSingleTop.value = el.getBoundingClientRect().top
+}
+
+function onSingleLeave() {
+  hoverHideTimer = setTimeout(() => {
+    hoveredSingleId.value = null
+    hoverHideTimer = null
+  }, 150)
+}
 
 const menuItems = [
   { id: 'dashboard', icon: AppstoreOutlined, label: '仪表盘', path: '/dashboard' },
@@ -53,6 +89,23 @@ function navigateTo(path: string) {
   router.push(path)
 }
 
+function onParentEnter(item: any) {
+  if (hoverHideTimer) { clearTimeout(hoverHideTimer); hoverHideTimer = null }
+  hoveredParentId.value = item.id
+  hoveredSingleId.value = null  // 清除单级菜单悬停
+  const el = parentItemRefs.value[item.id]
+  if (el) hoverPanelTop.value = el.getBoundingClientRect().top
+}
+
+function onParentLeave(item: any) {
+  hoverHideTimer = setTimeout(() => {
+    if (hoveredParentId.value === item.id) {
+      hoveredParentId.value = null
+    }
+    hoverHideTimer = null
+  }, 150)
+}
+
 function isActive(path: string): boolean {
   return route.path === path
 }
@@ -68,6 +121,11 @@ function hasActiveChild(item: any): boolean {
     return item.children.some((child: any) => isActive(child.path))
   }
   return false
+}
+
+// 折叠状态下，父菜单项是否应高亮（有子菜单活跃）
+function isParentCollapsedActive(item: any): boolean {
+  return hasActiveChild(item)
 }
 
 // 点击父菜单：展开/折叠
@@ -102,37 +160,84 @@ watch(() => route.path, (path) => {
     class="layout-sidebar"
     :class="collapsed ? 'layout-sidebar-collapsed' : 'layout-sidebar-expanded'"
   >
-    <nav style="padding: 12px;">
+    <nav style="padding: 8px;">
       <template v-for="item in menuItems" :key="item.id">
         <!-- Single item (无子菜单) -->
         <div
           v-if="!item.children"
-          @click="navigateTo(item.path)"
-          class="nav-item"
-          :class="{ active: isActive(item.path) }"
+          :ref="setSingleItemRef(item.id)"
+          class="single-menu-wrapper"
+          @mouseenter="onSingleEnter(item)"
+          @mouseleave="onSingleLeave"
         >
-          <component :is="item.icon" style="font-size: 20px;"/>
-          <span v-if="!collapsed" style="font-size: 14px;">{{ item.label }}</span>
+          <!-- 展开态 -->
+          <div
+            v-show="!collapsed"
+            @click="navigateTo(item.path)"
+            class="nav-item"
+            :class="{ active: isActive(item.path) }"
+          >
+            <component :is="item.icon" style="font-size: 20px;"/>
+            <span style="font-size: 14px;">{{ item.label }}</span>
+          </div>
+
+          <!-- 折叠态：图标 -->
+          <div
+            v-show="collapsed"
+            @click="navigateTo(item.path)"
+            class="nav-item"
+            :class="{ active: isActive(item.path) }"
+            style="justify-content: center;"
+          >
+            <component :is="item.icon" style="font-size: 20px;"/>
+          </div>
+
+          <!-- 折叠态：浮动提示 -->
+          <div
+            v-if="collapsed && hoveredSingleId === item.id"
+            class="collapsed-hover-panel collapsed-hover-tooltip"
+            :style="{ top: hoverSingleTop + 'px' }"
+            @mouseenter="onSingleEnter(item)"
+            @mouseleave="onSingleLeave"
+          >
+            {{ item.label }}
+          </div>
         </div>
 
         <!-- Parent with children -->
-        <div v-else>
-          <!-- 父菜单项：点击展开/折叠 -->
+        <div
+          v-else
+          :ref="setParentItemRef(item.id)"
+          class="parent-menu-wrapper"
+          @mouseenter="onParentEnter(item)"
+          @mouseleave="onParentLeave(item)"
+        >
+          <!-- 展开态：父菜单项点击展开/折叠 -->
           <div
+            v-show="!collapsed"
             @click="toggleParent(item)"
             class="nav-item"
             :class="{ active: isParentSelfActive(item), expanded: hasActiveChild(item) }"
           >
             <component :is="item.icon" style="font-size: 20px;"/>
-            <span v-if="!collapsed" style="font-size: 14px; flex: 1;">{{ item.label }}</span>
-            <!-- 展开/折叠箭头 -->
-            <component v-if="!collapsed" :is="DownOutlined" style="font-size: 16px; transition: transform 0.2s;" :style="{ transform: isParentExpanded(item) ? 'rotate(180deg)' : 'rotate(0deg)' }"/>
+            <span style="font-size: 14px; flex: 1;">{{ item.label }}</span>
+            <component :is="DownOutlined" style="font-size: 14px; transition: transform 0.2s;" :style="{ transform: isParentExpanded(item) ? 'rotate(180deg)' : 'rotate(0deg)' }"/>
           </div>
 
-          <!-- 子菜单：仅当父菜单展开时显示 -->
+          <!-- 折叠态：父菜单项悬停触发 -->
+          <div
+            v-show="collapsed"
+            class="nav-item"
+            :class="{ active: isParentCollapsedActive(item) }"
+            style="justify-content: center; position: relative;"
+          >
+            <component :is="item.icon" style="font-size: 20px;"/>
+          </div>
+
+          <!-- 展开态：内联子菜单 -->
           <div
             v-if="!collapsed && isParentExpanded(item)"
-            style="margin-left: 16px; padding-left: 16px; border-left: 1px solid #f1f5f9; margin-top: 4px;"
+            style="margin-left: 12px; padding-left: 12px; border-left: 1px solid #f1f5f9; margin-top: 4px;"
           >
             <div
               v-for="child in item.children"
@@ -140,7 +245,26 @@ watch(() => route.path, (path) => {
               @click.stop="navigateTo(child.path)"
               class="nav-item"
               :class="{ active: isActive(child.path) }"
-              style="font-size: 12px; padding: 8px 16px;"
+              style="font-size: 12px; padding: 6px 12px;"
+            >
+              {{ child.label }}
+            </div>
+          </div>
+
+          <!-- 折叠态：浮动子菜单 -->
+          <div
+            v-if="collapsed && hoveredParentId === item.id"
+            class="collapsed-hover-panel"
+            :style="{ top: hoverPanelTop + 'px' }"
+            @mouseenter="onParentEnter(item)"
+            @mouseleave="onParentLeave(item)"
+          >
+            <div
+              v-for="child in item.children"
+              :key="child.id"
+              @click="navigateTo(child.path)"
+              class="collapsed-hover-child"
+              :class="{ active: isActive(child.path) }"
             >
               {{ child.label }}
             </div>
@@ -150,3 +274,54 @@ watch(() => route.path, (path) => {
     </nav>
   </aside>
 </template>
+
+<style scoped>
+/* Parent wrapper — positions the floating panel when collapsed */
+.parent-menu-wrapper,
+.single-menu-wrapper {
+  position: relative;
+}
+
+/* Floating panel shown on hover when collapsed */
+.collapsed-hover-panel {
+  position: fixed;
+  left: var(--sidebar-collapsed-width);
+  width: 180px;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
+  padding: 4px 0;
+  z-index: 60;
+  transition: opacity 0.15s ease;
+}
+
+.collapsed-hover-child {
+  display: flex;
+  align-items: center;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: #475569;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.collapsed-hover-child:hover {
+  background-color: #f2f4f7;
+  color: #0f172a;
+}
+
+.collapsed-hover-child.active {
+  background-color: rgba(0, 93, 170, 0.1);
+  color: #005daa;
+  font-weight: 500;
+}
+
+/* Tooltip variant for single menu items */
+.collapsed-hover-tooltip {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #0f172a;
+  line-height: 1.4;
+}
+</style>
