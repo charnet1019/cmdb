@@ -10,7 +10,7 @@ from sqlalchemy import select, func, or_
 
 from app.database import get_db
 from app.models import User, LoginLog, OperationLog, PasswordChangeLog
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, PermissionChecker
 from app.schemas import PaginationMeta, ResponseBase
 
 
@@ -35,7 +35,7 @@ async def list_login_logs(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("audit_log")),
 ):
     """List login logs with pagination and filters"""
     query = select(LoginLog)
@@ -139,7 +139,7 @@ async def list_operation_logs(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("audit_log")),
 ):
     """List operation logs with pagination and filters"""
     query = select(OperationLog)
@@ -232,7 +232,7 @@ async def list_password_logs(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("audit_log")),
 ):
     """List password change logs with pagination and filters"""
     query = select(PasswordChangeLog)

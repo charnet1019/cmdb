@@ -21,7 +21,7 @@ from app.schemas import (
     CredentialCreate, CredentialUpdate, CredentialResponse, CredentialDecryptResponse,
     ResponseBase, BulkUpdateRequest, BulkDeleteRequest
 )
-from app.api.deps import get_current_user, PermissionChecker
+from app.api.deps import get_current_user, PermissionChecker, check_resource_permission, get_authorized_asset_ids
 from app.core.encryption import encrypt_value, decrypt_value
 from app.services.import_service import (
     generate_category_template,
@@ -265,45 +265,49 @@ def apply_search_filter(query, search):
 @router.get("/stats")
 async def get_asset_stats(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("view")),
 ):
     """Get asset statistics by category and subcategory"""
+    # Resource-level authorization filter
+    authorized_ids = await get_authorized_asset_ids(current_user, db, "view")
+    asset_filter = Asset.id.in_(authorized_ids) if authorized_ids is not None else None
+
     # Get total count
-    total_result = await db.execute(select(func.count()).select_from(Asset))
+    if asset_filter:
+        total_result = await db.execute(select(func.count()).where(asset_filter))
+    else:
+        total_result = await db.execute(select(func.count()).select_from(Asset))
     total = total_result.scalar() or 0
 
     # Get count by category
-    category_result = await db.execute(
-        select(Asset.category, func.count().label('count'))
-        .group_by(Asset.category)
-    )
+    cat_query = select(Asset.category, func.count().label('count'))
+    if asset_filter:
+        cat_query = cat_query.where(asset_filter)
+    category_result = await db.execute(cat_query.group_by(Asset.category))
     category_counts = {row.category: row.count for row in category_result}
 
     # Get count by platform (for host, database, cloud, web, gpt)
-    platform_result = await db.execute(
-        select(Asset.category, Asset.platform, func.count().label('count'))
-        .where(Asset.platform.isnot(None))
-        .group_by(Asset.category, Asset.platform)
-    )
+    plat_query = select(Asset.category, Asset.platform, func.count().label('count')).where(Asset.platform.isnot(None))
+    if asset_filter:
+        plat_query = plat_query.where(asset_filter)
+    platform_result = await db.execute(plat_query.group_by(Asset.category, Asset.platform))
     platform_counts = {}
     for row in platform_result:
         key = f"{row.category}:{row.platform}"
         platform_counts[key] = row.count
 
     # Get count by device_type (for network)
-    device_type_result = await db.execute(
-        select(Asset.device_type, func.count().label('count'))
-        .where(Asset.device_type.isnot(None))
-        .group_by(Asset.device_type)
-    )
+    dt_query = select(Asset.device_type, func.count().label('count')).where(Asset.device_type.isnot(None))
+    if asset_filter:
+        dt_query = dt_query.where(asset_filter)
+    device_type_result = await db.execute(dt_query.group_by(Asset.device_type))
     device_type_counts = {row.device_type: row.count for row in device_type_result}
 
     # Get count by db_type (for database)
-    db_type_result = await db.execute(
-        select(Asset.db_type, func.count().label('count'))
-        .where(Asset.db_type.isnot(None))
-        .group_by(Asset.db_type)
-    )
+    dbt_query = select(Asset.db_type, func.count().label('count')).where(Asset.db_type.isnot(None))
+    if asset_filter:
+        dbt_query = dbt_query.where(asset_filter)
+    db_type_result = await db.execute(dbt_query.group_by(Asset.db_type))
     db_type_counts = {row.db_type: row.count for row in db_type_result}
 
     return {
@@ -335,7 +339,7 @@ async def list_assets(
     device_type: Optional[str] = None,
     db_type: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("view")),
 ):
     """List all assets with pagination and filters"""
     query = select(Asset).options(
@@ -378,6 +382,11 @@ async def list_assets(
 
     if status is not None:
         query = query.where(Asset.status == status)
+
+    # Resource-level authorization filter
+    authorized_ids = await get_authorized_asset_ids(current_user, db, "view")
+    if authorized_ids is not None:
+        query = query.where(Asset.id.in_(authorized_ids))
 
     # Count total
     count_query = select(func.count()).select_from(query.subquery())
@@ -455,7 +464,7 @@ async def list_assets(
 async def create_asset(
     data: AssetCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("manage")),
 ) -> Dict[str, Any]:
     """Create a new asset"""
     # Validate category
@@ -586,7 +595,7 @@ async def create_asset(
 async def bulk_update_assets(
     request: BulkUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("manage")),
 ):
     """Bulk update assets (activate/deactivate)"""
     if not request.ids:
@@ -606,6 +615,13 @@ async def bulk_update_assets(
             detail="未找到任何资产"
         )
 
+    # Check resource-level permission for each asset
+    for asset in assets:
+        await check_resource_permission(
+            current_user, "manage", "asset", asset.id, db,
+            organization_id=asset.organization_id,
+        )
+
     # Update each asset
     for asset in assets:
         if "status" in request.data:
@@ -620,7 +636,7 @@ async def bulk_update_assets(
 async def bulk_delete_assets(
     request: BulkDeleteRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("manage")),
 ):
     """Bulk delete assets"""
     if not request.ids:
@@ -638,6 +654,13 @@ async def bulk_delete_assets(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="未找到任何资产"
+        )
+
+    # Check resource-level permission for each asset
+    for asset in assets:
+        await check_resource_permission(
+            current_user, "manage", "asset", asset.id, db,
+            organization_id=asset.organization_id,
         )
 
     # Delete each asset
@@ -823,6 +846,11 @@ async def export_assets(
         if search:
             query = apply_search_filter(query, search)
 
+    # Resource-level authorization filter
+    authorized_ids = await get_authorized_asset_ids(current_user, db, "view")
+    if authorized_ids is not None:
+        query = query.where(Asset.id.in_(authorized_ids))
+
     # Add eager loading
     query = query.options(selectinload(Asset.credentials))
     if category == "database":
@@ -979,7 +1007,7 @@ async def export_assets(
 async def get_asset(
     asset_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("view")),
 ) -> Dict[str, Any]:
     """Get asset by ID"""
     # Build query with eager loading of all relations needed by build_asset_response
@@ -997,6 +1025,12 @@ async def get_asset(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="资产不存在"
         )
+
+    # Check resource-level permission
+    await check_resource_permission(
+        current_user, "view", "asset", asset_id, db,
+        organization_id=asset.organization_id,
+    )
 
     # Get organization name if exists
     organization_name = None
@@ -1028,7 +1062,7 @@ async def update_asset(
     asset_id: str,
     data: AssetUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("manage")),
 ) -> Dict[str, Any]:
     """Update asset information"""
     result = await db.execute(
@@ -1041,6 +1075,12 @@ async def update_asset(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="资产不存在"
         )
+
+    # Check resource-level permission
+    await check_resource_permission(
+        current_user, "manage", "asset", asset_id, db,
+        organization_id=asset.organization_id,
+    )
 
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
@@ -1166,7 +1206,7 @@ async def update_asset(
 async def delete_asset(
     asset_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("manage")),
 ):
     """Delete an asset"""
     result = await db.execute(
@@ -1179,6 +1219,12 @@ async def delete_asset(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="资产不存在"
         )
+
+    # Check resource-level permission
+    await check_resource_permission(
+        current_user, "manage", "asset", asset_id, db,
+        organization_id=asset.organization_id,
+    )
 
     await db.delete(asset)
     await db.commit()
@@ -1193,7 +1239,7 @@ org_router = APIRouter(prefix="/organizations", tags=["组织架构"])
 @org_router.get("")
 async def list_organizations(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("view")),
 ):
     """List all organizations as tree structure"""
     result = await db.execute(
@@ -1265,7 +1311,7 @@ async def create_organization(
     name: str,
     parent_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("manage")),
 ):
     """Create a new organization node"""
     parent_path = ""
@@ -1281,6 +1327,12 @@ async def create_organization(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="父节点不存在"
             )
+
+        # Check resource-level permission on parent
+        await check_resource_permission(
+            current_user, "manage", "organization", str(parent_id), db,
+        )
+
         parent_path = parent.path or ""
         parent_level = parent.level
 
@@ -1306,7 +1358,7 @@ async def update_organization(
     org_id: int,
     name: str = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("manage")),
 ):
     """Update organization node (rename)"""
     result = await db.execute(
@@ -1319,6 +1371,11 @@ async def update_organization(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="节点不存在"
         )
+
+    # Check resource-level permission
+    await check_resource_permission(
+        current_user, "manage", "organization", str(org_id), db,
+    )
 
     if name:
         org.name = name
@@ -1333,7 +1390,7 @@ async def update_organization(
 async def delete_organization(
     org_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("manage")),
 ):
     """Delete organization node"""
     result = await db.execute(
@@ -1346,6 +1403,11 @@ async def delete_organization(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="节点不存在"
         )
+
+    # Check resource-level permission
+    await check_resource_permission(
+        current_user, "manage", "organization", str(org_id), db,
+    )
 
     # Check if has children
     child_result = await db.execute(
@@ -1379,15 +1441,20 @@ cred_router = APIRouter(prefix="/credentials", tags=["凭证管理"])
 
 @cred_router.get("")
 async def list_credentials(
-    asset_id: Optional[int] = Query(None),
+    asset_id: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("view_pwd")),
 ):
     """List credentials for an asset"""
     query = select(Credential)
 
     if asset_id:
         query = query.where(Credential.asset_id == asset_id)
+    else:
+        # Filter by authorized assets
+        authorized_ids = await get_authorized_asset_ids(current_user, db, "view_pwd")
+        if authorized_ids is not None:
+            query = query.where(Credential.asset_id.in_(authorized_ids))
 
     result = await db.execute(query)
     credentials = result.scalars().all()
@@ -1412,7 +1479,7 @@ async def create_credential(
     data: CredentialCreate,
     asset_id: str = Query(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("manage_pwd")),
 ):
     """Create a new credential for an asset"""
     # Verify asset exists
@@ -1424,6 +1491,11 @@ async def create_credential(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="资产不存在"
         )
+
+    # Check resource-level permission
+    await check_resource_permission(
+        current_user, "manage_pwd", "asset", asset_id, db,
+    )
 
     credential = Credential(
         asset_id=asset_id,
@@ -1496,6 +1568,12 @@ async def decrypt_oob_password(
             detail="资产不存在"
         )
 
+    # Check resource-level permission
+    await check_resource_permission(
+        current_user, "view_pwd", "asset", asset_id, db,
+        organization_id=asset.organization_id,
+    )
+
     # Check new column first, fallback to extra_data for backward compatibility
     oob_password_value = asset.oob_password_encrypted
     source = "column"
@@ -1555,6 +1633,11 @@ async def decrypt_credential(
             detail="凭证不存在"
         )
 
+    # Check resource-level permission on the asset
+    await check_resource_permission(
+        current_user, "view_pwd", "asset", credential.asset_id, db,
+    )
+
     try:
         decrypted_password = decrypt_value(credential.password_encrypted)
     except Exception:
@@ -1575,7 +1658,7 @@ async def update_credential(
     credential_id: int,
     data: CredentialUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("manage_pwd")),
 ):
     """Update a credential"""
     result = await db.execute(
@@ -1588,6 +1671,11 @@ async def update_credential(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="凭证不存在"
         )
+
+    # Check resource-level permission on the asset
+    await check_resource_permission(
+        current_user, "manage_pwd", "asset", credential.asset_id, db,
+    )
 
     # Update fields
     if data.username is not None:
@@ -1613,7 +1701,7 @@ async def update_credential(
 async def delete_credential(
     credential_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("manage_pwd")),
 ):
     """Delete a credential"""
     result = await db.execute(
@@ -1626,6 +1714,11 @@ async def delete_credential(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="凭证不存在"
         )
+
+    # Check resource-level permission on the asset
+    await check_resource_permission(
+        current_user, "manage_pwd", "asset", credential.asset_id, db,
+    )
 
     await db.delete(credential)
     await db.commit()

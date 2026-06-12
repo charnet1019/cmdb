@@ -41,7 +41,7 @@ const form = ref({
   entity_type: 'user' as 'user' | 'group',
   entity_id: null as number | null,
   target_type: 'asset' as 'asset' | 'organization',
-  target_id: null as number | null,
+  target_id: null as string | null,
   permissions: [] as string[],
   valid_until: ''
 })
@@ -49,7 +49,7 @@ const form = ref({
 // Selection options
 const users = ref<Array<{ id: number; name: string; full_name: string | null }>>([])
 const groups = ref<Array<{ id: number; name: string }>>([])
-const assets = ref<Array<{ id: number; name: string; category: string }>>([])
+const assets = ref<Array<{ id: string; name: string; category: string }>>([])
 const organizations = ref<Array<{ id: number; name: string; path: string | null }>>([])
 
 // Search filters for modal
@@ -531,7 +531,7 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
                     </option>
                   </template>
                   <template v-else>
-                    <option v-for="item in filteredOrgs" :key="item.id" :value="item.id">
+                    <option v-for="item in filteredOrgs" :key="item.id" :value="String(item.id)">
                       {{ item.name }}{{ item.path ? ` - ${item.path}` : '' }}
                     </option>
                   </template>
@@ -546,7 +546,7 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
                 <p class="font-medium text-slate-900">
                   {{ form.target_type === 'asset'
                     ? assets.find(a => a.id === form.target_id)?.name
-                    : organizations.find(o => o.id === form.target_id)?.name }}
+                    : organizations.find(o => String(o.id) === form.target_id)?.name }}
                 </p>
                 <p class="text-sm text-slate-500">
                   {{ form.target_type === 'asset' ? '资产' : '组织' }}

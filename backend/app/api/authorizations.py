@@ -87,7 +87,8 @@ async def list_authorizations(
         assets = assets_result.scalars().all()
         target_names.update({f"asset_{a.id}": a.name for a in assets})
     if org_ids:
-        orgs_result = await db.execute(select(Organization).where(Organization.id.in_(org_ids)))
+        org_ids_int = [int(oid) for oid in org_ids if oid.isdigit()]
+        orgs_result = await db.execute(select(Organization).where(Organization.id.in_(org_ids_int)))
         orgs = orgs_result.scalars().all()
         target_names.update({f"org_{o.id}": o.name for o in orgs})
 
@@ -144,7 +145,7 @@ async def create_authorization(
         if not target_result.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="资产不存在")
     else:
-        target_result = await db.execute(select(Organization).where(Organization.id == data.target_id))
+        target_result = await db.execute(select(Organization).where(Organization.id == int(data.target_id)))
         if not target_result.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="组织不存在")
 

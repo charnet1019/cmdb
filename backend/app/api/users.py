@@ -17,7 +17,7 @@ from app.schemas import (
     GroupCreate, GroupUpdate, GroupResponse, GroupSimple, GroupDetailResponse,
     GroupListResponse, PasswordResetRequest, ResponseBase
 )
-from app.api.deps import get_current_user, get_current_superuser
+from app.api.deps import get_current_user, get_current_superuser, PermissionChecker, get_user_permissions
 from app.core.security import get_password_hash, verify_password, validate_password_strength
 
 
@@ -32,7 +32,7 @@ async def list_users(
     search: Optional[str] = Query(None),
     is_active: Optional[bool] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("user_mgmt")),
 ):
     """List all users with pagination and search"""
     query = select(User)
@@ -206,7 +206,15 @@ async def get_user(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get user by ID"""
+    """Get user by ID — anyone can view self, others require user_mgmt"""
+    if user_id != current_user.id and not current_user.is_superuser:
+        perms = await get_user_permissions(current_user, db)
+        if "user_mgmt" not in perms:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="缺少 'user_mgmt' 权限"
+            )
+
     result = await db.execute(
         select(User).where(User.id == user_id)
     )
@@ -248,8 +256,17 @@ async def update_user(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Update user information"""
+    """Update user information — self-update allowed, others require user_mgmt"""
     ip = request.client.host if request.client else None
+
+    if user_id != current_user.id and not current_user.is_superuser:
+        perms = await get_user_permissions(current_user, db)
+        if "user_mgmt" not in perms:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="缺少 'user_mgmt' 权限"
+            )
+
     result = await db.execute(
         select(User).where(User.id == user_id)
     )
@@ -461,7 +478,12 @@ async def get_user_authorizations(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get user's asset authorizations (direct and inherited through groups)"""
+    """Get user's asset authorizations — self-lookup allowed, others require user_mgmt"""
+    if user_id != current_user.id and not current_user.is_superuser:
+        perms = await get_user_permissions(current_user, db)
+        if "user_mgmt" not in perms:
+            raise HTTPException(status_code=403, detail="缺少 'user_mgmt' 权限")
+
     # Check user exists
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()

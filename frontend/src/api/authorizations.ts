@@ -5,7 +5,7 @@ export interface AuthorizationCreate {
   entity_type: 'user' | 'group'
   entity_id: number
   target_type: 'asset' | 'organization'
-  target_id: number
+  target_id: string
   permissions: string[]
   valid_from?: string
   valid_until?: string
@@ -56,7 +56,7 @@ export async function getGroupsForAuth(): Promise<Array<{ id: number; name: stri
 }
 
 // Get assets for selection
-export async function getAssetsForAuth(): Promise<Array<{ id: number; name: string; category: string }>> {
+export async function getAssetsForAuth(): Promise<Array<{ id: string; name: string; category: string }>> {
   const response = await api.get('/authorizations/assets')
   return response.data.data
 }

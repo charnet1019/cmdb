@@ -320,7 +320,7 @@ class AuthorizationBase(BaseModel):
     entity_type: str  # user, group
     entity_id: int
     target_type: str  # asset, asset_group (organization)
-    target_id: int
+    target_id: str
     permissions: List[str]
     valid_from: Optional[datetime] = None
     valid_until: Optional[datetime] = None

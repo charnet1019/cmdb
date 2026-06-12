@@ -2,15 +2,16 @@
 API Dependencies
 Dependency injection for FastAPI routes
 """
-from typing import Optional, List
+from datetime import datetime
+from typing import Optional, List, Set
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text, func, or_
 
 from app.database import get_db
 from app.core.security import decode_access_token
-from app.models import User, Authorization
+from app.models import User, Authorization, Group, UserGroup, Organization, Asset
 
 
 # HTTP Bearer security scheme
@@ -101,9 +102,6 @@ async def get_user_permissions(
         ]
 
     # Get direct user authorizations
-    from app.models import Group
-    from datetime import datetime
-
     now = datetime.utcnow()
 
     # Direct user permissions
@@ -122,7 +120,6 @@ async def get_user_permissions(
     user_auths = user_auths_result.scalars().all()
 
     # Get user groups
-    from app.models import UserGroup
     groups_result = await db.execute(
         select(Group.id)
         .join(UserGroup, Group.id == UserGroup.group_id)
@@ -185,3 +182,190 @@ class PermissionChecker:
             )
 
         return current_user
+
+
+async def check_resource_permission(
+    user: User,
+    permission: str,
+    target_type: str,
+    resource_id: str,
+    db: AsyncSession,
+    organization_id: Optional[int] = None,
+) -> bool:
+    """Check if user has a specific permission for a specific resource.
+
+    Returns True if authorized. Raises 403 if not.
+    """
+    if user.is_superuser:
+        return True
+
+    now = datetime.utcnow()
+
+    # Check direct authorization on the resource
+    result = await db.execute(
+        select(Authorization)
+        .where(or_(
+            text(f"(entity_type = 'user' AND entity_id = {user.id})"),
+            text(f"(entity_type = 'group' AND entity_id IN (SELECT group_id FROM user_groups WHERE user_id = {user.id}))"),
+        ))
+        .where(Authorization.target_type == target_type)
+        .where(Authorization.target_id == resource_id)
+        .where(Authorization.is_active == True)
+        .where(
+            (Authorization.valid_from == None) | (Authorization.valid_from <= now)
+        )
+        .where(
+            (Authorization.valid_until == None) | (Authorization.valid_until >= now)
+        )
+        .where(
+            text(f"permissions @> '{permission}'::jsonb")
+        )
+        .limit(1)
+    )
+
+    if result.scalar_one_or_none():
+        return True
+
+    # For asset resources, also check organization-level authorization
+    if target_type == "asset" and organization_id is not None:
+        result = await db.execute(
+            select(Authorization)
+            .where(or_(
+                text(f"(entity_type = 'user' AND entity_id = {user.id})"),
+                text(f"(entity_type = 'group' AND entity_id IN (SELECT group_id FROM user_groups WHERE user_id = {user.id}))"),
+            ))
+            .where(Authorization.target_type == "organization")
+            .where(Authorization.target_id == str(organization_id))
+            .where(Authorization.is_active == True)
+            .where(
+                (Authorization.valid_from == None) | (Authorization.valid_from <= now)
+            )
+            .where(
+                (Authorization.valid_until == None) | (Authorization.valid_until >= now)
+            )
+            .where(
+                text(f"permissions @> '{permission}'::jsonb")
+            )
+            .limit(1)
+        )
+
+        if result.scalar_one_or_none():
+            return True
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=f"缺少资源 '{permission}' 权限"
+    )
+
+
+async def get_authorized_asset_ids(
+    user: User,
+    db: AsyncSession,
+    permission: str = "view",
+) -> Optional[Set[str]]:
+    """Get set of asset IDs the user has `permission` for.
+
+    Returns None if user has full access (superuser or no authorizations exist).
+    """
+    if user.is_superuser:
+        return None
+
+    # Check if any authorizations exist at all
+    count_result = await db.execute(select(func.count()).select_from(Authorization))
+    total = count_result.scalar()
+    if total == 0:
+        return None  # No authorizations → everything visible
+
+    now = datetime.utcnow()
+
+    # Direct asset authorizations
+    asset_ids: Set[str] = set()
+
+    # Get user's group IDs
+    groups_result = await db.execute(
+        select(Group.id)
+        .join(UserGroup, Group.id == UserGroup.group_id)
+        .where(UserGroup.user_id == user.id)
+    )
+    group_ids = [g[0] for g in groups_result.all()]
+
+    # Entity IDs to check
+    entity_conditions_list = [(Authorization.entity_type == "user", Authorization.entity_id == user.id)]
+    if group_ids:
+        entity_conditions_list.append((Authorization.entity_type == "group", Authorization.entity_id.in_(group_ids)))
+
+    for ec in entity_conditions_list:
+        result = await db.execute(
+            select(Authorization.target_id)
+            .where(*ec)
+            .where(Authorization.target_type == "asset")
+            .where(Authorization.is_active == True)
+            .where(
+                (Authorization.valid_from == None) | (Authorization.valid_from <= now)
+            )
+            .where(
+                (Authorization.valid_until == None) | (Authorization.valid_until >= now)
+            )
+            .where(
+                text(f"permissions @> '{permission}'::jsonb")
+            )
+        )
+        for row in result.scalars().all():
+            asset_ids.add(row)
+
+    # Organization-level authorizations → find assets in descendant organizations
+    org_ids: List[int] = []
+    for ec in entity_conditions_list:
+        result = await db.execute(
+            select(Authorization.target_id)
+            .where(*ec)
+            .where(Authorization.target_type == "organization")
+            .where(Authorization.is_active == True)
+            .where(
+                (Authorization.valid_from == None) | (Authorization.valid_from <= now)
+            )
+            .where(
+                (Authorization.valid_until == None) | (Authorization.valid_until >= now)
+            )
+            .where(
+                text(f"permissions @> '{permission}'::jsonb")
+            )
+        )
+        for row in result.scalars().all():
+            try:
+                org_ids.append(int(row))
+            except (ValueError, TypeError):
+                pass
+
+    if org_ids:
+        # Find the organization paths (including descendants)
+        orgs_result = await db.execute(
+            select(Organization.id, Organization.path).where(Organization.id.in_(org_ids))
+        )
+        org_paths = orgs_result.all()
+
+        # Build LIKE patterns for descendants
+        like_patterns = []
+        for _, path in org_paths:
+            if path:
+                like_patterns.append(path + "/%")
+                like_patterns.append(path)  # The org itself
+
+        if like_patterns:
+            # Get all descendant org IDs
+            descendant_orgs_result = await db.execute(
+                select(Organization.id).where(
+                    or_(*[Organization.path.like(p) for p in like_patterns])
+                )
+            )
+            descendant_org_ids = {row[0] for row in descendant_orgs_result.all()}
+
+            if descendant_org_ids:
+                # Assets in those organizations
+                assets_result = await db.execute(
+                    select(Asset.id).where(Asset.organization_id.in_(descendant_org_ids))
+                )
+                for row in assets_result.scalars().all():
+                    asset_ids.add(row)
+
+    return asset_ids if asset_ids else None

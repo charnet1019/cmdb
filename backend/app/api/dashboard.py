@@ -10,7 +10,7 @@ from sqlalchemy import select, func, distinct
 
 from app.database import get_db
 from app.models import User, Asset, LoginLog
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_authorized_asset_ids
 from app.schemas import ResponseBase
 
 
@@ -25,18 +25,25 @@ async def get_dashboard_stats(
     """
     Get dashboard statistics
     """
+    # Resource-level authorization filter
+    authorized_ids = await get_authorized_asset_ids(current_user, db, "view")
+    asset_filter = Asset.id.in_(authorized_ids) if authorized_ids is not None else None
+
     # Total assets count
-    assets_result = await db.execute(select(func.count()).select_from(Asset))
+    if asset_filter:
+        assets_result = await db.execute(select(func.count()).where(asset_filter))
+    else:
+        assets_result = await db.execute(select(func.count()).select_from(Asset))
     total_assets = assets_result.scalar() or 0
 
     # Active assets count
     from app.models import AssetStatus
 
-    # Active assets count (not deactivated, pending_scrap, scrapped, returned)
     inactive_statuses = [AssetStatus.DEACTIVATED, AssetStatus.PENDING_SCRAP, AssetStatus.SCRAPPED, AssetStatus.RETURNED]
-    active_assets_result = await db.execute(
-        select(func.count()).select_from(Asset).where(Asset.status.notin_(inactive_statuses))
-    )
+    active_query = select(func.count()).where(Asset.status.notin_(inactive_statuses))
+    if asset_filter:
+        active_query = active_query.where(asset_filter)
+    active_assets_result = await db.execute(active_query)
     active_assets = active_assets_result.scalar() or 0
 
     # Total users count
@@ -59,14 +66,11 @@ async def get_dashboard_stats(
     online_users = online_users_result.scalar() or 0
 
     # Asset type distribution
-    from app.models import AssetStatus
-
     inactive_statuses = [AssetStatus.DEACTIVATED, AssetStatus.PENDING_SCRAP, AssetStatus.SCRAPPED, AssetStatus.RETURNED]
-    asset_distribution_result = await db.execute(
-        select(Asset.category, func.count().label("count"))
-        .where(Asset.status.notin_(inactive_statuses))
-        .group_by(Asset.category)
-    )
+    dist_query = select(Asset.category, func.count().label("count")).where(Asset.status.notin_(inactive_statuses))
+    if asset_filter:
+        dist_query = dist_query.where(asset_filter)
+    asset_distribution_result = await db.execute(dist_query.group_by(Asset.category))
     asset_distribution = [
         {"type": row.category, "count": row.count}
         for row in asset_distribution_result.all()

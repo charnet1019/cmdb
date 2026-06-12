@@ -273,7 +273,7 @@ class Authorization(Base):
     entity_type: Mapped[str] = mapped_column(String(20), nullable=False)  # user, group
     entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
     target_type: Mapped[str] = mapped_column(String(20), nullable=False)  # asset, asset_group
-    target_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    target_id: Mapped[str] = mapped_column(String(36), nullable=False)
     permissions: Mapped[list] = mapped_column(JSONB, nullable=False)  # ["view", "manage", ...]
     valid_from: Mapped[Optional[datetime]] = mapped_column(DateTime)
     valid_until: Mapped[Optional[datetime]] = mapped_column(DateTime)
