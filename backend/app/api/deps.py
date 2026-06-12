@@ -7,7 +7,7 @@ from typing import Optional, List, Set
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text, func, or_
+from sqlalchemy import select, text, func, or_, cast, String
 
 from app.database import get_db
 from app.core.security import decode_access_token
@@ -209,7 +209,9 @@ async def check_resource_permission(
             text(f"(entity_type = 'group' AND entity_id IN (SELECT group_id FROM user_groups WHERE user_id = {user.id}))"),
         ))
         .where(Authorization.target_type == target_type)
-        .where(Authorization.target_id == resource_id)
+        .where(
+            text(f"target_ids @> '{resource_id}'::jsonb")
+        )
         .where(Authorization.is_active == True)
         .where(
             (Authorization.valid_from == None) | (Authorization.valid_from <= now)
@@ -235,7 +237,9 @@ async def check_resource_permission(
                 text(f"(entity_type = 'group' AND entity_id IN (SELECT group_id FROM user_groups WHERE user_id = {user.id}))"),
             ))
             .where(Authorization.target_type == "organization")
-            .where(Authorization.target_id == str(organization_id))
+            .where(
+                text(f"target_ids @> '{organization_id}'::jsonb")
+            )
             .where(Authorization.is_active == True)
             .where(
                 (Authorization.valid_from == None) | (Authorization.valid_from <= now)
@@ -296,7 +300,12 @@ async def get_authorized_asset_ids(
 
     for ec in entity_conditions_list:
         result = await db.execute(
-            select(Authorization.target_id)
+            select(
+                cast(
+                    func.jsonb_array_elements_text(Authorization.target_ids),
+                    String,
+                )
+            )
             .where(*ec)
             .where(Authorization.target_type == "asset")
             .where(Authorization.is_active == True)
@@ -317,7 +326,12 @@ async def get_authorized_asset_ids(
     org_ids: List[int] = []
     for ec in entity_conditions_list:
         result = await db.execute(
-            select(Authorization.target_id)
+            select(
+                cast(
+                    func.jsonb_array_elements_text(Authorization.target_ids),
+                    String,
+                )
+            )
             .where(*ec)
             .where(Authorization.target_type == "organization")
             .where(Authorization.is_active == True)

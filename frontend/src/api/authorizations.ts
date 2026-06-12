@@ -5,7 +5,7 @@ export interface AuthorizationCreate {
   entity_type: 'user' | 'group'
   entity_id: number
   target_type: 'asset' | 'organization'
-  target_id: string
+  target_ids: string[]
   permissions: string[]
   valid_from?: string
   valid_until?: string
@@ -56,13 +56,13 @@ export async function getGroupsForAuth(): Promise<Array<{ id: number; name: stri
 }
 
 // Get assets for selection
-export async function getAssetsForAuth(): Promise<Array<{ id: string; name: string; category: string }>> {
+export async function getAssetsForAuth(): Promise<Array<{ id: string; name: string; category: string; internal_address: string | null; external_address: string | null; organization_id: number | null }>> {
   const response = await api.get('/authorizations/assets')
   return response.data.data
 }
 
 // Get organizations for selection
-export async function getOrganizationsForAuth(): Promise<Array<{ id: number; name: string; path: string | null }>> {
+export async function getOrganizationsForAuth(): Promise<Array<{ id: number; name: string; path: string | null; name_path: string }>> {
   const response = await api.get('/authorizations/organizations')
   return response.data.data
 }

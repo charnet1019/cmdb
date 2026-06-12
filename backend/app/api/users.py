@@ -523,7 +523,7 @@ async def get_user_authorizations(
     asset_ids = set()
     for auth in direct_auths + inherited_auths:
         if auth.target_type == "asset":
-            asset_ids.add(auth.target_id)
+            asset_ids.update(auth.target_ids)
 
     # Batch fetch assets
     assets_map = {}
@@ -532,40 +532,42 @@ async def get_user_authorizations(
         for asset in assets_result.scalars().all():
             assets_map[asset.id] = asset
 
-    # Build response
+    # Build response — one entry per (auth, asset) pair
     direct_list = []
     for auth in direct_auths:
-        asset = assets_map.get(auth.target_id)
-        if asset:
-            direct_list.append({
-                "id": auth.id,
-                "asset_id": asset.id,
-                "asset_name": asset.name,
-                "asset_category": asset.category,
-                "permissions": auth.permissions,
-                "valid_until": auth.valid_until.isoformat() if auth.valid_until else None,
-                "status": "active" if auth.is_active else "inactive",
-                "source_type": "direct",
-            })
+        for target_id in auth.target_ids:
+            asset = assets_map.get(target_id)
+            if asset:
+                direct_list.append({
+                    "id": auth.id,
+                    "asset_id": asset.id,
+                    "asset_name": asset.name,
+                    "asset_category": asset.category,
+                    "permissions": auth.permissions,
+                    "valid_until": auth.valid_until.isoformat() if auth.valid_until else None,
+                    "status": "active" if auth.is_active else "inactive",
+                    "source_type": "direct",
+                })
 
     inherited_list = []
     for auth in inherited_auths:
-        asset = assets_map.get(auth.target_id)
-        if asset:
-            # Find group name
-            group_name = next((g.name for g in user_groups if g.id == auth.entity_id), "Unknown")
-            inherited_list.append({
-                "id": auth.id,
-                "asset_id": asset.id,
-                "asset_name": asset.name,
-                "asset_category": asset.category,
-                "permissions": auth.permissions,
-                "valid_until": auth.valid_until.isoformat() if auth.valid_until else None,
-                "status": "active" if auth.is_active else "inactive",
-                "source_type": "group",
-                "group_id": auth.entity_id,
-                "group_name": group_name,
-            })
+        for target_id in auth.target_ids:
+            asset = assets_map.get(target_id)
+            if asset:
+                # Find group name
+                group_name = next((g.name for g in user_groups if g.id == auth.entity_id), "Unknown")
+                inherited_list.append({
+                    "id": auth.id,
+                    "asset_id": asset.id,
+                    "asset_name": asset.name,
+                    "asset_category": asset.category,
+                    "permissions": auth.permissions,
+                    "valid_until": auth.valid_until.isoformat() if auth.valid_until else None,
+                    "status": "active" if auth.is_active else "inactive",
+                    "source_type": "group",
+                    "group_id": auth.entity_id,
+                    "group_name": group_name,
+                })
 
     return {
         "code": 0,
@@ -755,7 +757,10 @@ async def get_group_authorizations(
     auths = auths_result.scalars().all()
 
     # Collect asset IDs
-    asset_ids = [auth.target_id for auth in auths if auth.target_type == "asset"]
+    asset_ids = set()
+    for auth in auths:
+        if auth.target_type == "asset":
+            asset_ids.update(auth.target_ids)
 
     # Batch fetch assets
     assets_map = {}
@@ -764,20 +769,21 @@ async def get_group_authorizations(
         for asset in assets_result.scalars().all():
             assets_map[asset.id] = asset
 
-    # Build response
+    # Build response — one entry per (auth, asset) pair
     auth_list = []
     for auth in auths:
-        asset = assets_map.get(auth.target_id)
-        if asset:
-            auth_list.append({
-                "id": auth.id,
-                "asset_id": asset.id,
-                "asset_name": asset.name,
-                "asset_category": asset.category,
-                "permissions": auth.permissions,
-                "valid_until": auth.valid_until.isoformat() if auth.valid_until else None,
-                "status": "active" if auth.is_active else "inactive",
-            })
+        for target_id in auth.target_ids:
+            asset = assets_map.get(target_id)
+            if asset:
+                auth_list.append({
+                    "id": auth.id,
+                    "asset_id": asset.id,
+                    "asset_name": asset.name,
+                    "asset_category": asset.category,
+                    "permissions": auth.permissions,
+                    "valid_until": auth.valid_until.isoformat() if auth.valid_until else None,
+                    "status": "active" if auth.is_active else "inactive",
+                })
 
     return {
         "code": 0,

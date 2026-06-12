@@ -97,7 +97,7 @@ export interface Authorization {
   entity_type: 'user' | 'group'
   entity_id: number
   target_type: 'asset' | 'asset_group'
-  target_id: string
+  target_ids: string[]
   permissions: string[]
   valid_from: string | null
   valid_until: string | null

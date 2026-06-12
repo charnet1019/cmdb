@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { PlusOutlined, EditOutlined, BlockOutlined, CheckCircleOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-vue'
@@ -41,7 +41,7 @@ const form = ref({
   entity_type: 'user' as 'user' | 'group',
   entity_id: null as number | null,
   target_type: 'asset' as 'asset' | 'organization',
-  target_id: null as string | null,
+  target_ids: [] as string[],
   permissions: [] as string[],
   valid_until: ''
 })
@@ -49,47 +49,25 @@ const form = ref({
 // Selection options
 const users = ref<Array<{ id: number; name: string; full_name: string | null }>>([])
 const groups = ref<Array<{ id: number; name: string }>>([])
-const assets = ref<Array<{ id: string; name: string; category: string }>>([])
-const organizations = ref<Array<{ id: number; name: string; path: string | null }>>([])
+const assets = ref<Array<{ id: string; name: string; category: string; internal_address: string | null; external_address: string | null; organization_id: number | null }>>([])
+const organizations = ref<Array<{ id: number; name: string; path: string | null; name_path: string }>>([])
 
-// Search filters for modal
-const userSearch = ref('')
-const groupSearch = ref('')
-const assetSearch = ref('')
-const orgSearch = ref('')
+// Asset picker modal
+const showAssetPicker = ref(false)
+const pickerSearch = ref('')
+const pickerSelectedOrgId = ref<number | null>(null)
+const pickerAssets = ref<Array<{ id: string; name: string; category: string; internal_address: string | null; external_address: string | null; organization_id: number | null }>>([])
+const pickerSelectedAssetIds = ref<string[]>([])
 
-// Computed filtered lists
-const filteredUsers = computed(() => {
-  if (!userSearch.value) return users.value
-  const search = userSearch.value.toLowerCase()
-  return users.value.filter(u =>
-    u.name.toLowerCase().includes(search) ||
-    (u.full_name && u.full_name.toLowerCase().includes(search))
-  )
-})
+// Org tree for picker (built from flat data)
+interface OrgTreeNode {
+  id: number | null
+  title: string
+  key: string
+  children: OrgTreeNode[]
+}
+const orgTreeData = ref<OrgTreeNode[]>([])
 
-const filteredGroups = computed(() => {
-  if (!groupSearch.value) return groups.value
-  return groups.value.filter(g => g.name.toLowerCase().includes(groupSearch.value.toLowerCase()))
-})
-
-const filteredAssets = computed(() => {
-  if (!assetSearch.value) return assets.value
-  const search = assetSearch.value.toLowerCase()
-  return assets.value.filter(a =>
-    a.name.toLowerCase().includes(search) ||
-    a.category.toLowerCase().includes(search)
-  )
-})
-
-const filteredOrgs = computed(() => {
-  if (!orgSearch.value) return organizations.value
-  const search = orgSearch.value.toLowerCase()
-  return organizations.value.filter(o =>
-    o.name.toLowerCase().includes(search) ||
-    (o.path && o.path.toLowerCase().includes(search))
-  )
-})
 
 // Permission options
 const permissionOptions = [
@@ -101,6 +79,140 @@ const permissionOptions = [
   { key: 'view_pwd', label: '查看密码' },
   { key: 'manage_pwd', label: '管理凭证' }
 ]
+
+// Format organization name path (e.g. "Default/开发部/数据库")
+function formatOrgPath(org: { name: string; name_path: string }): string {
+  return org.name_path || org.name
+}
+
+// Build org tree from flat list
+function buildOrgTree(flatOrgs: Array<{ id: number; name: string; path: string | null; name_path: string }>): OrgTreeNode[] {
+  const map = new Map<number, OrgTreeNode>()
+  const roots: OrgTreeNode[] = []
+
+  for (const org of flatOrgs) {
+    map.set(org.id, { id: org.id, title: org.name, key: String(org.id), children: [] })
+  }
+
+  // Derive parent from path: "7/12/13" → parent id = 12
+  for (const org of flatOrgs) {
+    const node = map.get(org.id)!
+    let parentId: number | null = null
+    if (org.path && org.path.includes('/')) {
+      const parts = org.path.split('/')
+      parentId = parseInt(parts[parts.length - 2])
+    }
+    if (parentId === null || !map.has(parentId)) {
+      roots.push(node)
+    } else {
+      map.get(parentId)!.children.push(node)
+    }
+  }
+
+  return roots
+}
+
+// Build org tree on data load
+function buildTree() {
+  orgTreeData.value = buildOrgTree(organizations.value)
+}
+
+// Open asset picker — sync local selection from form
+function openAssetPicker() {
+  showAssetPicker.value = true
+  pickerSearch.value = ''
+  pickerSelectedOrgId.value = null
+  pickerAssets.value = assets.value
+  pickerSelectedAssetIds.value = [...form.value.target_ids]
+}
+
+// Org tree select callback
+function onPickerTreeSelect(_selected: any, info: { node: OrgTreeNode & { id: number | null } }) {
+  if (info.node.id === null || info.node.key === '__all__') {
+    pickerSelectedOrgId.value = null
+  } else {
+    pickerSelectedOrgId.value = info.node.id
+  }
+  filterPickerAssets()
+}
+
+// Filter picker assets by selected org + search
+function filterPickerAssets() {
+  let filtered = assets.value
+  if (pickerSelectedOrgId.value !== null) {
+    filtered = filtered.filter(a => a.organization_id === pickerSelectedOrgId.value)
+  }
+  if (pickerSearch.value) {
+    const search = pickerSearch.value.toLowerCase()
+    filtered = filtered.filter(a =>
+      a.name.toLowerCase().includes(search) ||
+      a.category.toLowerCase().includes(search)
+    )
+  }
+  pickerAssets.value = filtered
+}
+
+watch([pickerSearch], () => {
+  filterPickerAssets()
+})
+
+// Toggle asset selection in picker
+function togglePickerAsset(assetId: string) {
+  const idx = pickerSelectedAssetIds.value.indexOf(assetId)
+  if (idx === -1) {
+    pickerSelectedAssetIds.value.push(assetId)
+  } else {
+    pickerSelectedAssetIds.value.splice(idx, 1)
+  }
+}
+
+// Confirm picker — apply selections to form and close
+function confirmPickerSelection() {
+  form.value.target_ids = [...pickerSelectedAssetIds.value]
+  showAssetPicker.value = false
+}
+
+// Cancel picker — discard changes
+function cancelPickerSelection() {
+  showAssetPicker.value = false
+}
+
+// Get asset label by ID
+function getAssetLabel(id: string): string {
+  const asset = assets.value.find((a: { id: string; name: string; category: string }) => a.id === id)
+  return asset ? `${asset.name} (${asset.category})` : id
+}
+
+// Remove a target ID
+function removeTargetId(id: string) {
+  const idx = form.value.target_ids.indexOf(id)
+  if (idx !== -1) form.value.target_ids.splice(idx, 1)
+}
+
+// Get org name by id
+function getOrgName(orgId: number | null): string {
+  if (!orgId) return '-'
+  const org = organizations.value.find(o => o.id === orgId)
+  return org ? formatOrgPath(org) : '-'
+}
+
+// Get target name for edit mode display
+function getTargetName(): string {
+  if (form.value.target_type === 'asset') {
+    return form.value.target_ids
+      .map(id => {
+        const asset = assets.value.find((a: { id: string; name: string }) => a.id === id)
+        return asset ? asset.name : id
+      })
+      .join(', ')
+  }
+  return form.value.target_ids
+    .map(id => {
+      const org = organizations.value.find((o: { id: number; name_path: string }) => String(o.id) === id)
+      return org ? org.name_path : id
+    })
+    .join(', ')
+}
 
 // Fetch authorizations
 async function fetchAuthorizations() {
@@ -135,6 +247,7 @@ async function fetchSelectionOptions() {
     groups.value = groupsData
     assets.value = assetsData
     organizations.value = orgsData
+    buildTree()
   } catch {
     // Handle silently
   }
@@ -160,15 +273,10 @@ function openCreateModal() {
     entity_type: 'user',
     entity_id: null,
     target_type: 'asset',
-    target_id: null,
+    target_ids: [] as string[],
     permissions: [],
     valid_until: ''
   }
-  // Clear search filters
-  userSearch.value = ''
-  groupSearch.value = ''
-  assetSearch.value = ''
-  orgSearch.value = ''
   showModal.value = true
 }
 
@@ -180,15 +288,10 @@ function openEditModal(auth: any) {
     entity_type: auth.entity_type,
     entity_id: auth.entity_id,
     target_type: auth.target_type,
-    target_id: auth.target_id,
+    target_ids: auth.target_ids || [],
     permissions: auth.permissions || [],
     valid_until: auth.valid_until ? auth.valid_until.slice(0, 16) : ''
   }
-  // Clear search filters
-  userSearch.value = ''
-  groupSearch.value = ''
-  assetSearch.value = ''
-  orgSearch.value = ''
   showModal.value = true
 }
 
@@ -199,7 +302,7 @@ async function handleSubmit() {
       message.error('请选择授权对象')
       return
     }
-    if (!form.value.target_id) {
+    if (!form.value.target_ids.length) {
       message.error('请选择资产')
       return
     }
@@ -227,7 +330,7 @@ async function handleSubmit() {
         entity_type: form.value.entity_type,
         entity_id: form.value.entity_id!,
         target_type: form.value.target_type,
-        target_id: form.value.target_id!,
+        target_ids: form.value.target_ids,
         permissions: form.value.permissions,
       }
       if (form.value.valid_until) {
@@ -449,35 +552,26 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
                   <span class="text-sm">用户组</span>
                 </label>
               </div>
-              <div class="relative">
-                <input
-                  v-if="form.entity_type === 'user'"
-                  type="text"
-                  v-model="userSearch"
-                  placeholder="搜索用户..."
-                  class="input-field mb-2"
-                />
-                <input
-                  v-else
-                  type="text"
-                  v-model="groupSearch"
-                  placeholder="搜索用户组..."
-                  class="input-field mb-2"
-                />
-                <select v-model="form.entity_id" class="input-field">
-                  <option :value="null">请选择{{ form.entity_type === 'user' ? '用户' : '用户组' }}</option>
-                  <template v-if="form.entity_type === 'user'">
-                    <option v-for="user in filteredUsers" :key="user.id" :value="user.id">
-                      {{ user.name }}{{ user.full_name ? ` (${user.full_name})` : '' }}
-                    </option>
-                  </template>
-                  <template v-else>
-                    <option v-for="group in filteredGroups" :key="group.id" :value="group.id">
-                      {{ group.name }}
-                    </option>
-                  </template>
-                </select>
-              </div>
+              <a-select
+                v-if="form.entity_type === 'user'"
+                v-model:value="form.entity_id"
+                :placeholder="form.entity_type === 'user' ? '请选择用户' : '请选择用户组'"
+                :options="users.map(u => ({ label: u.full_name ? `${u.name} (${u.full_name})` : u.name, value: u.id }))"
+                show-search
+                :allow-clear="true"
+                :filter-option="(input: string, option: any) => (option.label || '').toLowerCase().includes(input.toLowerCase())"
+                style="width: 100%"
+              />
+              <a-select
+                v-else
+                v-model:value="form.entity_id"
+                :placeholder="form.entity_type === 'user' ? '请选择用户' : '请选择用户组'"
+                :options="groups.map(g => ({ label: g.name, value: g.id }))"
+                show-search
+                :allow-clear="true"
+                :filter-option="(input: string, option: any) => (option.label || '').toLowerCase().includes(input.toLowerCase())"
+                style="width: 100%"
+              />
             </div>
 
             <!-- Show entity info in edit mode -->
@@ -508,35 +602,32 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
                   <span class="text-sm">组织</span>
                 </label>
               </div>
-              <div class="relative">
-                <input
-                  v-if="form.target_type === 'asset'"
-                  type="text"
-                  v-model="assetSearch"
-                  placeholder="搜索资产..."
-                  class="input-field mb-2"
-                />
-                <input
-                  v-else
-                  type="text"
-                  v-model="orgSearch"
-                  placeholder="搜索组织..."
-                  class="input-field mb-2"
-                />
-                <select v-model="form.target_id" class="input-field">
-                  <option :value="null">请选择{{ form.target_type === 'asset' ? '资产' : '组织' }}</option>
-                  <template v-if="form.target_type === 'asset'">
-                    <option v-for="item in filteredAssets" :key="item.id" :value="item.id">
-                      {{ item.name }} ({{ item.category }})
-                    </option>
+               <div v-if="form.target_type === 'asset'" class="space-y-2">
+                <!-- Custom tag input — click to open picker, no dropdown -->
+                <div
+                  @click="openAssetPicker"
+                  class="flex items-center flex-wrap gap-1 min-h-[36px] px-2 border border-slate-300 rounded-lg cursor-text hover:border-primary transition-colors"
+                >
+                  <template v-for="id in form.target_ids" :key="id">
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-sm rounded">
+                      {{ getAssetLabel(id) }}
+                      <span @click.stop="removeTargetId(id)" class="cursor-pointer hover:text-primary-dark" style="font-size: 12px">×</span>
+                    </span>
                   </template>
-                  <template v-else>
-                    <option v-for="item in filteredOrgs" :key="item.id" :value="String(item.id)">
-                      {{ item.name }}{{ item.path ? ` - ${item.path}` : '' }}
-                    </option>
-                  </template>
-                </select>
+                  <span v-if="form.target_ids.length === 0" class="text-sm text-slate-400 ml-1">请选择资产</span>
+                </div>
               </div>
+              <a-select
+                v-else
+                v-model:value="form.target_ids"
+                mode="multiple"
+                :placeholder="'请选择组织'"
+                :options="organizations.map(o => ({ label: formatOrgPath(o), value: String(o.id) }))"
+                show-search
+                :allow-clear="true"
+                :filter-option="(input: string, option: any) => (option.label || '').toLowerCase().includes(input.toLowerCase())"
+                style="width: 100%"
+              />
             </div>
 
             <!-- Show target info in edit mode -->
@@ -544,9 +635,7 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
               <label class="block text-sm font-medium text-slate-700 mb-2">资产范围</label>
               <div class="p-3 bg-slate-50 rounded-lg">
                 <p class="font-medium text-slate-900">
-                  {{ form.target_type === 'asset'
-                    ? assets.find(a => a.id === form.target_id)?.name
-                    : organizations.find(o => String(o.id) === form.target_id)?.name }}
+                  {{ getTargetName() }}
                 </p>
                 <p class="text-sm text-slate-500">
                   {{ form.target_type === 'asset' ? '资产' : '组织' }}
@@ -589,6 +678,94 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
               </button>
             </div>
           </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Asset Picker Modal -->
+    <div v-if="showAssetPicker" class="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showAssetPicker = false"></div>
+      <div class="relative bg-white w-full max-w-4xl h-[85vh] rounded-xl shadow-2xl flex flex-col">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+          <h2 class="text-xl font-bold text-slate-900">选择资产</h2>
+          <button @click="showAssetPicker = false" class="p-2 hover:bg-slate-50 rounded-full">
+            <CloseOutlined />
+          </button>
+        </div>
+        <div class="flex-1 flex overflow-hidden">
+          <!-- Left: Org Tree -->
+          <div class="w-64 border-r border-slate-100 overflow-y-auto p-4 shrink-0">
+            <a-tree
+              :tree-data="[
+                { id: null, title: '全部资产', key: '__all__', children: orgTreeData },
+              ]"
+              :selected-keys="[String(pickerSelectedOrgId ?? '__all__')]"
+              @select="onPickerTreeSelect"
+              show-line
+              default-expand-all
+            />
+          </div>
+          <!-- Right: Asset List -->
+          <div class="flex-1 flex flex-col overflow-hidden">
+            <!-- Search bar -->
+            <div class="p-4 border-b border-slate-100 shrink-0">
+              <a-input-search
+                v-model:value="pickerSearch"
+                placeholder="搜索资产名称或类型..."
+                allow-clear
+              />
+            </div>
+            <!-- Asset list -->
+            <div class="flex-1 overflow-y-auto">
+              <table class="w-full">
+                <thead class="sticky top-0 bg-slate-50 z-10">
+                  <tr>
+                    <th class="text-left text-xs font-medium text-slate-500 px-4 py-2">名称</th>
+                    <th class="text-left text-xs font-medium text-slate-500 px-4 py-2">类型</th>
+                    <th class="text-left text-xs font-medium text-slate-500 px-4 py-2">地址</th>
+                    <th class="text-left text-xs font-medium text-slate-500 px-4 py-2">组织</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="pickerAssets.length === 0">
+                    <td colspan="4" class="text-center py-8 text-slate-400">暂无资产</td>
+                  </tr>
+                  <tr
+                    v-for="asset in pickerAssets"
+                    :key="asset.id"
+                    @click="togglePickerAsset(asset.id)"
+                    class="cursor-pointer hover:bg-primary/5 transition-colors"
+                    :class="{ 'bg-primary/5': pickerSelectedAssetIds.includes(asset.id) }"
+                  >
+                    <td class="px-4 py-2.5 text-sm font-medium text-slate-900">{{ asset.name }}</td>
+                    <td class="px-4 py-2.5 text-sm text-slate-500">{{ asset.category }}</td>
+                    <td class="px-4 py-2.5 text-sm text-slate-500">
+                      <div v-if="asset.external_address" class="text-sm text-slate-600 font-mono">
+                        <span class="text-[10px] text-blue-500 font-medium mr-1">外</span>
+                        <span v-text="asset.external_address"></span>
+                      </div>
+                      <div v-if="asset.internal_address" class="text-sm text-slate-600 font-mono">
+                        <span class="text-[10px] text-green-500 font-medium mr-1">内</span>
+                        <span v-text="asset.internal_address"></span>
+                      </div>
+                      <span v-if="!asset.external_address && !asset.internal_address" class="text-sm text-slate-400">-</span>
+                    </td>
+                    <td class="px-4 py-2.5 text-sm text-slate-500">
+                      {{ getOrgName(asset.organization_id) }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <!-- Footer: Confirm/Cancel -->
+            <div class="shrink-0 px-4 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50 rounded-b-xl">
+              <span class="text-sm text-slate-500">已选 {{ pickerSelectedAssetIds.length }} 个资产</span>
+              <div class="flex items-center gap-2">
+                <button @click="cancelPickerSelection" class="btn-secondary">取消</button>
+                <button @click="confirmPickerSelection" class="btn-primary">确认</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

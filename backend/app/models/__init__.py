@@ -273,7 +273,7 @@ class Authorization(Base):
     entity_type: Mapped[str] = mapped_column(String(20), nullable=False)  # user, group
     entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
     target_type: Mapped[str] = mapped_column(String(20), nullable=False)  # asset, asset_group
-    target_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    target_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)  # asset UUIDs or org IDs
     permissions: Mapped[list] = mapped_column(JSONB, nullable=False)  # ["view", "manage", ...]
     valid_from: Mapped[Optional[datetime]] = mapped_column(DateTime)
     valid_until: Mapped[Optional[datetime]] = mapped_column(DateTime)
@@ -284,12 +284,13 @@ class Authorization(Base):
 
     __table_args__ = (
         Index("idx_authorizations_entity", "entity_type", "entity_id"),
-        Index("idx_authorizations_target", "target_type", "target_id"),
+        Index("idx_authorizations_target_type", "target_type"),
+        Index("idx_authorizations_target_ids_gin", "target_ids", postgresql_using="gin"),
         Index("idx_authorizations_is_active", "is_active"),
     )
 
     def __repr__(self):
-        return f"<Authorization {self.entity_type}:{self.entity_id} -> {self.target_type}:{self.target_id}>"
+        return f"<Authorization {self.entity_type}:{self.entity_id} -> {self.target_type}:{self.target_ids}>"
 
 
 class LoginLog(Base):

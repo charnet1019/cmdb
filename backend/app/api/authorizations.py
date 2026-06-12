@@ -66,8 +66,8 @@ async def list_authorizations(
     # Batch fetch entity names - collect all IDs first
     user_ids = [auth.entity_id for auth in auths if auth.entity_type == "user"]
     group_ids = [auth.entity_id for auth in auths if auth.entity_type == "group"]
-    asset_ids = [auth.target_id for auth in auths if auth.target_type == "asset"]
-    org_ids = [auth.target_id for auth in auths if auth.target_type == "organization"]
+    asset_ids = list(set(tid for auth in auths if auth.target_type == "asset" for tid in auth.target_ids))
+    org_ids = list(set(tid for auth in auths if auth.target_type == "organization" for tid in auth.target_ids))
 
     # Batch fetch entities
     entity_names = {}
@@ -85,12 +85,21 @@ async def list_authorizations(
     if asset_ids:
         assets_result = await db.execute(select(Asset).where(Asset.id.in_(asset_ids)))
         assets = assets_result.scalars().all()
-        target_names.update({f"asset_{a.id}": a.name for a in assets})
+        target_names.update({a.id: a.name for a in assets})
     if org_ids:
         org_ids_int = [int(oid) for oid in org_ids if oid.isdigit()]
         orgs_result = await db.execute(select(Organization).where(Organization.id.in_(org_ids_int)))
         orgs = orgs_result.scalars().all()
-        target_names.update({f"org_{o.id}": o.name for o in orgs})
+        target_names.update({str(o.id): o.name for o in orgs})
+
+    def format_target_names(auth: Authorization) -> str:
+        if auth.target_type == "asset":
+            names = [target_names.get(tid, f"Asset {tid}") for tid in auth.target_ids]
+        else:
+            names = [target_names.get(tid, f"Org {tid}") for tid in auth.target_ids]
+        if len(names) <= 3:
+            return ", ".join(names)
+        return ", ".join(names[:3]) + f" 等{len(names)}个"
 
     return {
         "code": 0,
@@ -102,8 +111,8 @@ async def list_authorizations(
                 "entity_id": auth.entity_id,
                 "entity_name": entity_names.get(f"{auth.entity_type}_{auth.entity_id}", f"{auth.entity_type.capitalize()} {auth.entity_id}"),
                 "target_type": auth.target_type,
-                "target_id": auth.target_id,
-                "target_name": target_names.get(f"{auth.target_type}_{auth.target_id}", f"{auth.target_type.capitalize()} {auth.target_id}"),
+                "target_ids": auth.target_ids,
+                "target_name": format_target_names(auth),
                 "permissions": auth.permissions,
                 "valid_from": format_datetime_utc(auth.valid_from),
                 "valid_until": format_datetime_utc(auth.valid_until),
@@ -139,23 +148,25 @@ async def create_authorization(
         if not entity_result.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="用户组不存在")
 
-    # Validate target exists
+    # Validate targets exist
     if data.target_type == "asset":
-        target_result = await db.execute(select(Asset).where(Asset.id == data.target_id))
-        if not target_result.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail="资产不存在")
+        for target_id in data.target_ids:
+            target_result = await db.execute(select(Asset).where(Asset.id == target_id))
+            if not target_result.scalar_one_or_none():
+                raise HTTPException(status_code=400, detail=f"资产 {target_id} 不存在")
     else:
-        target_result = await db.execute(select(Organization).where(Organization.id == int(data.target_id)))
-        if not target_result.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail="组织不存在")
+        for target_id in data.target_ids:
+            target_result = await db.execute(select(Organization).where(Organization.id == int(target_id)))
+            if not target_result.scalar_one_or_none():
+                raise HTTPException(status_code=400, detail=f"组织 {target_id} 不存在")
 
-    # Check for existing authorization
+    # Check for existing authorization with same entity + target_type + identical target_ids set
     existing_result = await db.execute(
         select(Authorization).where(
             Authorization.entity_type == data.entity_type,
             Authorization.entity_id == data.entity_id,
             Authorization.target_type == data.target_type,
-            Authorization.target_id == data.target_id,
+            Authorization.target_ids == data.target_ids,
         )
     )
     if existing_result.scalar_one_or_none():
@@ -165,7 +176,7 @@ async def create_authorization(
         entity_type=data.entity_type,
         entity_id=data.entity_id,
         target_type=data.target_type,
-        target_id=data.target_id,
+        target_ids=data.target_ids,
         permissions=data.permissions,
         valid_from=data.valid_from,
         valid_until=data.valid_until,
@@ -184,7 +195,7 @@ async def create_authorization(
             "entity_type": auth.entity_type,
             "entity_id": auth.entity_id,
             "target_type": auth.target_type,
-            "target_id": auth.target_id,
+            "target_ids": auth.target_ids,
             "permissions": auth.permissions,
         }
     }
@@ -294,7 +305,7 @@ async def list_assets_for_auth(
 
     return {
         "code": 0,
-        "data": [{"id": a.id, "name": a.name, "category": a.category} for a in assets]
+        "data": [{"id": a.id, "name": a.name, "category": a.category, "internal_address": a.internal_address, "external_address": a.external_address, "organization_id": a.organization_id} for a in assets]
     }
 
 
@@ -307,7 +318,20 @@ async def list_organizations_for_auth(
     result = await db.execute(select(Organization).order_by(Organization.path))
     orgs = result.scalars().all()
 
+    # Build id→name map from ID path (e.g. "7/12/13" → "Default/开发部/数据库")
+    id_to_name = {o.id: o.name for o in orgs}
+
+    def get_name_path(org: Organization) -> str:
+        path_ids = org.path.split("/") if org.path else []
+        names = []
+        for pid in path_ids:
+            try:
+                names.append(id_to_name[int(pid)])
+            except (KeyError, ValueError):
+                break
+        return "/".join(names) if names else org.name
+
     return {
         "code": 0,
-        "data": [{"id": o.id, "name": o.name, "path": o.path} for o in orgs]
+        "data": [{"id": o.id, "name": o.name, "path": o.path, "name_path": get_name_path(o)} for o in orgs]
     }
