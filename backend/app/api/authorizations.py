@@ -96,7 +96,7 @@ async def list_authorizations(
         if auth.target_type == "asset":
             names = [target_names.get(tid, f"Asset {tid}") for tid in auth.target_ids]
         else:
-            names = [target_names.get(tid, f"Org {tid}") for tid in auth.target_ids]
+            names = [target_names.get(tid, "Default" if tid == "__all__" else f"Org {tid}") for tid in auth.target_ids]
         if len(names) <= 3:
             return ", ".join(names)
         return ", ".join(names[:3]) + f" 等{len(names)}个"
@@ -156,6 +156,8 @@ async def create_authorization(
                 raise HTTPException(status_code=400, detail=f"资产 {target_id} 不存在")
     else:
         for target_id in data.target_ids:
+            if target_id == "__all__":
+                continue  # Root org sentinel — valid
             target_result = await db.execute(select(Organization).where(Organization.id == int(target_id)))
             if not target_result.scalar_one_or_none():
                 raise HTTPException(status_code=400, detail=f"组织 {target_id} 不存在")
@@ -333,5 +335,9 @@ async def list_organizations_for_auth(
 
     return {
         "code": 0,
-        "data": [{"id": o.id, "name": o.name, "path": o.path, "name_path": get_name_path(o)} for o in orgs]
+        "data": [
+            {"id": None, "name": "Default", "path": None, "name_path": "Default"},
+        ] + [
+            {"id": o.id, "name": o.name, "path": o.path, "name_path": "Default/" + get_name_path(o)} for o in orgs
+        ]
     }

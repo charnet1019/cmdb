@@ -62,7 +62,7 @@ export async function getAssetsForAuth(): Promise<Array<{ id: string; name: stri
 }
 
 // Get organizations for selection
-export async function getOrganizationsForAuth(): Promise<Array<{ id: number; name: string; path: string | null; name_path: string }>> {
+export async function getOrganizationsForAuth(): Promise<Array<{ id: number | null; name: string; path: string | null; name_path: string }>> {
   const response = await api.get('/authorizations/organizations')
   return response.data.data
 }

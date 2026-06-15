@@ -50,7 +50,7 @@ const form = ref({
 const users = ref<Array<{ id: number; name: string; full_name: string | null }>>([])
 const groups = ref<Array<{ id: number; name: string }>>([])
 const assets = ref<Array<{ id: string; name: string; category: string; internal_address: string | null; external_address: string | null; organization_id: number | null }>>([])
-const organizations = ref<Array<{ id: number; name: string; path: string | null; name_path: string }>>([])
+const organizations = ref<Array<{ id: number | null; name: string; path: string | null; name_path: string }>>([])
 
 // Asset picker modal
 const showAssetPicker = ref(false)
@@ -81,21 +81,27 @@ const permissionOptions = [
 ]
 
 // Format organization name path (e.g. "Default/开发部/数据库")
-function formatOrgPath(org: { name: string; name_path: string }): string {
+function formatOrgPath(org: { id: number | null; name: string; name_path: string }): string {
+  if (org.id === null) return 'Default'
   return org.name_path || org.name
 }
 
 // Build org tree from flat list
-function buildOrgTree(flatOrgs: Array<{ id: number; name: string; path: string | null; name_path: string }>): OrgTreeNode[] {
+function buildOrgTree(flatOrgs: Array<{ id: number | null; name: string; path: string | null; name_path: string }>): OrgTreeNode[] {
   const map = new Map<number, OrgTreeNode>()
   const roots: OrgTreeNode[] = []
 
   for (const org of flatOrgs) {
+    if (org.id === null) {
+      // Default root — will be added separately
+      continue
+    }
     map.set(org.id, { id: org.id, title: org.name, key: String(org.id), children: [] })
   }
 
   // Derive parent from path: "7/12/13" → parent id = 12
   for (const org of flatOrgs) {
+    if (org.id === null) continue
     const node = map.get(org.id)!
     let parentId: number | null = null
     if (org.path && org.path.includes('/')) {
@@ -191,7 +197,7 @@ function removeTargetId(id: string) {
 
 // Get org name by id
 function getOrgName(orgId: number | null): string {
-  if (!orgId) return '-'
+  if (orgId === null) return 'Default'
   const org = organizations.value.find(o => o.id === orgId)
   return org ? formatOrgPath(org) : '-'
 }
@@ -208,7 +214,8 @@ function getTargetName(): string {
   }
   return form.value.target_ids
     .map(id => {
-      const org = organizations.value.find((o: { id: number; name_path: string }) => String(o.id) === id)
+      if (id === '__all__') return 'Default'
+      const org = organizations.value.find((o: { id: number | null; name_path: string }) => String(o.id ?? '__all__') === id)
       return org ? org.name_path : id
     })
     .join(', ')
@@ -389,6 +396,16 @@ onMounted(() => {
 
   fetchAuthorizations()
   fetchSelectionOptions()
+})
+
+// Watch entity_type — reset entity_id when switching
+watch(() => form.value.entity_type, () => {
+  form.value.entity_id = null
+})
+
+// Watch target_type — reset target_ids when switching
+watch(() => form.value.target_type, () => {
+  form.value.target_ids = []
 })
 
 // Sync state to URL
@@ -599,7 +616,7 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
                 </label>
                 <label class="flex items-center gap-2 cursor-pointer">
                   <input type="radio" v-model="form.target_type" value="organization" class="text-primary" />
-                  <span class="text-sm">组织</span>
+                  <span class="text-sm">节点</span>
                 </label>
               </div>
                <div v-if="form.target_type === 'asset'" class="space-y-2">
@@ -621,8 +638,8 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
                 v-else
                 v-model:value="form.target_ids"
                 mode="multiple"
-                :placeholder="'请选择组织'"
-                :options="organizations.map(o => ({ label: formatOrgPath(o), value: String(o.id) }))"
+                :placeholder="'请选择节点'"
+                :options="organizations.map(o => ({ label: formatOrgPath(o), value: o.id === null ? '__all__' : String(o.id) }))"
                 show-search
                 :allow-clear="true"
                 :filter-option="(input: string, option: any) => (option.label || '').toLowerCase().includes(input.toLowerCase())"
@@ -638,7 +655,7 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
                   {{ getTargetName() }}
                 </p>
                 <p class="text-sm text-slate-500">
-                  {{ form.target_type === 'asset' ? '资产' : '组织' }}
+                  {{ form.target_type === 'asset' ? '资产' : '节点' }}
                 </p>
               </div>
             </div>
@@ -697,7 +714,7 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
           <div class="w-64 border-r border-slate-100 overflow-y-auto p-4 shrink-0">
             <a-tree
               :tree-data="[
-                { id: null, title: '全部资产', key: '__all__', children: orgTreeData },
+                { id: null, title: 'Default', key: '__all__', children: orgTreeData },
               ]"
               :selected-keys="[String(pickerSelectedOrgId ?? '__all__')]"
               @select="onPickerTreeSelect"

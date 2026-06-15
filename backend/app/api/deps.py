@@ -210,7 +210,10 @@ async def check_resource_permission(
         ))
         .where(Authorization.target_type == target_type)
         .where(
-            text(f"target_ids @> '{resource_id}'::jsonb")
+            or_(
+                text(f"target_ids @> '{resource_id}'::jsonb"),
+                text(f"target_ids @> '__all__'::jsonb"),
+            )
         )
         .where(Authorization.is_active == True)
         .where(
@@ -238,7 +241,10 @@ async def check_resource_permission(
             ))
             .where(Authorization.target_type == "organization")
             .where(
-                text(f"target_ids @> '{organization_id}'::jsonb")
+                or_(
+                    text(f"target_ids @> '{organization_id}'::jsonb"),
+                    text(f"target_ids @> '__all__'::jsonb"),
+                )
             )
             .where(Authorization.is_active == True)
             .where(
@@ -320,6 +326,8 @@ async def get_authorized_asset_ids(
             )
         )
         for row in result.scalars().all():
+            if row == "__all__":
+                return None  # All assets authorized
             asset_ids.add(row)
 
     # Organization-level authorizations → find assets in descendant organizations
@@ -346,6 +354,8 @@ async def get_authorized_asset_ids(
             )
         )
         for row in result.scalars().all():
+            if row == "__all__":
+                return None  # All orgs → all assets authorized
             try:
                 org_ids.append(int(row))
             except (ValueError, TypeError):
