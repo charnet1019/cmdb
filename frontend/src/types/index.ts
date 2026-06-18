@@ -163,6 +163,8 @@ export interface UserSimple {
   username: string
   full_name: string | null
   email: string
+  is_superuser: boolean
+  permissions: string[]
 }
 
 export interface AssetSimple {

@@ -70,6 +70,8 @@ class UserSimple(BaseModel):
     username: str
     full_name: Optional[str]
     email: str
+    is_superuser: bool = False
+    permissions: List[str] = []
 
     model_config = ConfigDict(from_attributes=True)
 

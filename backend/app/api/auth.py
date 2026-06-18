@@ -15,7 +15,7 @@ from app.schemas import (
     PasswordChangeRequest, ResponseBase
 )
 from app.core.security import verify_password, create_access_token, get_password_hash, validate_password_strength
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_user_permissions
 from app.config import settings
 
 
@@ -98,6 +98,9 @@ async def login(
 
     expires_at = datetime.utcnow() + expires_delta
 
+    # Get user permissions
+    user_permissions = await get_user_permissions(user, db)
+
     return LoginResponse(
         data=TokenResponse(
             access_token=access_token,
@@ -107,6 +110,8 @@ async def login(
                 username=user.username,
                 full_name=user.full_name,
                 email=user.email,
+                is_superuser=user.is_superuser,
+                permissions=user_permissions,
             )
         )
     )
@@ -174,15 +179,20 @@ async def change_password(
 @router.get("/me", response_model=CurrentUserResponse)
 async def get_current_user_info(
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """
-    Get current user info
+    Get current user info with permissions
     """
+    permissions = await get_user_permissions(current_user, db)
+
     return CurrentUserResponse(
         data=UserSimple(
             id=current_user.id,
             username=current_user.username,
             full_name=current_user.full_name,
             email=current_user.email,
+            is_superuser=current_user.is_superuser,
+            permissions=permissions,
         )
     )

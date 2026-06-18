@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 import {
   AppstoreOutlined,
   ClusterOutlined,
@@ -19,6 +20,7 @@ withDefaults(defineProps<{
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
 
 // 当前展开的父菜单ID（手风琴模式：只允许一个展开）
 const expandedParentId = ref<string | null>(null)
@@ -57,33 +59,47 @@ function onSingleLeave() {
   }, 150)
 }
 
-const menuItems = [
+const allMenuItems = [
   { id: 'dashboard', icon: AppstoreOutlined, label: '仪表盘', path: '/dashboard' },
   {
-    id: 'assets', icon: ClusterOutlined, label: '资产管理',
+    id: 'assets', icon: ClusterOutlined, label: '资产管理', permissions: ['view', 'manage'],
     children: [{ id: 'assets-list', label: '资产列表', path: '/assets' }]
   },
   {
-    id: 'users', icon: TeamOutlined, label: '用户管理',
+    id: 'users', icon: TeamOutlined, label: '用户管理', permissions: ['user_mgmt'],
     children: [
       { id: 'users-list', label: '用户', path: '/users' },
       { id: 'users-groups', label: '用户组', path: '/users/groups' }
     ]
   },
   {
-    id: 'permissions', icon: SafetyCertificateOutlined, label: '权限管理',
+    id: 'permissions', icon: SafetyCertificateOutlined, label: '权限管理', permissions: ['sys_config'],
     children: [{ id: 'authorizations', label: '资产授权', path: '/permissions/authorizations' }]
   },
   {
-    id: 'logs', icon: HistoryOutlined, label: '日志审计',
+    id: 'logs', icon: HistoryOutlined, label: '日志审计', permissions: ['audit_log'],
     children: [
       { id: 'logs-login', label: '登录日志', path: '/logs/login' },
       { id: 'logs-operation', label: '操作日志', path: '/logs/operation' },
       { id: 'logs-password', label: '改密日志', path: '/logs/password' }
     ]
   },
-  { id: 'settings', icon: SettingOutlined, label: '系统设置', path: '/settings' }
+  { id: 'settings', icon: SettingOutlined, label: '系统设置', permissions: ['sys_config'], path: '/settings' }
 ]
+
+const menuItems = computed(() => {
+  if (authStore.isSuperuser) return allMenuItems
+
+  return allMenuItems.filter(item => {
+    if (!item.permissions) return true // Dashboard — always visible
+    return item.permissions.some(p => authStore.hasPermission(p))
+  })
+})
+
+// Reset expanded state when permissions change (menu items may disappear)
+watch(menuItems, () => {
+  expandedParentId.value = null
+}, { deep: true })
 
 function navigateTo(path: string) {
   router.push(path)
@@ -146,7 +162,7 @@ function isParentExpanded(item: any): boolean {
 
 // 监听路由变化：自动展开包含当前路由的父菜单
 watch(() => route.path, (path) => {
-  for (const item of menuItems) {
+  for (const item of menuItems.value) {
     if (item.children && item.children.some((child: any) => child.path === path)) {
       expandedParentId.value = item.id
       break

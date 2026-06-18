@@ -22,6 +22,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Getters
   const isAuthenticated = computed(() => !!token.value)
+  const isSuperuser = computed(() => user.value?.is_superuser ?? false)
   const username = computed(() => user.value?.username || '')
 
   // Actions
@@ -29,6 +30,7 @@ export const useAuthStore = defineStore('auth', () => {
     const response = await loginApi({ username, password, remember })
     token.value = response.access_token
     user.value = response.user
+    permissions.value = response.user.permissions ?? []
     localStorage.setItem('token', response.access_token)
     return response
   }
@@ -50,12 +52,8 @@ export const useAuthStore = defineStore('auth', () => {
     if (!token.value) return null
     try {
       const userData = await getCurrentUser()
-      user.value = {
-        id: userData.id,
-        username: userData.username,
-        full_name: userData.full_name,
-        email: userData.email
-      }
+      user.value = userData
+      permissions.value = userData.permissions ?? []
       return userData
     } catch (e) {
       logout()
@@ -64,7 +62,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function hasPermission(permission: string): boolean {
-    if (!permissions.value.length) return true // TODO: Implement proper permission check
+    if (user.value?.is_superuser) return true
     return permissions.value.includes(permission)
   }
 
@@ -77,6 +75,7 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     permissions,
     isAuthenticated,
+    isSuperuser,
     username,
     login,
     logout,

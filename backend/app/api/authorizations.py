@@ -90,7 +90,7 @@ async def list_authorizations(
         org_ids_int = [int(oid) for oid in org_ids if oid.isdigit()]
         orgs_result = await db.execute(select(Organization).where(Organization.id.in_(org_ids_int)))
         orgs = orgs_result.scalars().all()
-        target_names.update({str(o.id): o.name for o in orgs})
+        target_names.update({str(o.id): o.name_path for o in orgs})
 
     def format_target_names(auth: Authorization) -> str:
         if auth.target_type == "asset":
