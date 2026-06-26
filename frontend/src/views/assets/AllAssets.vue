@@ -31,6 +31,7 @@ import { useTypeTree, categories, platformOptions, categoryOptions, dbTypeOption
 import { useColumnConfig } from './composables/useColumnConfig'
 import { createAsset, updateAsset, createCredential, updateCredential, getAssets, decryptOobPassword } from '@/api/assets'
 import { getUsers } from '@/api/users'
+import { useAuthStore } from '@/stores/auth'
 import ColumnCustomizer from './components/ColumnCustomizer.vue'
 import { formatDateTime } from '@/utils/datetime'
 import ImportModal from './components/ImportModal.vue'
@@ -138,6 +139,10 @@ const {
   isFieldEditing,
   resetFormCredentials
 } = useCredentials()
+
+// Auth for permission checks
+const authStore = useAuthStore()
+const hasPermission = (perm: string) => authStore.hasPermission(perm)
 
 const {
   expandedTypeIds,
@@ -1073,8 +1078,8 @@ onMounted(async () => {
                             <span class="font-medium shrink-0">{{ asset.oob_username || asset.extra_data?.oob_username }}</span>
                             <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(asset.oob_username || asset.extra_data?.oob_username || '')" />
                             <span class="text-slate-400 font-mono ml-1 shrink-0">********</span>
-                            <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyOobPassword(asset)" />
-                            <EyeOutlined class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showOobPasswordPopover(asset, $event)" />
+                            <CopyOutlined v-if="hasPermission('view_pwd')" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyOobPassword(asset)" />
+                            <EyeOutlined v-if="hasPermission('view_pwd')" class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showOobPasswordPopover(asset, $event)" />
                           </div>
                         </template>
                         <template v-else-if="key === 'db_type'"><span class="text-sm text-slate-600">{{ asset.db_type || '' }}</span></template>
@@ -1110,8 +1115,8 @@ onMounted(async () => {
                             <span class="font-medium shrink-0">{{ cred.username }}</span>
                             <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyUsername(cred.username)" />
                             <span class="text-slate-400 font-mono ml-1 shrink-0">********</span>
-                            <CopyOutlined class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyPassword(cred)" />
-                            <EyeOutlined class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showPasswordPopover(cred, $event)" />
+                            <CopyOutlined v-if="hasPermission('view_pwd')" class="text-[14px] cursor-pointer hover:text-primary shrink-0" @click="copyPassword(cred)" />
+                            <EyeOutlined v-if="hasPermission('view_pwd')" class="text-[14px] cursor-pointer hover:text-primary ml-1 shrink-0" @click.stop="showPasswordPopover(cred, $event)" />
                           </div>
                         </template>
                         <template v-else-if="key === 'notes'"><span class="text-sm text-slate-600">{{ asset.notes || '' }}</span></template>
@@ -1387,7 +1392,7 @@ onMounted(async () => {
                       </div>
                       <!-- 操作按钮 -->
                       <div class="flex items-center gap-0.5">
-                        <button v-if="cred.id" type="button" @click="viewFormCredentialPassword(cred)" class="p-1.5 text-slate-400 hover:text-primary hover:bg-slate-100 rounded" :title="decryptedFormPasswords.has(cred.id) ? '隐藏密码' : '查看密码'">
+                        <button v-if="cred.id && hasPermission('view_pwd')" type="button" @click="viewFormCredentialPassword(cred)" class="p-1.5 text-slate-400 hover:text-primary hover:bg-slate-100 rounded" :title="decryptedFormPasswords.has(cred.id) ? '隐藏密码' : '查看密码'">
                           <EyeOutlined v-if="!decryptedFormPasswords.has(cred.id)" class="text-sm" />
                           <EyeInvisibleOutlined v-else class="text-sm" />
                         </button>
