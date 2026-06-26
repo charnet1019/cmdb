@@ -2,15 +2,16 @@
 Dashboard API
 Statistics and overview data for dashboard page
 """
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Dict, Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, distinct, false
+from sqlalchemy import select, func, false
 
 from app.database import get_db
 from app.models import User, Asset, LoginLog
 from app.api.deps import get_current_user, get_authorized_asset_ids
+from app.core.redis_client import get_redis, ONLINE_KEY_PREFIX
 from app.schemas import ResponseBase
 
 
@@ -98,14 +99,11 @@ async def get_dashboard_stats(
     )
     active_users = active_users_result.scalar() or 0
 
-    # Online users (logged in within last 30 minutes)
-    thirty_minutes_ago = datetime.utcnow() - timedelta(minutes=30)
-    online_users_result = await db.execute(
-        select(func.count(distinct(LoginLog.user_id)))
-        .where(LoginLog.created_at >= thirty_minutes_ago)
-        .where(LoginLog.status == "success")
-    )
-    online_users = online_users_result.scalar() or 0
+    # Online users — count Redis presence keys
+    redis_client = get_redis()
+    keys = [k for k in await redis_client.keys(f"{ONLINE_KEY_PREFIX}*")]
+    online_user_ids = {int(k.split(":online:")[1]) for k in keys}
+    online_users = len(online_user_ids)
 
     # Recent successful logins (last 5)
     recent_logins_result = await db.execute(
@@ -122,7 +120,7 @@ async def get_dashboard_stats(
             "time": login_log.created_at.strftime("%H:%M"),
             "ip": login_log.ip_address,
             "user_id": login_log.user_id,
-            "is_online": login_log.created_at >= thirty_minutes_ago,
+            "is_online": login_log.user_id in online_user_ids,
         })
 
     return {

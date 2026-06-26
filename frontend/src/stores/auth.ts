@@ -1,16 +1,38 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { UserSimple } from '@/types'
-import { login as loginApi, logout as logoutApi, getCurrentUser } from '@/api/auth'
+import { login as loginApi, logout as logoutApi, getCurrentUser, heartbeat as heartbeatApi } from '@/api/auth'
+
+const HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000  // 2 minutes
 
 export const useAuthStore = defineStore('auth', () => {
   // State
   const token = ref<string | null>(localStorage.getItem('token'))
   const user = ref<UserSimple | null>(null)
   const permissions = ref<string[]>([])
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+
+  function startHeartbeat() {
+    stopHeartbeat()
+    heartbeatTimer = setInterval(async () => {
+      try {
+        await heartbeatApi()
+      } catch {
+        // Heartbeat failure is silent — next API call will 401 if token expired
+      }
+    }, HEARTBEAT_INTERVAL_MS)
+  }
+
+  function stopHeartbeat() {
+    if (heartbeatTimer !== null) {
+      clearInterval(heartbeatTimer)
+      heartbeatTimer = null
+    }
+  }
 
   // Listen for token cleared event from API interceptor
   const handleTokenCleared = () => {
+    stopHeartbeat()
     token.value = null
     user.value = null
     permissions.value = []
@@ -32,10 +54,12 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = response.user
     permissions.value = response.user.permissions ?? []
     localStorage.setItem('token', response.access_token)
+    startHeartbeat()
     return response
   }
 
   async function logout() {
+    stopHeartbeat()
     try {
       await logoutApi()
     } catch (e) {
@@ -54,6 +78,9 @@ export const useAuthStore = defineStore('auth', () => {
       const userData = await getCurrentUser()
       user.value = userData
       permissions.value = userData.permissions ?? []
+      // Re-establish presence — Redis key may have expired while away
+      await heartbeatApi()
+      startHeartbeat()
       return userData
     } catch (e) {
       logout()

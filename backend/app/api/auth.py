@@ -15,6 +15,7 @@ from app.schemas import (
     PasswordChangeRequest, ResponseBase
 )
 from app.core.security import verify_password, create_access_token, get_password_hash, validate_password_strength
+from app.core.redis_client import get_redis, ONLINE_KEY_PREFIX, ONLINE_TTL_SECONDS
 from app.api.deps import get_current_user, get_user_permissions
 from app.config import settings
 
@@ -86,6 +87,14 @@ async def login(
     await db.commit()
     await db.refresh(user)
 
+    # Mark user as online in Redis
+    redis_client = get_redis()
+    await redis_client.setex(
+        f"{ONLINE_KEY_PREFIX}{user.id}",
+        ONLINE_TTL_SECONDS,
+        "1",
+    )
+
     # Create access token
     expires_delta = timedelta(hours=settings.JWT_ACCESS_TOKEN_EXPIRE_HOURS)
     if data.remember:
@@ -118,12 +127,31 @@ async def login(
 
 
 @router.post("/logout", response_model=ResponseBase)
-async def logout():
+async def logout(
+    current_user: User = Depends(get_current_user),
+):
     """
-    User logout endpoint
-    Client should remove the token locally
+    User logout endpoint — remove online presence
     """
+    redis_client = get_redis()
+    await redis_client.delete(f"{ONLINE_KEY_PREFIX}{current_user.id}")
     return ResponseBase(message="登出成功")
+
+
+@router.post("/heartbeat", response_model=ResponseBase)
+async def heartbeat(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Heartbeat — refresh online presence TTL (creates key if missing)
+    """
+    redis_client = get_redis()
+    await redis_client.setex(
+        f"{ONLINE_KEY_PREFIX}{current_user.id}",
+        ONLINE_TTL_SECONDS,
+        "1",
+    )
+    return ResponseBase(message="ok")
 
 
 @router.post("/change-password", response_model=ResponseBase)

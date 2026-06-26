@@ -10,6 +10,10 @@ export async function logout(): Promise<void> {
   await api.post('/auth/logout')
 }
 
+export async function heartbeat(): Promise<void> {
+  await api.post('/auth/heartbeat')
+}
+
 export async function getCurrentUser(): Promise<UserSimple> {
   const response = await api.get<ApiResponse<UserSimple>>('/auth/me')
   return response.data.data
