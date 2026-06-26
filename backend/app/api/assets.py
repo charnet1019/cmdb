@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, F
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, delete, inspect, false
+from sqlalchemy import select, func, or_, delete, inspect, false, text
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
@@ -559,15 +559,34 @@ async def create_asset(
 
     # Auto-authorize creator with "manage" on the new asset
     if not current_user.is_superuser:
-        auth = Authorization(
-            entity_type="user",
-            entity_id=current_user.id,
-            target_type="asset",
-            target_ids=[asset.id],
-            permissions=["manage"],
-            created_by=current_user.id,
+        # Try to append to existing asset-level authorization with "manage"
+        existing = await db.execute(
+            select(Authorization)
+            .where(Authorization.entity_type == "user")
+            .where(Authorization.entity_id == current_user.id)
+            .where(Authorization.target_type == "asset")
+            .where(Authorization.is_active == True)
+            .where(text("permissions @> '\"manage\"'::jsonb"))
+            .order_by(Authorization.id.desc())
+            .limit(1)
         )
-        db.add(auth)
+        existing = existing.scalar_one_or_none()
+        if existing:
+            target_ids = list(existing.target_ids or [])
+            if asset.id not in target_ids:
+                target_ids.append(asset.id)
+                existing.target_ids = target_ids
+            await db.commit()
+        else:
+            existing = Authorization(
+                entity_type="user",
+                entity_id=current_user.id,
+                target_type="asset",
+                target_ids=[asset.id],
+                permissions=["manage"],
+                created_by=current_user.id,
+            )
+            db.add(existing)
         await db.commit()
 
     # Handle database asset relations (runs_on hosts)

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import { PlusOutlined, EditOutlined, BlockOutlined, CheckCircleOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-vue'
 import { formatDateTime } from '@/utils/datetime'
 import {
@@ -350,15 +350,23 @@ async function handleSubmit() {
 
 // Delete authorization
 async function handleDelete(auth: any) {
-  if (!confirm(`确定要删除此授权吗?`)) return
-
-  try {
-    await deleteAuthorization(auth.id)
-    message.success('授权已删除')
-    fetchAuthorizations()
-  } catch {
-    message.error('删除失败')
-  }
+  Modal.confirm({
+    title: '确认删除',
+    content: `确定要删除对 "${auth.entity_name}" 的授权吗？`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    centered: true,
+    async onOk() {
+      try {
+        await deleteAuthorization(auth.id)
+        message.success('授权已删除')
+        fetchAuthorizations()
+      } catch {
+        message.error('删除失败')
+      }
+    }
+  })
 }
 
 // Toggle authorization status
