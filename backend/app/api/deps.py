@@ -255,8 +255,8 @@ async def check_resource_permission(
         .where(Authorization.target_type == target_type)
         .where(
             or_(
-                text(f"target_ids @> '{resource_id}'::jsonb"),
-                text(f"target_ids @> '__all__'::jsonb"),
+                text(f"target_ids @> '\"{resource_id}\"'::jsonb"),
+                text(f"target_ids @> '\"__all__\"'::jsonb"),
             )
         )
         .where(Authorization.is_active == True)
@@ -284,8 +284,8 @@ async def check_resource_permission(
             .where(Authorization.target_type == "organization")
             .where(
                 or_(
-                    text(f"target_ids @> '{organization_id}'::jsonb"),
-                    text(f"target_ids @> '__all__'::jsonb"),
+                    text(f"target_ids @> '\"{organization_id}\"'::jsonb"),
+                    text(f"target_ids @> '\"__all__\"'::jsonb"),
                 )
             )
             .where(Authorization.is_active == True)
