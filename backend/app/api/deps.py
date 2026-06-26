@@ -89,7 +89,7 @@ async def get_current_superuser(
 
 # Permission hierarchy: higher permissions imply lower ones
 IMPLIED_PERMISSIONS: Dict[str, Set[str]] = {
-    "manage": {"view"},
+    "manage": {"view", "manage_pwd"},
     "manage_pwd": {"view_pwd"},
 }
 
@@ -108,8 +108,19 @@ def _satisfies_permission(have: str, need: str) -> bool:
 
 
 def _permission_variants(need: str) -> Set[str]:
-    """Return all permission values that satisfy `need` (need + implied equivalents)."""
-    return {need} | PERMISSION_ALIASES.get(need, set())
+    """Return all permission values that satisfy `need` (transitive)."""
+    result = {need}
+    # Walk up the reverse chain: manage → manage_pwd → view_pwd
+    current = {need}
+    while True:
+        parents: Set[str] = set()
+        for p in current:
+            parents.update(PERMISSION_ALIASES.get(p, set()))
+        if not parents or parents.issubset(result):
+            break
+        result.update(parents)
+        current = parents
+    return result
 
 
 async def get_user_permissions(
@@ -174,10 +185,16 @@ async def get_user_permissions(
             if auth.permissions:
                 permissions.update(auth.permissions)
 
-    # Add implied permissions (e.g., "manage" implies "view")
+    # Expand permissions transitively (e.g., manage → manage_pwd → view_pwd)
     expanded = set(permissions)
-    for perm in permissions:
-        expanded.update(IMPLIED_PERMISSIONS.get(perm, set()))
+    changed = True
+    while changed:
+        changed = False
+        for perm in list(expanded):
+            implied = IMPLIED_PERMISSIONS.get(perm, set())
+            if not implied.issubset(expanded):
+                expanded.update(implied)
+                changed = True
     return list(expanded)
 
 

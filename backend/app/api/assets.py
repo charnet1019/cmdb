@@ -14,7 +14,7 @@ from sqlalchemy import select, func, or_, delete, inspect, false
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import Asset, Credential, Organization, User, AssetHostRelation, StorageLocation
+from app.models import Asset, Authorization, Credential, Organization, User, AssetHostRelation, StorageLocation
 from app.schemas import (
     AssetCreate, AssetUpdate, AssetResponse, AssetSimple,
     AssetListResponse, PaginationMeta,
@@ -556,6 +556,19 @@ async def create_asset(
     db.add(asset)
     await db.commit()
     await db.refresh(asset)
+
+    # Auto-authorize creator with "manage" on the new asset
+    if not current_user.is_superuser:
+        auth = Authorization(
+            entity_type="user",
+            entity_id=current_user.id,
+            target_type="asset",
+            target_ids=[asset.id],
+            permissions=["manage"],
+            created_by=current_user.id,
+        )
+        db.add(auth)
+        await db.commit()
 
     # Handle database asset relations (runs_on hosts)
     if data.host_ids and data.category == "database":
