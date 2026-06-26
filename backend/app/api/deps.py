@@ -3,7 +3,7 @@ API Dependencies
 Dependency injection for FastAPI routes
 """
 from datetime import datetime
-from typing import Optional, List, Set
+from typing import Optional, List, Set, Dict
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -87,6 +87,31 @@ async def get_current_superuser(
     return current_user
 
 
+# Permission hierarchy: higher permissions imply lower ones
+IMPLIED_PERMISSIONS: Dict[str, Set[str]] = {
+    "manage": {"view"},
+    "manage_pwd": {"view_pwd"},
+}
+
+# Reverse map: to satisfy "view", also accept "manage"
+PERMISSION_ALIASES: Dict[str, Set[str]] = {}
+for higher, lowers in IMPLIED_PERMISSIONS.items():
+    for lower in lowers:
+        PERMISSION_ALIASES.setdefault(lower, set()).add(higher)
+
+
+def _satisfies_permission(have: str, need: str) -> bool:
+    """Check if having `have` satisfies needing `need` (via implication)."""
+    if have == need:
+        return True
+    return need in IMPLIED_PERMISSIONS.get(have, set())
+
+
+def _permission_variants(need: str) -> Set[str]:
+    """Return all permission values that satisfy `need` (need + implied equivalents)."""
+    return {need} | PERMISSION_ALIASES.get(need, set())
+
+
 async def get_user_permissions(
     user: User,
     db: AsyncSession,
@@ -95,13 +120,11 @@ async def get_user_permissions(
     Get all permissions for a user (direct + group permissions)
     """
     if user.is_superuser:
-        # Superuser has all permissions
         return [
             "view", "manage", "user_mgmt", "sys_config",
             "audit_log", "view_pwd", "manage_pwd"
         ]
 
-    # Get direct user authorizations
     now = datetime.utcnow()
 
     # Direct user permissions
@@ -151,7 +174,11 @@ async def get_user_permissions(
             if auth.permissions:
                 permissions.update(auth.permissions)
 
-    return list(permissions)
+    # Add implied permissions (e.g., "manage" implies "view")
+    expanded = set(permissions)
+    for perm in permissions:
+        expanded.update(IMPLIED_PERMISSIONS.get(perm, set()))
+    return list(expanded)
 
 
 class PermissionChecker:
@@ -168,14 +195,12 @@ class PermissionChecker:
         current_user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ) -> User:
-        # Superuser has all permissions
         if current_user.is_superuser:
             return current_user
 
-        # Check user permissions from authorizations
         permissions = await get_user_permissions(current_user, db)
 
-        if self.permission not in permissions:
+        if not any(_satisfies_permission(p, self.permission) for p in permissions):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"缺少 '{self.permission}' 权限"
@@ -200,6 +225,8 @@ async def check_resource_permission(
         return True
 
     now = datetime.utcnow()
+    satisfying_perms = _permission_variants(permission)
+    perm_check = or_(*[text(f"permissions @> '\"{p}\"'::jsonb") for p in satisfying_perms])
 
     # Check direct authorization on the resource
     result = await db.execute(
@@ -222,9 +249,7 @@ async def check_resource_permission(
         .where(
             (Authorization.valid_until == None) | (Authorization.valid_until >= now)
         )
-        .where(
-            text(f"permissions @> '{permission}'::jsonb")
-        )
+        .where(perm_check)
         .limit(1)
     )
 
@@ -253,9 +278,7 @@ async def check_resource_permission(
             .where(
                 (Authorization.valid_until == None) | (Authorization.valid_until >= now)
             )
-            .where(
-                text(f"permissions @> '{permission}'::jsonb")
-            )
+            .where(perm_check)
             .limit(1)
         )
 
@@ -287,6 +310,7 @@ async def get_authorized_asset_ids(
         return set()  # No authorizations configured → non-superuser sees nothing
 
     now = datetime.utcnow()
+    satisfying_perms = _permission_variants(permission)
 
     # Direct asset authorizations
     asset_ids: Set[str] = set()
@@ -322,7 +346,7 @@ async def get_authorized_asset_ids(
                 (Authorization.valid_until == None) | (Authorization.valid_until >= now)
             )
             .where(
-                text(f"permissions @> '{permission}'::jsonb")
+                or_(*[text(f"permissions @> '\"{p}\"'::jsonb") for p in satisfying_perms])
             )
         )
         for row in result.scalars().all():
@@ -350,7 +374,7 @@ async def get_authorized_asset_ids(
                 (Authorization.valid_until == None) | (Authorization.valid_until >= now)
             )
             .where(
-                text(f"permissions @> '{permission}'::jsonb")
+                or_(*[text(f"permissions @> '\"{p}\"'::jsonb") for p in satisfying_perms])
             )
         )
         for row in result.scalars().all():

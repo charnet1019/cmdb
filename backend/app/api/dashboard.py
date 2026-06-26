@@ -50,14 +50,14 @@ async def get_dashboard_stats(
 
     # Total assets count (all statuses)
     count_query = select(func.count()).select_from(Asset)
-    if asset_filter:
+    if asset_filter is not None:
         count_query = count_query.where(asset_filter)
     assets_result = await db.execute(count_query)
     total_assets = assets_result.scalar() or 0
 
     # Asset type distribution (all statuses)
     dist_query = select(Asset.category, func.count().label("count"))
-    if asset_filter:
+    if asset_filter is not None:
         dist_query = dist_query.where(asset_filter)
     asset_distribution_result = await db.execute(dist_query.group_by(Asset.category))
     asset_distribution = [
@@ -67,7 +67,7 @@ async def get_dashboard_stats(
 
     # Status distribution (all statuses)
     status_query = select(Asset.status, func.count().label("count"))
-    if asset_filter:
+    if asset_filter is not None:
         status_query = status_query.where(asset_filter)
     status_result = await db.execute(status_query.group_by(Asset.status))
     status_distribution = [
@@ -80,7 +80,7 @@ async def get_dashboard_stats(
     for category, sub_field in SUB_CATEGORY_FIELDS.items():
         col = getattr(Asset, sub_field)
         sub_query = select(col, func.count().label("count")).where(Asset.category == category).where(col.isnot(None))
-        if asset_filter:
+        if asset_filter is not None:
             sub_query = sub_query.where(asset_filter)
         sub_query = sub_query.group_by(col)
         sub_result = await db.execute(sub_query)

@@ -278,7 +278,7 @@ async def get_asset_stats(
         asset_filter = Asset.id.in_(authorized_ids)
 
     # Get total count
-    if asset_filter:
+    if asset_filter is not None:
         total_result = await db.execute(select(func.count()).where(asset_filter))
     else:
         total_result = await db.execute(select(func.count()).select_from(Asset))
@@ -286,14 +286,14 @@ async def get_asset_stats(
 
     # Get count by category
     cat_query = select(Asset.category, func.count().label('count'))
-    if asset_filter:
+    if asset_filter is not None:
         cat_query = cat_query.where(asset_filter)
     category_result = await db.execute(cat_query.group_by(Asset.category))
     category_counts = {row.category: row.count for row in category_result}
 
     # Get count by platform (for host, database, cloud, web, gpt)
     plat_query = select(Asset.category, Asset.platform, func.count().label('count')).where(Asset.platform.isnot(None))
-    if asset_filter:
+    if asset_filter is not None:
         plat_query = plat_query.where(asset_filter)
     platform_result = await db.execute(plat_query.group_by(Asset.category, Asset.platform))
     platform_counts = {}
@@ -303,14 +303,14 @@ async def get_asset_stats(
 
     # Get count by device_type (for network)
     dt_query = select(Asset.device_type, func.count().label('count')).where(Asset.device_type.isnot(None))
-    if asset_filter:
+    if asset_filter is not None:
         dt_query = dt_query.where(asset_filter)
     device_type_result = await db.execute(dt_query.group_by(Asset.device_type))
     device_type_counts = {row.device_type: row.count for row in device_type_result}
 
     # Get count by db_type (for database)
     dbt_query = select(Asset.db_type, func.count().label('count')).where(Asset.db_type.isnot(None))
-    if asset_filter:
+    if asset_filter is not None:
         dbt_query = dbt_query.where(asset_filter)
     db_type_result = await db.execute(dbt_query.group_by(Asset.db_type))
     db_type_counts = {row.db_type: row.count for row in db_type_result}
@@ -1266,18 +1266,23 @@ async def list_organizations(
     )
     organizations = result.scalars().all()
 
-    # Get asset count for each organization in a single query
-    org_asset_counts_result = await db.execute(
-        select(Asset.organization_id, func.count().label('count'))
-        .where(Asset.organization_id.isnot(None))
-        .group_by(Asset.organization_id)
+    # Resource-level authorization filter
+    authorized_ids = await get_authorized_asset_ids(current_user, db, "view")
+
+    # Get asset count for each organization (filtered by authorization)
+    count_query = select(Asset.organization_id, func.count().label('count')).where(
+        Asset.organization_id.isnot(None)
     )
+    if authorized_ids is not None:
+        count_query = count_query.where(Asset.id.in_(authorized_ids))
+    org_asset_counts_result = await db.execute(count_query.group_by(Asset.organization_id))
     org_asset_counts = {row.organization_id: row.count for row in org_asset_counts_result}
 
     # Get asset count for root (organization_id is null)
-    root_asset_count = await db.scalar(
-        select(func.count()).select_from(Asset).where(Asset.organization_id.is_(None))
-    ) or 0
+    root_query = select(func.count()).select_from(Asset).where(Asset.organization_id.is_(None))
+    if authorized_ids is not None:
+        root_query = root_query.where(Asset.id.in_(authorized_ids))
+    root_asset_count = await db.scalar(root_query) or 0
 
     # Build tree structure and calculate total counts (including children)
     org_map = {}
