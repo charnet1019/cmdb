@@ -916,6 +916,7 @@ onMounted(async () => {
                 @click.stop
               >
                 <div
+                  v-if="hasPermission('manage')"
                   @click.stop="openCreateOrgModal(orgContextMenuTarget?.id || null)"
                   class="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2"
                 >
@@ -924,14 +925,16 @@ onMounted(async () => {
                 </div>
                 <template v-if="orgContextMenuTarget && !orgContextMenuTarget.isRoot">
                   <div
+                    v-if="hasPermission('manage')"
                     @click.stop="openRenameOrgModal(orgContextMenuTarget)"
                     class="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center gap-2"
                   >
                     <EditOutlined class="text-sm" />
                     重命名节点
                   </div>
-                  <div class="border-t border-slate-100 my-1"></div>
+                  <div v-if="hasPermission('manage')" class="border-t border-slate-100 my-1"></div>
                   <div
+                    v-if="hasPermission('manage')"
                     @click.stop="handleDeleteOrg(orgContextMenuTarget)"
                     class="px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 cursor-pointer flex items-center gap-2"
                   >
@@ -973,8 +976,8 @@ onMounted(async () => {
         <div class="bg-white rounded-xl shadow-sm p-2.5 mb-0.5">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <button @click="openCreateModal" class="btn-primary text-xs px-3 py-1.5">创建</button>
-              <Dropdown :trigger="['click']">
+              <button v-if="hasPermission('manage')" @click="openCreateModal" class="btn-primary text-xs px-3 py-1.5">创建</button>
+              <Dropdown v-if="hasPermission('manage')" :trigger="['click']">
                 <button class="border border-slate-300 text-slate-600 text-xs px-3 py-1.5 rounded hover:bg-slate-50 flex items-center gap-1">
                   更多操作 <DownOutlined class="text-[10px]" />
                 </button>
@@ -1006,8 +1009,8 @@ onMounted(async () => {
                 <option v-for="s in statusOptions" :key="s.key" :value="s.key">{{ s.label }}</option>
               </select>
               <button @click="showColumnCustomizer = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="自定义列"><SettingOutlined class="text-sm" /></button>
-              <button v-if="activeCategory !== 'all'" @click="showImportModal = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导入"><ImportOutlined class="text-sm" /></button>
-              <button @click="showExportModal = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导出"><ExportOutlined class="text-sm" /></button>
+              <button v-if="hasPermission('manage') && activeCategory !== 'all'" @click="showImportModal = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导入"><ImportOutlined class="text-sm" /></button>
+              <button v-if="hasPermission('manage')" @click="showExportModal = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导出"><ExportOutlined class="text-sm" /></button>
               <button @click="handleSearch" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="刷新"><ReloadOutlined class="text-sm" /></button>
             </div>
           </div>
@@ -1130,8 +1133,8 @@ onMounted(async () => {
                           <span class="text-sm text-slate-600">{{ formatDateTime(asset.updated_at) }}</span>
                         </template>
                         <template v-else-if="key === 'actions'">
-                          <button @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded text-xs">更新</button>
-                          <button @click="handleDelete(asset, fetchData, fetchOrganizations)" class="border border-red-400 text-red-500 px-2 py-0.5 rounded text-xs ml-1">删除</button>
+                          <button v-if="hasPermission('manage')" @click="openEditModal(asset)" class="bg-primary text-white px-2 py-0.5 rounded text-xs">更新</button>
+                          <button v-if="hasPermission('manage')" @click="handleDelete(asset, fetchData, fetchOrganizations)" class="border border-red-400 text-red-500 px-2 py-0.5 rounded text-xs ml-1">删除</button>
                         </template>
                       </td>
                     </template>
