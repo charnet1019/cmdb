@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, F
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, delete, inspect
+from sqlalchemy import select, func, or_, delete, inspect, false
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
@@ -270,7 +270,12 @@ async def get_asset_stats(
     """Get asset statistics by category and subcategory"""
     # Resource-level authorization filter
     authorized_ids = await get_authorized_asset_ids(current_user, db, "view")
-    asset_filter = Asset.id.in_(authorized_ids) if authorized_ids is not None else None
+    if authorized_ids is None:
+        asset_filter = None
+    elif len(authorized_ids) == 0:
+        asset_filter = false()
+    else:
+        asset_filter = Asset.id.in_(authorized_ids)
 
     # Get total count
     if asset_filter:
@@ -385,6 +390,17 @@ async def list_assets(
 
     # Resource-level authorization filter
     authorized_ids = await get_authorized_asset_ids(current_user, db, "view")
+    if authorized_ids is not None and len(authorized_ids) == 0:
+        # No authorized assets — return empty immediately
+        return {
+            "code": 0,
+            "data": {
+                "items": [],
+                "total": 0,
+                "page": page,
+                "limit": limit,
+            }
+        }
     if authorized_ids is not None:
         query = query.where(Asset.id.in_(authorized_ids))
 
@@ -848,10 +864,13 @@ async def export_assets(
 
     # Resource-level authorization filter
     authorized_ids = await get_authorized_asset_ids(current_user, db, "view")
+    if authorized_ids is not None and len(authorized_ids) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="未找到要导出的资产"
+        )
     if authorized_ids is not None:
         query = query.where(Asset.id.in_(authorized_ids))
-
-    # Add eager loading
     query = query.options(selectinload(Asset.credentials))
     if category == "database":
         query = query.options(
@@ -1453,6 +1472,8 @@ async def list_credentials(
     else:
         # Filter by authorized assets
         authorized_ids = await get_authorized_asset_ids(current_user, db, "view_pwd")
+        if authorized_ids is not None and len(authorized_ids) == 0:
+            return {"code": 0, "data": []}
         if authorized_ids is not None:
             query = query.where(Credential.asset_id.in_(authorized_ids))
 
