@@ -284,7 +284,7 @@ async def get_authorized_asset_ids(
     count_result = await db.execute(select(func.count()).select_from(Authorization))
     total = count_result.scalar()
     if total == 0:
-        return None  # No authorizations → everything visible
+        return set()  # No authorizations configured → non-superuser sees nothing
 
     now = datetime.utcnow()
 
@@ -392,4 +392,4 @@ async def get_authorized_asset_ids(
                 for row in assets_result.scalars().all():
                     asset_ids.add(row)
 
-    return asset_ids if asset_ids else None
+    return set(asset_ids) if asset_ids else set()  # Empty set = authorized but no assets

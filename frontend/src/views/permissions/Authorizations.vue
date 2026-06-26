@@ -195,13 +195,6 @@ function removeTargetId(id: string) {
   if (idx !== -1) form.value.target_ids.splice(idx, 1)
 }
 
-// Get org name by id
-function getOrgName(orgId: number | null): string {
-  if (orgId === null) return 'Default'
-  const org = organizations.value.find(o => o.id === orgId)
-  return org ? formatOrgPath(org) : '-'
-}
-
 // Get target name for edit mode display
 function getTargetName(): string {
   if (form.value.target_type === 'asset') {
@@ -684,7 +677,14 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
             <!-- Validity -->
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-2">有效期至 (可选)</label>
-              <input type="datetime-local" v-model="form.valid_until" class="input-field" />
+              <a-date-picker
+                v-model:value="form.valid_until"
+                show-time
+                format="YYYY-MM-DD HH:mm"
+                value-format="YYYY-MM-DDTHH:mm"
+                placeholder="选择到期时间"
+                style="width: 100%;"
+              />
             </div>
 
             <!-- Actions -->
@@ -737,10 +737,10 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
               <table class="w-full">
                 <thead class="sticky top-0 bg-slate-50 z-10">
                   <tr>
+                    <th class="text-left text-xs font-medium text-slate-500 px-4 py-2" style="width:40px;"></th>
                     <th class="text-left text-xs font-medium text-slate-500 px-4 py-2">名称</th>
                     <th class="text-left text-xs font-medium text-slate-500 px-4 py-2">类型</th>
                     <th class="text-left text-xs font-medium text-slate-500 px-4 py-2">地址</th>
-                    <th class="text-left text-xs font-medium text-slate-500 px-4 py-2">组织</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -754,6 +754,12 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
                     class="cursor-pointer hover:bg-primary/5 transition-colors"
                     :class="{ 'bg-primary/5': pickerSelectedAssetIds.includes(asset.id) }"
                   >
+                    <td class="px-4 py-2.5" @click.stop>
+                      <a-checkbox
+                        :checked="pickerSelectedAssetIds.includes(asset.id)"
+                        @change="togglePickerAsset(asset.id)"
+                      />
+                    </td>
                     <td class="px-4 py-2.5 text-sm font-medium text-slate-900">{{ asset.name }}</td>
                     <td class="px-4 py-2.5 text-sm text-slate-500">{{ asset.category }}</td>
                     <td class="px-4 py-2.5 text-sm text-slate-500">
@@ -766,9 +772,6 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
                         <span v-text="asset.internal_address"></span>
                       </div>
                       <span v-if="!asset.external_address && !asset.internal_address" class="text-sm text-slate-400">-</span>
-                    </td>
-                    <td class="px-4 py-2.5 text-sm text-slate-500">
-                      {{ getOrgName(asset.organization_id) }}
                     </td>
                   </tr>
                 </tbody>

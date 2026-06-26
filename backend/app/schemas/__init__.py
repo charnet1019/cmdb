@@ -423,6 +423,7 @@ class OperationLogResponse(BaseModel):
 # ============== Dashboard Schemas ==============
 class DashboardStats(BaseModel):
     """Dashboard statistics"""
+    is_authorized: bool = True
     total_assets: int
     total_users: int
     online_users: int
