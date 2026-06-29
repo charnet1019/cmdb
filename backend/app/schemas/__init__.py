@@ -336,6 +336,7 @@ class AuthorizationCreate(AuthorizationBase):
 class AuthorizationUpdate(BaseModel):
     """Authorization update schema"""
     permissions: Optional[List[str]] = None
+    target_ids: Optional[List[str]] = None
     valid_from: Optional[datetime] = None
     valid_until: Optional[datetime] = None
     is_active: Optional[bool] = None

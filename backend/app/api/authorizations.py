@@ -220,6 +220,9 @@ async def update_authorization(
     if data.permissions is not None:
         auth.permissions = data.permissions
 
+    if data.target_ids is not None:
+        auth.target_ids = data.target_ids
+
     if data.valid_from is not None:
         auth.valid_from = data.valid_from
 
@@ -238,6 +241,7 @@ async def update_authorization(
         "data": {
             "id": auth.id,
             "permissions": auth.permissions,
+            "target_ids": auth.target_ids,
             "is_active": auth.is_active,
         }
     }

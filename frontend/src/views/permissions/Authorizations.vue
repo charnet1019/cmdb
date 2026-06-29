@@ -306,6 +306,11 @@ async function handleSubmit() {
       message.error('请选择资产')
       return
     }
+  } else {
+    if (!form.value.target_ids.length) {
+      message.error('请至少保留一个资产')
+      return
+    }
   }
   if (form.value.permissions.length === 0) {
     message.error('请选择权限')
@@ -321,6 +326,9 @@ async function handleSubmit() {
       }
       if (form.value.valid_until) {
         updateData.valid_until = form.value.valid_until
+      }
+      if (form.value.target_ids.length > 0) {
+        updateData.target_ids = form.value.target_ids
       }
       await updateAuthorization(editingAuthId.value, updateData)
       message.success('授权更新成功')
@@ -607,10 +615,10 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
               </div>
             </div>
 
-            <!-- Target Selection (disabled in edit mode) -->
-            <div v-if="!isEditMode">
+            <!-- Target Selection -->
+            <div>
               <label class="block text-sm font-medium text-slate-700 mb-2">资产范围</label>
-              <div class="flex gap-4 mb-3">
+              <div v-if="!isEditMode" class="flex gap-4 mb-3">
                 <label class="flex items-center gap-2 cursor-pointer">
                   <input type="radio" v-model="form.target_type" value="asset" class="text-primary" />
                   <span class="text-sm">单个资产</span>
@@ -620,7 +628,7 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
                   <span class="text-sm">节点</span>
                 </label>
               </div>
-               <div v-if="form.target_type === 'asset'" class="space-y-2">
+              <div v-if="form.target_type === 'asset'" class="space-y-2">
                 <!-- Custom tag input — click to open picker, no dropdown -->
                 <div
                   @click="openAssetPicker"
@@ -646,19 +654,6 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
                 :filter-option="(input: string, option: any) => (option.label || '').toLowerCase().includes(input.toLowerCase())"
                 style="width: 100%"
               />
-            </div>
-
-            <!-- Show target info in edit mode -->
-            <div v-else>
-              <label class="block text-sm font-medium text-slate-700 mb-2">资产范围</label>
-              <div class="p-3 bg-slate-50 rounded-lg">
-                <p class="font-medium text-slate-900">
-                  {{ getTargetName() }}
-                </p>
-                <p class="text-sm text-slate-500">
-                  {{ form.target_type === 'asset' ? '资产' : '节点' }}
-                </p>
-              </div>
             </div>
 
             <!-- Permissions -->
