@@ -30,7 +30,7 @@ import { useCredentials } from './composables/useCredentials'
 import { useTypeTree, categories, platformOptions, categoryOptions, dbTypeOptions } from './composables/useTypeTree'
 import { useColumnConfig } from './composables/useColumnConfig'
 import { createAsset, updateAsset, createCredential, updateCredential, getAssets, decryptOobPassword } from '@/api/assets'
-import { getUsers } from '@/api/users'
+import { getUsersForAuth } from '@/api/authorizations'
 import { useAuthStore } from '@/stores/auth'
 import ColumnCustomizer from './components/ColumnCustomizer.vue'
 import { formatDateTime } from '@/utils/datetime'
@@ -349,10 +349,10 @@ async function loadUsers() {
   if (userOptions.value.length > 0) return
   loadingUsers.value = true
   try {
-    const result = await getUsers({ page: 1, limit: 100 })
-    userOptions.value = (result.items || []).map(u => ({
+    const users = await getUsersForAuth()
+    userOptions.value = users.map(u => ({
       id: u.id,
-      username: u.username,
+      username: u.name,
       full_name: u.full_name
     }))
   } catch (error) {
@@ -1461,7 +1461,7 @@ onMounted(async () => {
                   <select v-model="form.owner_id" class="input-field">
                     <option value="">请选择</option>
                     <option v-for="user in userOptions" :key="user.id" :value="user.id">
-                      {{ user.username }}
+                      {{ user.username }}{{ user.full_name ? ` (${user.full_name})` : '' }}
                     </option>
                   </select>
                 </div>
@@ -1488,7 +1488,7 @@ onMounted(async () => {
                 <select v-model="form.owner_id" class="input-field">
                   <option value="">请选择</option>
                   <option v-for="user in userOptions" :key="user.id" :value="user.id">
-                    {{ user.username }}
+                    {{ user.username }}{{ user.full_name ? ` (${user.full_name})` : '' }}
                   </option>
                 </select>
               </div>
@@ -1514,7 +1514,7 @@ onMounted(async () => {
                 <select v-model="form.owner_id" class="input-field">
                   <option value="">请选择</option>
                   <option v-for="user in userOptions" :key="user.id" :value="user.id">
-                    {{ user.username }}
+                    {{ user.username }}{{ user.full_name ? ` (${user.full_name})` : '' }}
                   </option>
                 </select>
               </div>
@@ -1568,7 +1568,7 @@ onMounted(async () => {
                   <select v-model="form.owner_id" class="input-field">
                     <option value="">请选择</option>
                     <option v-for="user in userOptions" :key="user.id" :value="user.id">
-                      {{ user.username }}
+                      {{ user.username }}{{ user.full_name ? ` (${user.full_name})` : '' }}
                     </option>
                   </select>
                 </div>
@@ -1590,7 +1590,7 @@ onMounted(async () => {
                   <select v-model="form.owner_id" class="input-field">
                     <option value="">请选择</option>
                     <option v-for="user in userOptions" :key="user.id" :value="user.id">
-                      {{ user.username }}
+                      {{ user.username }}{{ user.full_name ? ` (${user.full_name})` : '' }}
                     </option>
                   </select>
                 </div>
@@ -1666,7 +1666,7 @@ onMounted(async () => {
                   <select v-model="form.owner_id" class="input-field">
                     <option value="">请选择</option>
                     <option v-for="user in userOptions" :key="user.id" :value="user.id">
-                      {{ user.username }}
+                      {{ user.username }}{{ user.full_name ? ` (${user.full_name})` : '' }}
                     </option>
                   </select>
                 </div>
