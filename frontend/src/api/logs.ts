@@ -25,6 +25,7 @@ export interface OperationLog {
   action: string
   resource_type: string
   resource_id: number | null
+  resource_name: string | number
   details: string | null
   ip_address: string | null
   status: string
@@ -36,6 +37,7 @@ export interface PasswordLog {
   user_id: number | null
   username: string
   credential_id: number | null
+  asset_name: string | null
   change_type: string
   changed_by: number | null
   changed_by_name: string

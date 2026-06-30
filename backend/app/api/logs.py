@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
 from app.database import get_db
-from app.models import User, LoginLog, OperationLog, PasswordChangeLog
+from app.models import User, LoginLog, OperationLog, PasswordChangeLog, Asset, Credential
 from app.api.deps import get_current_user, PermissionChecker
 from app.schemas import PaginationMeta, ResponseBase
 
@@ -206,6 +206,7 @@ async def list_operation_logs(
                 "action": log.action,
                 "resource_type": log.resource_type,
                 "resource_id": log.resource_id,
+                "resource_name": (log.details or {}).get("username") or (log.details or {}).get("name") or (log.details or {}).get("group_name") or (log.resource_id or "-"),
                 "details": log.details,
                 "ip_address": log.ip_address,
                 "status": log.status,
@@ -283,6 +284,29 @@ async def list_password_logs(
         users = users_result.scalars().all()
         users_map = {u.id: u.username for u in users}
 
+    # Resolve credential_id → asset name + credential username
+    credential_ids = list(set(log.credential_id for log in logs if log.credential_id))
+    asset_names_map = {}
+    cred_usernames_map = {}
+    if credential_ids:
+        creds_result = await db.execute(
+            select(Credential.id, Credential.asset_id, Credential.username).where(Credential.id.in_(credential_ids))
+        )
+        cred_to_asset = {}
+        for row in creds_result.all():
+            cred_id, asset_id, cred_username = row
+            cred_to_asset[cred_id] = asset_id
+            cred_usernames_map[cred_id] = cred_username
+        cred_asset_ids = list(cred_to_asset.values())
+
+        if cred_asset_ids:
+            assets_result = await db.execute(
+                select(Asset.id, Asset.name).where(Asset.id.in_(cred_asset_ids))
+            )
+            assets_map = {row[0]: row[1] for row in assets_result.all()}
+            for cred_id, asset_id in cred_to_asset.items():
+                asset_names_map[cred_id] = assets_map.get(asset_id, asset_id)
+
     return {
         "code": 0,
         "message": "success",
@@ -290,8 +314,9 @@ async def list_password_logs(
             {
                 "id": log.id,
                 "user_id": log.user_id,
-                "username": users_map.get(log.user_id, "Unknown"),
+                "username": users_map.get(log.user_id, "Unknown") if log.user_id else cred_usernames_map.get(log.credential_id, "-") if log.credential_id else "-",
                 "credential_id": log.credential_id,
+                "asset_name": asset_names_map.get(log.credential_id) if log.credential_id else None,
                 "change_type": log.change_type,
                 "changed_by": log.changed_by,
                 "changed_by_name": users_map.get(log.changed_by, "Unknown"),

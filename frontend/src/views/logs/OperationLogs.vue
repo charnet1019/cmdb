@@ -140,7 +140,7 @@ watch([page, searchQuery, actionFilter, dateFrom, dateTo], () => {
             <th>操作者</th>
             <th>操作类型</th>
             <th>资源类型</th>
-            <th>资源ID</th>
+            <th>资源名称</th>
             <th>状态</th>
             <th>IP</th>
           </tr>
@@ -173,7 +173,7 @@ watch([page, searchQuery, actionFilter, dateFrom, dateTo], () => {
               <span class="text-sm text-slate-600">{{ log.resource_type || '-' }}</span>
             </td>
             <td>
-              <span class="text-sm text-slate-600 font-mono">{{ log.resource_id || '-' }}</span>
+              <span class="text-sm text-slate-600">{{ log.resource_name || '-' }}</span>
             </td>
             <td>
               <span v-if="log.status === 'success'" class="badge badge-success">

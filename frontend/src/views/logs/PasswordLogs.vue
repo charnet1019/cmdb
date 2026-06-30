@@ -27,6 +27,14 @@ const changeTypeLabels: Record<string, string> = {
   'asset_credential': '资产凭证'
 }
 
+// Asset name for credential logs
+function getAssetName(log: PasswordLog): string {
+  if (log.change_type === 'asset_credential' && log.asset_name) {
+    return log.asset_name
+  }
+  return '-'
+}
+
 // Fetch logs
 async function fetchLogs() {
   loading.value = true
@@ -107,16 +115,17 @@ watch([page, changeType, dateFrom, dateTo], () => {
             <th>时间</th>
             <th>用户</th>
             <th>类型</th>
+            <th>资产</th>
             <th>操作者</th>
             <th>IP地址</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="5" class="text-center py-8 text-slate-500">加载中...</td>
+            <td colspan="6" class="text-center py-8 text-slate-500">加载中...</td>
           </tr>
           <tr v-else-if="logs.length === 0">
-            <td colspan="5" class="text-center py-8 text-slate-500">暂无数据</td>
+            <td colspan="6" class="text-center py-8 text-slate-500">暂无数据</td>
           </tr>
           <tr v-for="log in logs" :key="log.id">
             <td>
@@ -134,6 +143,9 @@ watch([page, changeType, dateFrom, dateTo], () => {
               <span class="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
                 {{ changeTypeLabels[log.change_type] || log.change_type }}
               </span>
+            </td>
+            <td>
+              <span class="text-sm text-slate-600">{{ getAssetName(log) }}</span>
             </td>
             <td>
               <span class="text-slate-600">{{ log.changed_by_name || '-' }}</span>

@@ -14,7 +14,7 @@ from sqlalchemy import select, func, or_, delete, inspect, false, text
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import Asset, Authorization, Credential, Organization, User, AssetHostRelation, StorageLocation
+from app.models import Asset, Authorization, Credential, Organization, User, AssetHostRelation, StorageLocation, PasswordChangeLog
 from app.schemas import (
     AssetCreate, AssetUpdate, AssetResponse, AssetSimple,
     AssetListResponse, PaginationMeta,
@@ -1533,6 +1533,7 @@ async def list_credentials(
 
 @cred_router.post("", response_model=CredentialResponse, status_code=status.HTTP_201_CREATED)
 async def create_credential(
+    request: Request,
     data: CredentialCreate,
     asset_id: str = Query(...),
     db: AsyncSession = Depends(get_db),
@@ -1561,8 +1562,18 @@ async def create_credential(
         credential_type=data.credential_type,
         extra_data=data.metadata,
     )
-
     db.add(credential)
+    await db.flush()  # Get credential.id before committing
+
+    # Log credential creation
+    password_log = PasswordChangeLog(
+        credential_id=credential.id,
+        change_type="asset_credential",
+        changed_by=current_user.id,
+        ip_address=request.client.host if request.client else None,
+    )
+    db.add(password_log)
+
     await db.commit()
     await db.refresh(credential)
 
@@ -1712,6 +1723,7 @@ async def decrypt_credential(
 async def update_credential(
     credential_id: int,
     data: CredentialUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("manage")),
 ):
@@ -1737,6 +1749,15 @@ async def update_credential(
         credential.username = data.username
     if data.password is not None:
         credential.password_encrypted = encrypt_value(data.password)
+
+        # Log credential password change
+        password_log = PasswordChangeLog(
+            credential_id=credential_id,
+            change_type="asset_credential",
+            changed_by=current_user.id,
+            ip_address=request.client.host if request.client else None,
+        )
+        db.add(password_log)
     if data.metadata is not None:
         credential.extra_data = data.metadata
 

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
 from app.database import get_db
-from app.models import User, Group, UserGroup, Authorization, Asset
+from app.models import User, Group, UserGroup, Authorization, Asset, PasswordChangeLog
 from app.utils.audit import log_operation
 from app.schemas import (
     UserCreate, UserUpdate, UserResponse, UserSimple, UserDetailResponse,
@@ -461,11 +461,15 @@ async def reset_user_password(
 
     await db.commit()
 
-    await log_operation(
-        db, current_user.id, "reset_password", "user", user_id,
-        details={"username": user.username, "method": data.method},
+    # Log as password change (not operation)
+    password_log = PasswordChangeLog(
+        user_id=user_id,
+        change_type="user_password",
+        changed_by=current_user.id,
         ip_address=ip,
     )
+    db.add(password_log)
+    await db.commit()
 
     return ResponseBase(
         message="密码重置成功",
@@ -841,7 +845,7 @@ async def update_group(
     if changes:
         await log_operation(
             db, current_user.id, "update", "group", group_id,
-            details={"changes": changes},
+            details={"changes": changes, "name": group.name},
             ip_address=ip,
         )
 
@@ -906,7 +910,8 @@ async def add_group_members(
     """Add members to a group"""
     ip = request.client.host if request.client else None
     result = await db.execute(select(Group).where(Group.id == group_id))
-    if not result.scalar_one_or_none():
+    group = result.scalar_one_or_none()
+    if not group:
         raise HTTPException(status_code=404, detail="用户组不存在")
 
     added = 0
@@ -935,7 +940,7 @@ async def add_group_members(
     if added > 0:
         await log_operation(
             db, current_user.id, "add_group_members", "group", group_id,
-            details={"user_ids": user_ids, "added": added},
+            details={"user_ids": user_ids, "added": added, "name": group.name},
             ip_address=ip,
         )
 
