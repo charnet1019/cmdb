@@ -43,7 +43,7 @@ function getAssetName(log: PasswordLog): string {
   if (log.change_type === 'asset_credential' && log.asset_name) {
     return log.asset_name
   }
-  return '-'
+  return ''
 }
 
 // Fetch logs
@@ -146,7 +146,7 @@ watch([page, changeType, dateFrom, dateTo], () => {
             <td>
               <div class="flex items-center gap-2">
                 <div class="w-7 h-7 bg-primary/10 rounded-full flex items-center justify-center">
-                  <span class="text-primary font-medium text-xs">{{ log.username?.[0] || '?' }}</span>
+                  <span class="text-primary font-medium text-xs">{{ log.username?.[0] }}</span>
                 </div>
                 <span class="font-medium text-slate-900">{{ log.username }}</span>
               </div>
@@ -160,10 +160,10 @@ watch([page, changeType, dateFrom, dateTo], () => {
               <span class="text-sm text-slate-600">{{ getAssetName(log) }}</span>
             </td>
             <td>
-              <span class="text-slate-600">{{ log.changed_by_name || '-' }}</span>
+              <span class="text-slate-600">{{ log.changed_by_name }}</span>
             </td>
             <td>
-              <span class="text-sm text-slate-600 font-mono">{{ log.ip_address || '-' }}</span>
+              <span class="text-sm text-slate-600 font-mono">{{ log.ip_address }}</span>
             </td>
             <td>
               <span class="px-2 py-0.5 rounded text-xs font-medium" :class="statusColors[log.status] || 'bg-gray-100 text-gray-700'">

@@ -158,13 +158,13 @@ watch([page, searchQuery, statusFilter, dateFrom, dateTo], () => {
             <td>
               <div class="flex items-center gap-2">
                 <div class="w-7 h-7 bg-primary/10 rounded-full flex items-center justify-center">
-                  <span class="text-primary font-medium text-xs">{{ log.username?.[0] || '?' }}</span>
+                  <span class="text-primary font-medium text-xs">{{ log.username?.[0] }}</span>
                 </div>
-                <span class="font-medium text-slate-900">{{ log.username || '-' }}</span>
+                <span class="font-medium text-slate-900">{{ log.username }}</span>
               </div>
             </td>
             <td>
-              <span class="text-sm text-slate-600 font-mono">{{ log.ip_address || '-' }}</span>
+              <span class="text-sm text-slate-600 font-mono">{{ log.ip_address }}</span>
             </td>
             <td>
               <span v-if="log.status === 'success'" class="badge badge-success">
@@ -177,7 +177,7 @@ watch([page, searchQuery, statusFilter, dateFrom, dateTo], () => {
               </span>
             </td>
             <td>
-              <span class="text-sm text-slate-500">{{ log.failure_reason || '-' }}</span>
+              <span class="text-sm text-slate-500">{{ log.failure_reason }}</span>
             </td>
           </tr>
         </tbody>
