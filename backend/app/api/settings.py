@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db
-from app.api.deps import get_current_superuser
+from app.api.deps import PermissionChecker
 from app.models import Setting, User
 
 
@@ -25,11 +25,11 @@ router = APIRouter(prefix="/settings", tags=["Settings"])
 @router.get("")
 async def get_settings(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(PermissionChecker("sys_config")),
 ) -> Dict[str, Any]:
     """
     Get all settings
-    Requires superuser permission
+    Requires sys_config permission
     """
     result = await db.execute(select(Setting))
     settings = result.scalars().all()
@@ -51,11 +51,11 @@ async def get_settings(
 async def get_setting(
     key: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(PermissionChecker("sys_config")),
 ) -> Dict[str, Any]:
     """
     Get a single setting by key
-    Requires superuser permission
+    Requires sys_config permission
     """
     result = await db.execute(select(Setting).where(Setting.key == key))
     setting = result.scalar_one_or_none()
@@ -82,11 +82,11 @@ async def update_setting(
     key: str,
     value: Dict[str, Any],
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(PermissionChecker("sys_config")),
 ) -> Dict[str, Any]:
     """
     Update a single setting
-    Requires superuser permission
+    Requires sys_config permission
     """
     result = await db.execute(select(Setting).where(Setting.key == key))
     setting = result.scalar_one_or_none()
@@ -116,11 +116,11 @@ async def update_setting(
 async def update_settings(
     settings_data: Dict[str, Any],
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(PermissionChecker("sys_config")),
 ) -> Dict[str, Any]:
     """
     Update multiple settings at once
-    Requires superuser permission
+    Requires sys_config permission
     """
     updated = []
 

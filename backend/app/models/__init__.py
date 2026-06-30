@@ -360,7 +360,7 @@ class Setting(Base):
     key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
     value: Mapped[Optional[dict]] = mapped_column(JSONB)
     description: Mapped[Optional[str]] = mapped_column(Text)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     def __repr__(self):
         return f"<Setting {self.key}>"

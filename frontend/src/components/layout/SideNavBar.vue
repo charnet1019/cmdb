@@ -73,7 +73,7 @@ const allMenuItems = [
     ]
   },
   {
-    id: 'permissions', icon: SafetyCertificateOutlined, label: '权限管理', permissions: ['sys_config'],
+    id: 'permissions', icon: SafetyCertificateOutlined, label: '权限管理', permissions: ['manage'],
     children: [{ id: 'authorizations', label: '资产授权', path: '/permissions/authorizations' }]
   },
   {

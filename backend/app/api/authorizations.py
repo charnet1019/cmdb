@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models import User, Group, Asset, Organization, Authorization
-from app.api.deps import get_current_user, get_current_superuser
+from app.api.deps import get_current_user, PermissionChecker
 from app.schemas import (
     AuthorizationCreate, AuthorizationUpdate, AuthorizationResponse,
     PaginationMeta, ResponseBase
@@ -146,9 +146,9 @@ async def list_authorizations(
 async def create_authorization(
     data: AuthorizationCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(PermissionChecker("manage")),
 ):
-    """Create a new authorization (admin only)"""
+    """Create a new authorization (manage permission required)"""
     # Validate entity exists
     if data.entity_type == "user":
         entity_result = await db.execute(select(User).where(User.id == data.entity_id))
@@ -219,9 +219,9 @@ async def update_authorization(
     auth_id: int,
     data: AuthorizationUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(PermissionChecker("manage")),
 ):
-    """Update an authorization (admin only)"""
+    """Update an authorization (manage permission required)"""
     result = await db.execute(select(Authorization).where(Authorization.id == auth_id))
     auth = result.scalar_one_or_none()
 
@@ -262,9 +262,9 @@ async def update_authorization(
 async def delete_authorization(
     auth_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(PermissionChecker("manage")),
 ):
-    """Delete an authorization (admin only)"""
+    """Delete an authorization (manage permission required)"""
     result = await db.execute(select(Authorization).where(Authorization.id == auth_id))
     auth = result.scalar_one_or_none()
 
