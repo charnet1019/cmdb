@@ -344,6 +344,7 @@ class PasswordChangeLog(Base):
     change_type: Mapped[str] = mapped_column(String(20))  # user_password, asset_credential
     changed_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)
     ip_address: Mapped[Optional[str]] = mapped_column(String(45))
+    status: Mapped[str] = mapped_column(String(20), default="success")  # success, failed
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
     __table_args__ = (

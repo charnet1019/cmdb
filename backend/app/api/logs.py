@@ -321,6 +321,7 @@ async def list_password_logs(
                 "changed_by": log.changed_by,
                 "changed_by_name": users_map.get(log.changed_by, "Unknown"),
                 "ip_address": log.ip_address,
+                "status": log.status,
                 "created_at": format_datetime_utc(log.created_at),
             }
             for log in logs

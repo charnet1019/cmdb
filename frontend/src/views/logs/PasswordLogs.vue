@@ -27,6 +27,17 @@ const changeTypeLabels: Record<string, string> = {
   'asset_credential': '资产凭证'
 }
 
+// Status labels
+const statusLabels: Record<string, string> = {
+  'success': '成功',
+  'failed': '失败'
+}
+
+const statusColors: Record<string, string> = {
+  'success': 'bg-green-100 text-green-700',
+  'failed': 'bg-red-100 text-red-700'
+}
+
 // Asset name for credential logs
 function getAssetName(log: PasswordLog): string {
   if (log.change_type === 'asset_credential' && log.asset_name) {
@@ -118,14 +129,15 @@ watch([page, changeType, dateFrom, dateTo], () => {
             <th>资产</th>
             <th>操作者</th>
             <th>IP地址</th>
+            <th>状态</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="6" class="text-center py-8 text-slate-500">加载中...</td>
+            <td colspan="7" class="text-center py-8 text-slate-500">加载中...</td>
           </tr>
           <tr v-else-if="logs.length === 0">
-            <td colspan="6" class="text-center py-8 text-slate-500">暂无数据</td>
+            <td colspan="7" class="text-center py-8 text-slate-500">暂无数据</td>
           </tr>
           <tr v-for="log in logs" :key="log.id">
             <td>
@@ -152,6 +164,11 @@ watch([page, changeType, dateFrom, dateTo], () => {
             </td>
             <td>
               <span class="text-sm text-slate-600 font-mono">{{ log.ip_address || '-' }}</span>
+            </td>
+            <td>
+              <span class="px-2 py-0.5 rounded text-xs font-medium" :class="statusColors[log.status] || 'bg-gray-100 text-gray-700'">
+                {{ statusLabels[log.status] || log.status }}
+              </span>
             </td>
           </tr>
         </tbody>

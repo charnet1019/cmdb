@@ -42,6 +42,7 @@ export interface PasswordLog {
   changed_by: number | null
   changed_by_name: string
   ip_address: string | null
+  status: string
   created_at: string
 }
 
