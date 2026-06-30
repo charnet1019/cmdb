@@ -285,7 +285,8 @@ function openCreateModal() {
   showModal.value = true
 }
 
-// Open edit modal
+// Open edit modal — wait for selection data before rendering form
+// to prevent a-select from clearing target_ids when options are empty
 async function openEditModal(auth: any) {
   isEditMode.value = true
   editingAuthId.value = auth.id
@@ -297,15 +298,18 @@ async function openEditModal(auth: any) {
     permissions: auth.permissions || [],
     valid_until: auth.valid_until ? auth.valid_until.slice(0, 16) : ''
   }
-  // Wait for selection data before rendering to prevent a-select from clearing values
-  if (!selectionsLoaded.value) {
-    editLoading.value = true
-    showModal.value = true
-    await fetchSelectionOptions()
-    editLoading.value = false
-    return
-  }
+  editLoading.value = true
   showModal.value = true
+  if (!selectionsLoaded.value) {
+    await fetchSelectionOptions()
+  }
+  editLoading.value = false
+}
+
+// Close modal
+function closeModal() {
+  editLoading.value = false
+  showModal.value = false
 }
 
 // Submit form
@@ -360,7 +364,7 @@ async function handleSubmit() {
       await createAuthorization(data)
       message.success('授权创建成功')
     }
-    showModal.value = false
+    closeModal()
     fetchAuthorizations()
   } catch (error: any) {
     message.error(error.response?.data?.detail || '操作失败')
@@ -568,11 +572,11 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
 
     <!-- Create/Edit Authorization Modal -->
     <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showModal = false"></div>
+      <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="closeModal"></div>
       <div class="relative bg-white w-full max-w-2xl rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h2 class="text-xl font-bold text-slate-900">{{ isEditMode ? '编辑授权' : '新增授权' }}</h2>
-          <button @click="showModal = false" class="p-2 hover:bg-slate-50 rounded-full">
+          <button @click="closeModal" class="p-2 hover:bg-slate-50 rounded-full">
             <CloseOutlined />
           </button>
         </div>
@@ -646,15 +650,20 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
                 </label>
               </div>
               <div v-if="form.target_type === 'asset'" class="space-y-2">
-                <!-- Edit mode: show selected asset names as read-only tags -->
-                <div v-if="isEditMode" class="flex flex-wrap gap-1">
-                  <span
-                    v-for="id in form.target_ids"
-                    :key="id"
-                    class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-sm rounded"
+                <!-- Edit mode: clickable tags for current assets + picker -->
+                <div v-if="isEditMode" class="space-y-2">
+                  <div
+                    @click="openAssetPicker"
+                    class="flex items-center flex-wrap gap-1 min-h-[36px] px-2 border border-slate-300 rounded-lg cursor-text hover:border-primary transition-colors"
                   >
-                    {{ getAssetLabel(id) }}
-                  </span>
+                    <template v-for="id in form.target_ids" :key="id">
+                      <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-sm rounded">
+                        {{ getAssetLabel(id) }}
+                        <span @click.stop="removeTargetId(id)" class="cursor-pointer hover:text-primary-dark" style="font-size: 12px">×</span>
+                      </span>
+                    </template>
+                    <span class="text-sm text-slate-400 ml-1">点击添加资产</span>
+                  </div>
                 </div>
                 <!-- Create mode: custom tag input — click to open picker -->
                 <div
@@ -673,28 +682,28 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
               </div>
               <!-- Organization target -->
               <div v-else>
-                <!-- Edit mode: show selected org names as read-only tags -->
-                <div v-if="isEditMode" class="flex flex-wrap gap-1">
-                  <span
-                    v-for="id in form.target_ids"
-                    :key="id"
-                    class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-sm rounded"
-                  >
-                    {{ id === '__all__' ? 'Default' : (organizations.find(o => String(o.id ?? '__all__') === id)?.name_path || id) }}
-                  </span>
-                </div>
-                <!-- Create mode: multi-select -->
                 <a-select
-                  v-else
+                  v-if="selectionsLoaded"
                   v-model:value="form.target_ids"
                   mode="multiple"
-                  :placeholder="'请选择节点'"
+                  :placeholder="isEditMode ? '点击添加节点' : '请选择节点'"
                   :options="organizations.map(o => ({ label: formatOrgPath(o), value: o.id === null ? '__all__' : String(o.id) }))"
                   show-search
                   :allow-clear="true"
                   :filter-option="(input: string, option: any) => (option.label || '').toLowerCase().includes(input.toLowerCase())"
                   style="width: 100%"
                 />
+                <!-- Fallback while data loads: show removable tags -->
+                <div v-else class="flex flex-wrap gap-1">
+                  <span
+                    v-for="id in form.target_ids"
+                    :key="id"
+                    class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-sm rounded"
+                  >
+                    {{ id === '__all__' ? 'Default' : (organizations.find(o => String(o.id ?? '__all__') === id)?.name_path || id) }}
+                    <span @click="removeTargetId(id)" class="cursor-pointer hover:text-primary-dark" style="font-size: 12px">×</span>
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -734,7 +743,7 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
 
             <!-- Actions -->
             <div class="flex justify-end gap-2 pt-4">
-              <button type="button" @click="showModal = false" class="btn-secondary">取消</button>
+              <button type="button" @click="closeModal" class="btn-secondary">取消</button>
               <button type="submit" :disabled="modalLoading" class="btn-primary">
                 {{ modalLoading ? '处理中...' : (isEditMode ? '保存修改' : '创建授权') }}
               </button>
