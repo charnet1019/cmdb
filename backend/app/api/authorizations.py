@@ -90,7 +90,18 @@ async def list_authorizations(
         org_ids_int = [int(oid) for oid in org_ids if oid.isdigit()]
         orgs_result = await db.execute(select(Organization).where(Organization.id.in_(org_ids_int)))
         orgs = orgs_result.scalars().all()
-        target_names.update({str(o.id): o.name_path for o in orgs})
+        # Build id→name map for name_path computation
+        id_to_name = {o.id: o.name for o in orgs}
+        def get_name_path(org: Organization) -> str:
+            path_ids = org.path.split("/") if org.path else []
+            names = []
+            for pid in path_ids:
+                try:
+                    names.append(id_to_name[int(pid)])
+                except (KeyError, ValueError):
+                    break
+            return "/".join(names) if names else org.name
+        target_names.update({str(o.id): get_name_path(o) for o in orgs})
 
     def format_target_names(auth: Authorization) -> str:
         if auth.target_type == "asset":
@@ -220,7 +231,7 @@ async def update_authorization(
     if data.permissions is not None:
         auth.permissions = data.permissions
 
-    if data.target_ids is not None:
+    if data.target_ids is not None and len(data.target_ids) > 0:
         auth.target_ids = data.target_ids
 
     if data.valid_from is not None:
