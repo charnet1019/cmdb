@@ -318,7 +318,7 @@ onMounted(() => {
         :key="category"
         class="card"
       >
-        <h4 class="text-sm font-semibold text-slate-900 mb-2">{{ assetLabels[category] || category }} - 细分</h4>
+        <h4 class="text-sm font-semibold text-slate-900 mb-2">{{ assetLabels[category] || category }}</h4>
         <v-chart class="h-56" :option="subPieOptions[category]" autoresize />
       </div>
     </div>
