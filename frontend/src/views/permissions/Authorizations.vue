@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import { PlusOutlined, EditOutlined, BlockOutlined, CheckCircleOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-vue'
@@ -38,6 +38,33 @@ const editingAuthId = ref<number | null>(null)
 
 // Track whether selection options have been loaded
 const selectionsLoaded = ref(false)
+let fetchSelectionsPromise: Promise<void> | null = null
+
+// Fetch selection options (deduplicated — concurrent callers share one request)
+async function fetchSelectionOptions() {
+  if (fetchSelectionsPromise) return fetchSelectionsPromise
+  fetchSelectionsPromise = (async () => {
+    try {
+      const [usersData, groupsData, assetsData, orgsData] = await Promise.all([
+        getUsersForAuth(),
+        getGroupsForAuth(),
+        getAssetsForAuth(),
+        getOrganizationsForAuth()
+      ])
+      users.value = usersData
+      groups.value = groupsData
+      assets.value = assetsData
+      organizations.value = orgsData
+      buildTree()
+      selectionsLoaded.value = true
+    } catch {
+      // Handle silently
+    } finally {
+      fetchSelectionsPromise = null
+    }
+  })()
+  return fetchSelectionsPromise
+}
 
 // Form
 const form = ref({
@@ -192,13 +219,6 @@ function getAssetLabel(id: string): string {
   return asset ? `${asset.name} (${asset.category})` : id
 }
 
-// Get org label by ID
-function getOrgLabel(id: string): string {
-  if (id === '__all__') return 'Default'
-  const org = organizations.value.find((o: { id: number | null }) => String(o.id) === id)
-  return org ? formatOrgPath(org) : id
-}
-
 // Remove a target ID
 function removeTargetId(id: string) {
   const idx = form.value.target_ids.indexOf(id)
@@ -244,26 +264,6 @@ async function fetchAuthorizations() {
   }
 }
 
-// Fetch selection options
-async function fetchSelectionOptions() {
-  try {
-    const [usersData, groupsData, assetsData, orgsData] = await Promise.all([
-      getUsersForAuth(),
-      getGroupsForAuth(),
-      getAssetsForAuth(),
-      getOrganizationsForAuth()
-    ])
-    users.value = usersData
-    groups.value = groupsData
-    assets.value = assetsData
-    organizations.value = orgsData
-    buildTree()
-    selectionsLoaded.value = true
-  } catch {
-    // Handle silently
-  }
-}
-
 // Handle search
 function handleSearch() {
   page.value = 1
@@ -291,8 +291,7 @@ function openCreateModal() {
   showModal.value = true
 }
 
-// Open edit modal — wait for selection data before showing modal
-// to prevent a-select from clearing target_ids when options are empty
+// Open edit modal
 async function openEditModal(auth: any) {
   isEditMode.value = true
   editingAuthId.value = auth.id
@@ -304,16 +303,11 @@ async function openEditModal(auth: any) {
     permissions: auth.permissions || [],
     valid_until: auth.valid_until ? auth.valid_until.slice(0, 16) : ''
   }
+  // Wait for selection data before showing modal, so a-select has options
   if (!selectionsLoaded.value) {
     await fetchSelectionOptions()
   }
-  await nextTick()
   showModal.value = true
-}
-
-// Close modal
-function closeModal() {
-  showModal.value = false
 }
 
 // Submit form
@@ -368,7 +362,7 @@ async function handleSubmit() {
       await createAuthorization(data)
       message.success('授权创建成功')
     }
-    closeModal()
+    showModal.value = false
     fetchAuthorizations()
   } catch (error: any) {
     message.error(error.response?.data?.detail || '操作失败')
@@ -682,33 +676,7 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
               </div>
               <!-- Organization target -->
               <div v-else>
-                <!-- Edit mode: tags with removable × + single-select to add -->
-                <div v-if="isEditMode" class="space-y-2">
-                  <div
-                    class="flex items-center flex-wrap gap-1 min-h-[36px] px-2 border border-slate-300 rounded-lg"
-                  >
-                    <template v-for="id in form.target_ids" :key="id">
-                      <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-sm rounded">
-                        {{ getOrgLabel(id) }}
-                        <span @click="removeTargetId(id)" class="cursor-pointer hover:text-primary-dark" style="font-size: 12px">×</span>
-                      </span>
-                    </template>
-                    <span v-if="form.target_ids.length === 0" class="text-sm text-slate-400 ml-1">请选择节点</span>
-                  </div>
-                  <a-select
-                    v-if="selectionsLoaded"
-                    @change="(val: string) => { if (val && !form.target_ids.includes(val)) form.target_ids.push(val) }"
-                    :placeholder="'添加节点'"
-                    :options="organizations.map(o => ({ label: formatOrgPath(o), value: o.id === null ? '__all__' : String(o.id) }))"
-                    show-search
-                    :allow-clear="true"
-                    :filter-option="(input: string, option: any) => (option.label || '').toLowerCase().includes(input.toLowerCase())"
-                    style="width: 100%"
-                  />
-                </div>
-                <!-- Create mode: multi-select -->
                 <a-select
-                  v-else
                   v-model:value="form.target_ids"
                   mode="multiple"
                   :placeholder="'请选择节点'"
