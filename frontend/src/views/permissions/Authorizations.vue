@@ -570,11 +570,11 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
 
     <!-- Create/Edit Authorization Modal -->
     <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="closeModal"></div>
+      <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showModal = false"></div>
       <div class="relative bg-white w-full max-w-2xl rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h2 class="text-xl font-bold text-slate-900">{{ isEditMode ? '编辑授权' : '新增授权' }}</h2>
-          <button @click="closeModal" class="p-2 hover:bg-slate-50 rounded-full">
+          <button @click="showModal = false" class="p-2 hover:bg-slate-50 rounded-full">
             <CloseOutlined />
           </button>
         </div>
@@ -725,7 +725,7 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
 
             <!-- Actions -->
             <div class="flex justify-end gap-2 pt-4">
-              <button type="button" @click="closeModal" class="btn-secondary">取消</button>
+              <button type="button" @click="showModal = false" class="btn-secondary">取消</button>
               <button type="submit" :disabled="modalLoading" class="btn-primary">
                 {{ modalLoading ? '处理中...' : (isEditMode ? '保存修改' : '创建授权') }}
               </button>
