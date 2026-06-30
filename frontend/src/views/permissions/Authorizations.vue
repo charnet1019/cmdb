@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import { PlusOutlined, EditOutlined, BlockOutlined, CheckCircleOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-vue'
@@ -276,8 +276,12 @@ function handlePageChange(newPage: number) {
   fetchAuthorizations()
 }
 
+// Track whether we're initializing the form (to avoid watch clearing target_ids)
+let isInitializing = false
+
 // Open create modal
 function openCreateModal() {
+  isInitializing = true
   isEditMode.value = false
   editingAuthId.value = null
   form.value = {
@@ -289,10 +293,14 @@ function openCreateModal() {
     valid_until: ''
   }
   showModal.value = true
+  void nextTick(() => {
+    isInitializing = false
+  })
 }
 
 // Open edit modal
 async function openEditModal(auth: any) {
+  isInitializing = true
   isEditMode.value = true
   editingAuthId.value = auth.id
   form.value = {
@@ -308,6 +316,9 @@ async function openEditModal(auth: any) {
     await fetchSelectionOptions()
   }
   showModal.value = true
+  void nextTick(() => {
+    isInitializing = false
+  })
 }
 
 // Submit form
@@ -422,14 +433,18 @@ onMounted(() => {
   fetchSelectionOptions()
 })
 
-// Watch entity_type — reset entity_id when switching
+// Watch entity_type — reset entity_id when user actively switches
 watch(() => form.value.entity_type, () => {
-  form.value.entity_id = null
+  if (!isInitializing) {
+    form.value.entity_id = null
+  }
 })
 
-// Watch target_type — reset target_ids when switching
+// Watch target_type — reset target_ids when user actively switches
 watch(() => form.value.target_type, () => {
-  form.value.target_ids = []
+  if (!isInitializing) {
+    form.value.target_ids = []
+  }
 })
 
 // Sync state to URL
