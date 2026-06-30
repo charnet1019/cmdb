@@ -206,7 +206,7 @@ async def list_operation_logs(
                 "action": log.action,
                 "resource_type": log.resource_type,
                 "resource_id": log.resource_id,
-                "resource_name": (log.details or {}).get("username") or (log.details or {}).get("name") or (log.details or {}).get("group_name") or (log.resource_id or "-"),
+                "resource_name": (log.details or {}).get("username") or (log.details or {}).get("name") or (log.details or {}).get("group_name") or str(log.resource_id) if log.resource_id else None,
                 "details": log.details,
                 "ip_address": log.ip_address,
                 "status": log.status,
@@ -314,7 +314,7 @@ async def list_password_logs(
             {
                 "id": log.id,
                 "user_id": log.user_id,
-                "username": users_map.get(log.user_id, "Unknown") if log.user_id else cred_usernames_map.get(log.credential_id, "-") if log.credential_id else "-",
+                "username": users_map.get(log.user_id, "Unknown") if log.user_id else cred_usernames_map.get(log.credential_id) if log.credential_id else None,
                 "credential_id": log.credential_id,
                 "asset_name": asset_names_map.get(log.credential_id) if log.credential_id else None,
                 "change_type": log.change_type,
