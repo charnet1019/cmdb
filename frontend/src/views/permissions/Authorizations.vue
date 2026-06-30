@@ -35,6 +35,10 @@ const showModal = ref(false)
 const modalLoading = ref(false)
 const isEditMode = ref(false)
 const editingAuthId = ref<number | null>(null)
+const editLoading = ref(false) // true while waiting for selection data before showing edit form
+
+// Track whether selection options have been loaded
+const selectionsLoaded = ref(false)
 
 // Form
 const form = ref({
@@ -248,6 +252,7 @@ async function fetchSelectionOptions() {
     assets.value = assetsData
     organizations.value = orgsData
     buildTree()
+    selectionsLoaded.value = true
   } catch {
     // Handle silently
   }
@@ -281,7 +286,7 @@ function openCreateModal() {
 }
 
 // Open edit modal
-function openEditModal(auth: any) {
+async function openEditModal(auth: any) {
   isEditMode.value = true
   editingAuthId.value = auth.id
   form.value = {
@@ -291,6 +296,14 @@ function openEditModal(auth: any) {
     target_ids: auth.target_ids || [],
     permissions: auth.permissions || [],
     valid_until: auth.valid_until ? auth.valid_until.slice(0, 16) : ''
+  }
+  // Wait for selection data before rendering to prevent a-select from clearing values
+  if (!selectionsLoaded.value) {
+    editLoading.value = true
+    showModal.value = true
+    await fetchSelectionOptions()
+    editLoading.value = false
+    return
   }
   showModal.value = true
 }
@@ -564,7 +577,11 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
           </button>
         </div>
         <div class="p-6">
-          <form @submit.prevent="handleSubmit" class="space-y-6">
+          <!-- Loading state while waiting for selection data -->
+          <div v-if="editLoading" class="flex items-center justify-center py-12">
+            <div class="text-slate-400">加载中...</div>
+          </div>
+          <form v-else @submit.prevent="handleSubmit" class="space-y-6">
             <!-- Entity Selection (disabled in edit mode) -->
             <div v-if="!isEditMode">
               <label class="block text-sm font-medium text-slate-700 mb-2">授权对象</label>
@@ -629,8 +646,19 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
                 </label>
               </div>
               <div v-if="form.target_type === 'asset'" class="space-y-2">
-                <!-- Custom tag input — click to open picker, no dropdown -->
+                <!-- Edit mode: show selected asset names as read-only tags -->
+                <div v-if="isEditMode" class="flex flex-wrap gap-1">
+                  <span
+                    v-for="id in form.target_ids"
+                    :key="id"
+                    class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-sm rounded"
+                  >
+                    {{ getAssetLabel(id) }}
+                  </span>
+                </div>
+                <!-- Create mode: custom tag input — click to open picker -->
                 <div
+                  v-else
                   @click="openAssetPicker"
                   class="flex items-center flex-wrap gap-1 min-h-[36px] px-2 border border-slate-300 rounded-lg cursor-text hover:border-primary transition-colors"
                 >
@@ -643,17 +671,31 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
                   <span v-if="form.target_ids.length === 0" class="text-sm text-slate-400 ml-1">请选择资产</span>
                 </div>
               </div>
-              <a-select
-                v-else
-                v-model:value="form.target_ids"
-                mode="multiple"
-                :placeholder="'请选择节点'"
-                :options="organizations.map(o => ({ label: formatOrgPath(o), value: o.id === null ? '__all__' : String(o.id) }))"
-                show-search
-                :allow-clear="true"
-                :filter-option="(input: string, option: any) => (option.label || '').toLowerCase().includes(input.toLowerCase())"
-                style="width: 100%"
-              />
+              <!-- Organization target -->
+              <div v-else>
+                <!-- Edit mode: show selected org names as read-only tags -->
+                <div v-if="isEditMode" class="flex flex-wrap gap-1">
+                  <span
+                    v-for="id in form.target_ids"
+                    :key="id"
+                    class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-sm rounded"
+                  >
+                    {{ id === '__all__' ? 'Default' : (organizations.find(o => String(o.id ?? '__all__') === id)?.name_path || id) }}
+                  </span>
+                </div>
+                <!-- Create mode: multi-select -->
+                <a-select
+                  v-else
+                  v-model:value="form.target_ids"
+                  mode="multiple"
+                  :placeholder="'请选择节点'"
+                  :options="organizations.map(o => ({ label: formatOrgPath(o), value: o.id === null ? '__all__' : String(o.id) }))"
+                  show-search
+                  :allow-clear="true"
+                  :filter-option="(input: string, option: any) => (option.label || '').toLowerCase().includes(input.toLowerCase())"
+                  style="width: 100%"
+                />
+              </div>
             </div>
 
             <!-- Permissions -->
