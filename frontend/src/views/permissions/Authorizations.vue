@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import { PlusOutlined, EditOutlined, BlockOutlined, CheckCircleOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-vue'
@@ -193,6 +193,13 @@ function getAssetLabel(id: string): string {
   return asset ? `${asset.name} (${asset.category})` : id
 }
 
+// Get org label by ID
+function getOrgLabel(id: string): string {
+  if (id === '__all__') return 'Default'
+  const org = organizations.value.find((o: { id: number | null }) => String(o.id) === id)
+  return org ? formatOrgPath(org) : id
+}
+
 // Remove a target ID
 function removeTargetId(id: string) {
   const idx = form.value.target_ids.indexOf(id)
@@ -303,6 +310,7 @@ async function openEditModal(auth: any) {
   if (!selectionsLoaded.value) {
     await fetchSelectionOptions()
   }
+  await nextTick()
   editLoading.value = false
 }
 
@@ -682,28 +690,41 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
               </div>
               <!-- Organization target -->
               <div v-else>
+                <!-- Edit mode: tags with removable × + single-select to add -->
+                <template v-if="isEditMode">
+                  <div
+                    class="flex items-center flex-wrap gap-1 min-h-[36px] px-2 border border-slate-300 rounded-lg mb-2"
+                  >
+                    <template v-for="id in form.target_ids" :key="id">
+                      <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-sm rounded">
+                        {{ getOrgLabel(id) }}
+                        <span @click="removeTargetId(id)" class="cursor-pointer hover:text-primary-dark" style="font-size: 12px">×</span>
+                      </span>
+                    </template>
+                    <span v-if="form.target_ids.length === 0" class="text-sm text-slate-400 ml-1">请选择节点</span>
+                  </div>
+                  <a-select
+                    v-if="selectionsLoaded"
+                    @change="(val: string) => { if (val && !form.target_ids.includes(val)) form.target_ids.push(val) }"
+                    :placeholder="'添加节点'"
+                    :options="organizations.map(o => ({ label: formatOrgPath(o), value: o.id === null ? '__all__' : String(o.id) }))"
+                    show-search
+                    :allow-clear="true"
+                    :filter-option="(input: string, option: any) => (option.label || '').toLowerCase().includes(input.toLowerCase())"
+                    style="width: 100%"
+                  />
+                </template>
+                <!-- Create mode: multi-select (no guard needed — starts empty) -->
                 <a-select
-                  v-if="selectionsLoaded"
                   v-model:value="form.target_ids"
                   mode="multiple"
-                  :placeholder="isEditMode ? '点击添加节点' : '请选择节点'"
+                  :placeholder="'请选择节点'"
                   :options="organizations.map(o => ({ label: formatOrgPath(o), value: o.id === null ? '__all__' : String(o.id) }))"
                   show-search
                   :allow-clear="true"
                   :filter-option="(input: string, option: any) => (option.label || '').toLowerCase().includes(input.toLowerCase())"
                   style="width: 100%"
                 />
-                <!-- Fallback while data loads: show removable tags -->
-                <div v-else class="flex flex-wrap gap-1">
-                  <span
-                    v-for="id in form.target_ids"
-                    :key="id"
-                    class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-sm rounded"
-                  >
-                    {{ id === '__all__' ? 'Default' : (organizations.find(o => String(o.id ?? '__all__') === id)?.name_path || id) }}
-                    <span @click="removeTargetId(id)" class="cursor-pointer hover:text-primary-dark" style="font-size: 12px">×</span>
-                  </span>
-                </div>
               </div>
             </div>
 
