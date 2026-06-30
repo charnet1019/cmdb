@@ -10,7 +10,7 @@ from sqlalchemy import select, func, false
 
 from app.database import get_db
 from app.models import User, Asset, LoginLog
-from app.api.deps import get_current_user, get_authorized_asset_ids
+from app.api.deps import get_current_user, get_authorized_asset_ids, get_user_permissions
 from app.core.redis_client import get_redis, ONLINE_KEY_PREFIX
 from app.schemas import ResponseBase
 
@@ -89,39 +89,48 @@ async def get_dashboard_stats(
             for row in sub_result.all()
         ]
 
-    # Total users count
-    users_result = await db.execute(select(func.count()).select_from(User))
-    total_users = users_result.scalar() or 0
+    # Check if user has view_users permission
+    user_perms = await get_user_permissions(current_user, db)
+    can_view_users = "view_users" in user_perms
 
-    # Active users count
-    active_users_result = await db.execute(
-        select(func.count()).select_from(User).where(User.is_active == True)
-    )
-    active_users = active_users_result.scalar() or 0
+    # User stats — only visible with view_users permission
+    if can_view_users:
+        users_result = await db.execute(select(func.count()).select_from(User))
+        total_users = users_result.scalar() or 0
 
-    # Online users — count Redis presence keys
-    redis_client = get_redis()
-    keys = [k for k in await redis_client.keys(f"{ONLINE_KEY_PREFIX}*")]
-    online_user_ids = {int(k.split(":online:")[1]) for k in keys}
-    online_users = len(online_user_ids)
+        active_users_result = await db.execute(
+            select(func.count()).select_from(User).where(User.is_active == True)
+        )
+        active_users = active_users_result.scalar() or 0
 
-    # Recent successful logins (last 5)
-    recent_logins_result = await db.execute(
-        select(LoginLog, User)
-        .join(User, LoginLog.user_id == User.id, isouter=True)
-        .where(LoginLog.status == "success")
-        .order_by(LoginLog.created_at.desc())
-        .limit(5)
-    )
-    recent_logins = []
-    for login_log, user in recent_logins_result.all():
-        recent_logins.append({
-            "user": user.full_name if user and user.full_name else (user.username if user else login_log.username),
-            "time": login_log.created_at.strftime("%H:%M"),
-            "ip": login_log.ip_address,
-            "user_id": login_log.user_id,
-            "is_online": login_log.user_id in online_user_ids,
-        })
+        # Online users — count Redis presence keys
+        redis_client = get_redis()
+        keys = [k for k in await redis_client.keys(f"{ONLINE_KEY_PREFIX}*")]
+        online_user_ids = {int(k.split(":online:")[1]) for k in keys}
+        online_users = len(online_user_ids)
+
+        # Recent successful logins (last 5)
+        recent_logins_result = await db.execute(
+            select(LoginLog, User)
+            .join(User, LoginLog.user_id == User.id, isouter=True)
+            .where(LoginLog.status == "success")
+            .order_by(LoginLog.created_at.desc())
+            .limit(5)
+        )
+        recent_logins = []
+        for login_log, user in recent_logins_result.all():
+            recent_logins.append({
+                "user": user.full_name if user and user.full_name else (user.username if user else login_log.username),
+                "time": login_log.created_at.strftime("%H:%M"),
+                "ip": login_log.ip_address,
+                "user_id": login_log.user_id,
+                "is_online": login_log.user_id in online_user_ids,
+            })
+    else:
+        total_users = None
+        active_users = None
+        online_users = None
+        recent_logins = []
 
     return {
         "code": 0,

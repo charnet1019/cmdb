@@ -73,11 +73,11 @@ const orgTreeData = ref<OrgTreeNode[]>([])
 const permissionOptions = [
   { key: 'view', label: '查看资产' },
   { key: 'manage', label: '管理资产' },
+  { key: 'view_users', label: '查看用户' },
   { key: 'user_mgmt', label: '用户管理' },
   { key: 'sys_config', label: '系统设置' },
   { key: 'audit_log', label: '日志审计' },
-  { key: 'view_pwd', label: '查看密码' },
-  { key: 'manage_pwd', label: '管理凭证' }
+  { key: 'view_pwd', label: '查看密码' }
 ]
 
 // Format organization name path (e.g. "Default/开发部/数据库")

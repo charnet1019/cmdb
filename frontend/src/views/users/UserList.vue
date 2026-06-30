@@ -11,6 +11,11 @@ import type { User, UserAuthorization } from '@/types'
 const router = useRouter()
 const route = useRoute()
 const usersStore = useUsersStore()
+import { useAuthStore } from '@/stores/auth'
+const authStore = useAuthStore()
+
+// Can perform write actions (create, edit, delete, reset)
+const canManageUsers = computed(() => authStore.hasPermission('user_mgmt'))
 
 // Data — use store for shared state
 const users = computed(() => usersStore.users)
@@ -395,11 +400,11 @@ const categoryLabels: Record<string, string> = {
 const permissionLabels: Record<string, string> = {
   view: '查看资产',
   manage: '管理资产',
+  view_users: '查看用户',
   user_mgmt: '用户管理',
   sys_config: '系统设置',
   audit_log: '日志审计',
-  view_pwd: '查看密码',
-  manage_pwd: '管理密码'
+  view_pwd: '查看密码'
 }
 
 // Open authorizations modal
@@ -512,7 +517,7 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
     <!-- Filters -->
     <div class="bg-white rounded-xl shadow-sm p-4">
       <div class="flex items-center gap-4">
-        <button @click="openCreateModal" class="btn-primary flex items-center gap-2">
+        <button v-if="canManageUsers" @click="openCreateModal" class="btn-primary flex items-center gap-2">
           <UserAddOutlined />
           添加用户
         </button>
@@ -609,13 +614,13 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
                   <SafetyCertificateOutlined class="text-sm" />
                   授权
                 </button>
-                <button @click="openEditModal(user)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="编辑">
+                <button v-if="canManageUsers" @click="openEditModal(user)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="编辑">
                   <EditOutlined class="text-lg" />
                 </button>
-                <button @click="openResetPasswordModal(user)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="重置密码">
+                <button v-if="canManageUsers" @click="openResetPasswordModal(user)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="重置密码">
                   <LockOutlined class="text-lg" />
                 </button>
-                <button @click="handleDelete(user)" class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600" title="删除">
+                <button v-if="canManageUsers" @click="handleDelete(user)" class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600" title="删除">
                   <DeleteOutlined class="text-lg" />
                 </button>
               </div>

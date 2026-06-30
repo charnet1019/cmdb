@@ -17,7 +17,7 @@ from app.schemas import (
     GroupCreate, GroupUpdate, GroupResponse, GroupSimple, GroupDetailResponse,
     GroupListResponse, PasswordResetRequest, ResponseBase
 )
-from app.api.deps import get_current_user, get_current_superuser, PermissionChecker, get_user_permissions
+from app.api.deps import get_current_user, PermissionChecker, get_user_permissions
 from app.core.security import get_password_hash, verify_password, validate_password_strength
 
 
@@ -32,7 +32,7 @@ async def list_users(
     search: Optional[str] = Query(None),
     is_active: Optional[bool] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(PermissionChecker("user_mgmt")),
+    current_user: User = Depends(PermissionChecker("view_users")),
 ):
     """List all users with pagination and search"""
     query = select(User)
@@ -106,7 +106,7 @@ async def create_user(
     data: UserCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(PermissionChecker("user_mgmt")),
 ):
     """Create a new user (admin only)"""
     ip = request.client.host if request.client else None
@@ -362,7 +362,7 @@ async def delete_user(
     user_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(PermissionChecker("user_mgmt")),
 ):
     """Delete user (admin only)"""
     ip = request.client.host if request.client else None
@@ -391,20 +391,21 @@ async def delete_user(
 
     username = user.username
 
-    # Clean up related records
+    # Clean up user-group associations
     ug_result = await db.execute(
         select(UserGroup).where(UserGroup.user_id == user_id)
     )
     for ug in ug_result.scalars().all():
         await db.delete(ug)
 
-    # Soft-delete authorizations (set entity_id to null or delete)
+    # Delete authorizations belonging to this user
     auth_result = await db.execute(
         select(Authorization).where(Authorization.entity_id == user_id, Authorization.entity_type == "user")
     )
     for auth in auth_result.scalars().all():
         await db.delete(auth)
 
+    # FK references to other tables are handled by ON DELETE SET NULL
     await db.delete(user)
     await db.commit()
 
@@ -423,7 +424,7 @@ async def reset_user_password(
     data: PasswordResetRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(PermissionChecker("user_mgmt")),
 ):
     """Reset user password (admin only)"""
     ip = request.client.host if request.client else None
@@ -478,11 +479,11 @@ async def get_user_authorizations(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get user's asset authorizations — self-lookup allowed, others require user_mgmt"""
+    """Get user's asset authorizations — self-lookup allowed, others require view_users or user_mgmt"""
     if user_id != current_user.id and not current_user.is_superuser:
         perms = await get_user_permissions(current_user, db)
-        if "user_mgmt" not in perms:
-            raise HTTPException(status_code=403, detail="缺少 'user_mgmt' 权限")
+        if "user_mgmt" not in perms and "view_users" not in perms:
+            raise HTTPException(status_code=403, detail="缺少 'view_users' 或 'user_mgmt' 权限")
 
     # Check user exists
     result = await db.execute(select(User).where(User.id == user_id))
@@ -589,7 +590,7 @@ async def list_groups(
     limit: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("view_users")),
 ):
     """List all user groups"""
     query = select(Group)
@@ -646,7 +647,7 @@ async def create_group(
     data: GroupCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(PermissionChecker("user_mgmt")),
 ):
     """Create a new user group"""
     ip = request.client.host if request.client else None
@@ -699,7 +700,7 @@ async def delete_group(
     group_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(PermissionChecker("user_mgmt")),
 ):
     """Delete a user group"""
     ip = request.client.host if request.client else None
@@ -720,6 +721,17 @@ async def delete_group(
             detail="默认用户组无法被删除"
         )
 
+    # Check if group has members — require empty before deletion
+    member_count_result = await db.execute(
+        select(func.count()).select_from(UserGroup).where(UserGroup.group_id == group_id)
+    )
+    member_count = member_count_result.scalar_one()
+    if member_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"用户组下还有 {member_count} 名成员，请先移除所有成员后再删除"
+        )
+
     group_name = group.name
     await db.delete(group)
     await db.commit()
@@ -737,7 +749,7 @@ async def delete_group(
 async def get_group_authorizations(
     group_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("view_users")),
 ):
     """Get group's asset authorizations"""
     # Check group exists
@@ -798,7 +810,7 @@ async def update_group(
     request: Request,
     data: GroupUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(PermissionChecker("user_mgmt")),
 ):
     """Update a user group"""
     ip = request.client.host if request.client else None
@@ -854,7 +866,7 @@ async def update_group(
 async def get_group_members(
     group_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("view_users")),
 ):
     """Get members of a group"""
     result = await db.execute(select(Group).where(Group.id == group_id))
@@ -889,7 +901,7 @@ async def add_group_members(
     user_ids: List[int],
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(PermissionChecker("user_mgmt")),
 ):
     """Add members to a group"""
     ip = request.client.host if request.client else None
@@ -936,7 +948,7 @@ async def remove_group_member(
     user_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(PermissionChecker("user_mgmt")),
 ):
     """Remove a member from a group"""
     ip = request.client.host if request.client else None

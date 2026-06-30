@@ -80,6 +80,9 @@ const statsLabels = ['资产总数', '用户总数', '在线用户']
 // Stats icons mapping
 const statsIconComponents = [ClusterOutlined, TeamOutlined, WifiOutlined]
 
+// Whether the current user can view user stats (null means no permission)
+const canViewUsers = computed(() => stats.value.total_users !== null && stats.value.total_users !== undefined)
+
 // Main pie chart option
 const mainPieOption = computed<EChartsOption>(() => {
   const data = stats.value.asset_distribution.map(item => ({
@@ -261,7 +264,7 @@ onMounted(() => {
 <template>
   <div class="space-y-4">
     <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6" v-if="canViewUsers">
       <div
         v-for="stat in [
           { label: statsLabels[0], value: stats.total_assets, icon: statsIconComponents[0] },
@@ -274,10 +277,23 @@ onMounted(() => {
         <div class="flex items-center justify-between">
           <div>
             <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">{{ stat.label }}</p>
-            <p class="text-3xl font-bold text-slate-900 mt-2 font-headline">{{ stat.value.toLocaleString() }}</p>
+            <p class="text-3xl font-bold text-slate-900 mt-2 font-headline">{{ stat.value!.toLocaleString() }}</p>
           </div>
           <div class="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-primary-container flex items-center justify-center">
             <component :is="stat.icon" class="text-white" />
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6" v-else>
+      <div class="card">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">{{ statsLabels[0] }}</p>
+            <p class="text-3xl font-bold text-slate-900 mt-2 font-headline">{{ stats.total_assets.toLocaleString() }}</p>
+          </div>
+          <div class="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-primary-container flex items-center justify-center">
+            <component :is="statsIconComponents[0]" class="text-white" />
           </div>
         </div>
       </div>
@@ -308,7 +324,7 @@ onMounted(() => {
     </div>
 
     <!-- Recent Logins -->
-    <div class="card">
+    <div class="card" v-if="canViewUsers && stats.recent_logins && stats.recent_logins.length > 0">
       <h3 class="text-lg font-semibold text-slate-900 mb-4">最近登录用户</h3>
       <div class="space-y-3">
         <div

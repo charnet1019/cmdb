@@ -33,13 +33,13 @@ const routes: RouteRecordRaw[] = [
         path: 'users',
         name: 'Users',
         component: () => import('@/views/users/UserList.vue'),
-        meta: { title: '用户', icon: 'person', permissions: ['user_mgmt'] }
+        meta: { title: '用户', icon: 'person', permissions: ['view_users', 'user_mgmt'] }
       },
       {
         path: 'users/groups',
         name: 'UserGroups',
         component: () => import('@/views/users/UserGroups.vue'),
-        meta: { title: '用户组', icon: 'groups', permissions: ['user_mgmt'] }
+        meta: { title: '用户组', icon: 'groups', permissions: ['view_users', 'user_mgmt'] }
       },
       {
         path: 'permissions/authorizations',

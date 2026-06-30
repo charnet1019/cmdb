@@ -89,8 +89,8 @@ async def get_current_superuser(
 
 # Permission hierarchy: higher permissions imply lower ones
 IMPLIED_PERMISSIONS: Dict[str, Set[str]] = {
-    "manage": {"view", "manage_pwd"},
-    "manage_pwd": {"view_pwd"},
+    "manage": {"view", "view_pwd"},
+    "user_mgmt": {"view_users"},
 }
 
 # Reverse map: to satisfy "view", also accept "manage"
@@ -110,7 +110,7 @@ def _satisfies_permission(have: str, need: str) -> bool:
 def _permission_variants(need: str) -> Set[str]:
     """Return all permission values that satisfy `need` (transitive)."""
     result = {need}
-    # Walk up the reverse chain: manage → manage_pwd → view_pwd
+    # Walk up the reverse chain: manage → view_pwd
     current = {need}
     while True:
         parents: Set[str] = set()
@@ -132,8 +132,8 @@ async def get_user_permissions(
     """
     if user.is_superuser:
         return [
-            "view", "manage", "user_mgmt", "sys_config",
-            "audit_log", "view_pwd", "manage_pwd"
+            "view", "manage", "view_users", "user_mgmt", "sys_config",
+            "audit_log", "view_pwd"
         ]
 
     now = datetime.utcnow()
@@ -185,7 +185,7 @@ async def get_user_permissions(
             if auth.permissions:
                 permissions.update(auth.permissions)
 
-    # Expand permissions transitively (e.g., manage → manage_pwd → view_pwd)
+    # Expand permissions transitively (e.g., manage → view_pwd)
     expanded = set(permissions)
     changed = True
     while changed:

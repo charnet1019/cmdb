@@ -40,11 +40,11 @@ class PermissionType(str, enum.Enum):
     """Permission type enumeration"""
     VIEW = "view"                    # 查看资产
     MANAGE = "manage"                # 管理资产
+    VIEW_USERS = "view_users"        # 查看用户
     USER_MGMT = "user_mgmt"          # 用户管理
     SYS_CONFIG = "sys_config"        # 系统设置
     AUDIT_LOG = "audit_log"          # 日志审计
-    VIEW_PWD = "view_pwd"            # 查看复制资产密码
-    MANAGE_PWD = "manage_pwd"        # 管理资产用户名密码
+    VIEW_PWD = "view_pwd"            # 查看密码
 
 
 class User(Base):
@@ -180,7 +180,7 @@ class Asset(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     asset_code: Mapped[Optional[str]] = mapped_column(String(50), unique=True)  # CI编号
     category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # AssetCategory
-    created_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), index=True)  # 创建者 ID
+    created_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)  # 创建者 ID
     internal_address: Mapped[Optional[str]] = mapped_column(Text)  # 内网地址(多行)
     external_address: Mapped[Optional[str]] = mapped_column(Text)  # 外网地址(多行)
     platform: Mapped[Optional[str]] = mapped_column(String(50))  # 物理机/虚拟机/RDS/Docker/Kubernetes
@@ -213,7 +213,7 @@ class Asset(Base):
     # Additional fields
     applicant: Mapped[Optional[str]] = mapped_column(String(100))  # 申请人
     namespace: Mapped[Optional[str]] = mapped_column(String(100))  # 命名空间（数据库 Schema 等）
-    owner_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), index=True)  # 负责人 ID
+    owner_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)  # 负责人 ID
     owner_name: Mapped[Optional[str]] = mapped_column(String(100))  # 负责人姓名（冗余字段）
 
     status: Mapped[Optional[str]] = mapped_column(String(50), index=True)  # AssetStatus
@@ -278,7 +278,7 @@ class Authorization(Base):
     valid_from: Mapped[Optional[datetime]] = mapped_column(DateTime)
     valid_until: Mapped[Optional[datetime]] = mapped_column(DateTime)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    created_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"))
+    created_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     updated_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
@@ -298,7 +298,7 @@ class LoginLog(Base):
     __tablename__ = "login_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)
     username: Mapped[Optional[str]] = mapped_column(String(50))
     ip_address: Mapped[Optional[str]] = mapped_column(String(45))
     user_agent: Mapped[Optional[str]] = mapped_column(Text)
@@ -318,7 +318,7 @@ class OperationLog(Base):
     __tablename__ = "operation_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)
     action: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # create, update, delete, authorize
     resource_type: Mapped[Optional[str]] = mapped_column(String(50))
     resource_id: Mapped[Optional[int]] = mapped_column(Integer)
@@ -339,10 +339,10 @@ class PasswordChangeLog(Base):
     __tablename__ = "password_change_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)
     credential_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("credentials.id"))
     change_type: Mapped[str] = mapped_column(String(20))  # user_password, asset_credential
-    changed_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), index=True)
+    changed_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)
     ip_address: Mapped[Optional[str]] = mapped_column(String(45))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 

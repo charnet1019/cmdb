@@ -66,7 +66,7 @@ const allMenuItems = [
     children: [{ id: 'assets-list', label: '资产列表', path: '/assets' }]
   },
   {
-    id: 'users', icon: TeamOutlined, label: '用户管理', permissions: ['user_mgmt'],
+    id: 'users', icon: TeamOutlined, label: '用户管理', permissions: ['view_users', 'user_mgmt'],
     children: [
       { id: 'users-list', label: '用户', path: '/users' },
       { id: 'users-groups', label: '用户组', path: '/users/groups' }

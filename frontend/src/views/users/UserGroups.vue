@@ -6,11 +6,16 @@ import { UsergroupAddOutlined, SearchOutlined, SafetyCertificateOutlined, GroupO
 import { formatDate } from '@/utils/datetime'
 import { createGroup, deleteGroup, updateGroup, getGroupAuthorizations, getGroupMembers, addGroupMembers, removeGroupMember, getUsers } from '@/api/users'
 import { useUsersStore } from '@/stores/users'
+import { useAuthStore } from '@/stores/auth'
 import type { Group, GroupAuthorization, GroupMember } from '@/types'
 
 const router = useRouter()
 const route = useRoute()
 const usersStore = useUsersStore()
+const authStore = useAuthStore()
+
+// Can perform write actions (create, edit, delete groups; manage members)
+const canManageUsers = computed(() => authStore.hasPermission('user_mgmt'))
 
 // Data — use store for shared state
 const groups = computed(() => usersStore.groups)
@@ -67,11 +72,11 @@ const categoryLabels: Record<string, string> = {
 const permissionLabels: Record<string, string> = {
   view: '查看资产',
   manage: '管理资产',
+  view_users: '查看用户',
   user_mgmt: '用户管理',
   sys_config: '系统设置',
   audit_log: '日志审计',
-  view_pwd: '查看密码',
-  manage_pwd: '管理密码'
+  view_pwd: '查看密码'
 }
 
 // Fetch groups
@@ -198,7 +203,7 @@ async function handleEditSubmit() {
 async function handleDelete(group: Group) {
   Modal.confirm({
     title: '删除用户组',
-    content: `确定要删除用户组 "${group.name}" 吗？`,
+    content: `确定要删除用户组 "${group.name}" 吗？如果该用户组有成员，需要先移除所有成员才能删除。`,
     okText: '删除',
     okType: 'danger',
     cancelText: '取消',
@@ -316,7 +321,7 @@ watch([() => usersStore.groupsPage, searchQuery], () => {
     <!-- Filters -->
     <div class="bg-white rounded-xl shadow-sm p-4">
       <div class="flex items-center gap-4">
-        <button @click="openCreateModal" class="btn-primary flex items-center gap-2">
+        <button v-if="canManageUsers" @click="openCreateModal" class="btn-primary flex items-center gap-2">
           <UsergroupAddOutlined />
           创建用户组
         </button>
@@ -390,14 +395,14 @@ watch([() => usersStore.groupsPage, searchQuery], () => {
                   <SafetyCertificateOutlined class="text-sm" />
                   授权
                 </button>
-                <button @click="openMembersModal(group)" class="text-xs text-primary hover:underline flex items-center gap-1">
+                <button @click="openMembersModal(group)" class="text-xs text-primary hover:underline flex items-center gap-1" v-if="canManageUsers">
                   <GroupOutlined class="text-sm" />
                   成员
                 </button>
-                <button @click="openEditModal(group)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="编辑">
+                <button v-if="canManageUsers" @click="openEditModal(group)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="编辑">
                   <EditOutlined class="text-lg" />
                 </button>
-                <button @click="handleDelete(group)" class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600" title="删除">
+                <button v-if="canManageUsers" @click="handleDelete(group)" class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600" title="删除">
                   <DeleteOutlined class="text-lg" />
                 </button>
               </div>

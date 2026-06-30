@@ -40,7 +40,6 @@ from app.services.export_service import (
     DEFAULT_COLUMNS,
 )
 from app.utils.audit import log_operation
-from app.utils.rate_limit import check_rate_limit
 
 
 # Request models
@@ -1537,7 +1536,7 @@ async def create_credential(
     data: CredentialCreate,
     asset_id: str = Query(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(PermissionChecker("manage_pwd")),
+    current_user: User = Depends(PermissionChecker("manage")),
 ):
     """Create a new credential for an asset"""
     # Verify asset exists
@@ -1552,7 +1551,7 @@ async def create_credential(
 
     # Check resource-level permission
     await check_resource_permission(
-        current_user, "manage_pwd", "asset", asset_id, db,
+        current_user, "manage", "asset", asset_id, db,
     )
 
     credential = Credential(
@@ -1614,7 +1613,6 @@ async def decrypt_oob_password(
     current_user: User = Depends(PermissionChecker("view_pwd")),
 ):
     """Decrypt OOB password for host asset (requires view_pwd permission)"""
-    check_rate_limit(current_user.id, detail="解密操作过于频繁，请稍后再试")
     result = await db.execute(
         select(Asset).where(Asset.id == asset_id)
     )
@@ -1679,7 +1677,6 @@ async def decrypt_credential(
     current_user: User = Depends(PermissionChecker("view_pwd")),
 ):
     """Decrypt credential password (requires view_pwd permission)"""
-    check_rate_limit(current_user.id, detail="解密操作过于频繁，请稍后再试")
     result = await db.execute(
         select(Credential).where(Credential.id == credential_id)
     )
@@ -1716,7 +1713,7 @@ async def update_credential(
     credential_id: int,
     data: CredentialUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(PermissionChecker("manage_pwd")),
+    current_user: User = Depends(PermissionChecker("manage")),
 ):
     """Update a credential"""
     result = await db.execute(
@@ -1732,7 +1729,7 @@ async def update_credential(
 
     # Check resource-level permission on the asset
     await check_resource_permission(
-        current_user, "manage_pwd", "asset", credential.asset_id, db,
+        current_user, "manage", "asset", credential.asset_id, db,
     )
 
     # Update fields
@@ -1759,7 +1756,7 @@ async def update_credential(
 async def delete_credential(
     credential_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(PermissionChecker("manage_pwd")),
+    current_user: User = Depends(PermissionChecker("manage")),
 ):
     """Delete a credential"""
     result = await db.execute(
@@ -1775,7 +1772,7 @@ async def delete_credential(
 
     # Check resource-level permission on the asset
     await check_resource_permission(
-        current_user, "manage_pwd", "asset", credential.asset_id, db,
+        current_user, "manage", "asset", credential.asset_id, db,
     )
 
     await db.delete(credential)
