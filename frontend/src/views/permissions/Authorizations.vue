@@ -35,7 +35,6 @@ const showModal = ref(false)
 const modalLoading = ref(false)
 const isEditMode = ref(false)
 const editingAuthId = ref<number | null>(null)
-const editLoading = ref(false) // true while waiting for selection data before showing edit form
 
 // Track whether selection options have been loaded
 const selectionsLoaded = ref(false)
@@ -292,7 +291,7 @@ function openCreateModal() {
   showModal.value = true
 }
 
-// Open edit modal — wait for selection data before rendering form
+// Open edit modal — wait for selection data before showing modal
 // to prevent a-select from clearing target_ids when options are empty
 async function openEditModal(auth: any) {
   isEditMode.value = true
@@ -305,18 +304,15 @@ async function openEditModal(auth: any) {
     permissions: auth.permissions || [],
     valid_until: auth.valid_until ? auth.valid_until.slice(0, 16) : ''
   }
-  editLoading.value = true
-  showModal.value = true
   if (!selectionsLoaded.value) {
     await fetchSelectionOptions()
   }
   await nextTick()
-  editLoading.value = false
+  showModal.value = true
 }
 
 // Close modal
 function closeModal() {
-  editLoading.value = false
   showModal.value = false
 }
 
@@ -589,11 +585,7 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
           </button>
         </div>
         <div class="p-6">
-          <!-- Loading state while waiting for selection data -->
-          <div v-if="editLoading" class="flex items-center justify-center py-12">
-            <div class="text-slate-400">加载中...</div>
-          </div>
-          <form v-else @submit.prevent="handleSubmit" class="space-y-6">
+          <form @submit.prevent="handleSubmit" class="space-y-6">
             <!-- Entity Selection (disabled in edit mode) -->
             <div v-if="!isEditMode">
               <label class="block text-sm font-medium text-slate-700 mb-2">授权对象</label>
@@ -691,9 +683,9 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
               <!-- Organization target -->
               <div v-else>
                 <!-- Edit mode: tags with removable × + single-select to add -->
-                <template v-if="isEditMode">
+                <div v-if="isEditMode" class="space-y-2">
                   <div
-                    class="flex items-center flex-wrap gap-1 min-h-[36px] px-2 border border-slate-300 rounded-lg mb-2"
+                    class="flex items-center flex-wrap gap-1 min-h-[36px] px-2 border border-slate-300 rounded-lg"
                   >
                     <template v-for="id in form.target_ids" :key="id">
                       <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-sm rounded">
@@ -713,9 +705,10 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
                     :filter-option="(input: string, option: any) => (option.label || '').toLowerCase().includes(input.toLowerCase())"
                     style="width: 100%"
                   />
-                </template>
-                <!-- Create mode: multi-select (no guard needed — starts empty) -->
+                </div>
+                <!-- Create mode: multi-select -->
                 <a-select
+                  v-else
                   v-model:value="form.target_ids"
                   mode="multiple"
                   :placeholder="'请选择节点'"
