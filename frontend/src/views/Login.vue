@@ -193,17 +193,16 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- Remember & Forgot -->
-          <div class="flex items-center justify-between">
+          <!-- Remember -->
+          <div>
             <label class="flex items-center gap-2 cursor-pointer">
               <input
                 v-model="formState.remember"
                 type="checkbox"
                 class="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary"
               />
-              <span class="text-sm text-slate-600">记住该设备</span>
+              <span class="text-sm text-slate-600">记住密码</span>
             </label>
-            <a href="#" class="text-sm text-primary hover:underline">忘记密码?</a>
           </div>
 
           <!-- Submit button -->
@@ -213,7 +212,7 @@ onMounted(() => {
             class="btn-primary w-full py-3.5 flex items-center justify-center gap-2"
           >
             <LoadingOutlined v-if="loading" spin class="text-xl" />
-            <span v-else>立即登录</span>
+            <span v-else>登录</span>
           </button>
         </form>
       </div>
