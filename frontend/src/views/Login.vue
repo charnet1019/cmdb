@@ -146,7 +146,7 @@ onMounted(() => {
     </div>
 
     <!-- Right section - Login form -->
-    <div class="flex-1 flex items-center justify-center p-8 bg-surface">
+    <div class="flex-1 flex flex-col items-center justify-center relative p-8 bg-surface">
       <div class="w-full max-w-md">
         <!-- Welcome text -->
         <div class="mb-8">
@@ -216,22 +216,17 @@ onMounted(() => {
             <span v-else>立即登录</span>
           </button>
         </form>
+      </div>
 
-        <!-- Footer -->
-        <div class="mt-8 pt-6 border-t border-slate-200 text-center text-sm text-slate-500 space-y-2">
-          <p v-if="branding.copyright_text" class="text-slate-400">{{ branding.copyright_text }}</p>
-          <p v-if="branding.beian_number">
-            <a v-if="branding.beian_url" :href="branding.beian_url" target="_blank" rel="noopener noreferrer" class="hover:text-primary">
-              {{ branding.beian_number }}
-            </a>
-            <span v-else>{{ branding.beian_number }}</span>
-          </p>
-          <p>
-            <a href="#" class="hover:text-primary">安全策略</a>
-            <span class="mx-2">·</span>
-            <a href="#" class="hover:text-primary">服务条款</a>
-          </p>
-        </div>
+      <!-- Footer -->
+      <div class="absolute bottom-0 left-0 right-0 p-6 text-center text-sm text-slate-500 space-y-2">
+        <p v-if="branding.copyright_text" class="text-slate-400" v-html="branding.copyright_text" />
+        <p v-if="branding.beian_number">
+          <a v-if="branding.beian_url" :href="branding.beian_url" target="_blank" rel="noopener noreferrer" class="hover:text-primary">
+            {{ branding.beian_number }}
+          </a>
+          <span v-else>{{ branding.beian_number }}</span>
+        </p>
       </div>
     </div>
   </div>
