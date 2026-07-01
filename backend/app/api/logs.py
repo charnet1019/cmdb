@@ -12,6 +12,7 @@ from app.database import get_db
 from app.models import User, LoginLog, OperationLog, PasswordChangeLog, Asset, Credential
 from app.api.deps import get_current_user, PermissionChecker
 from app.schemas import PaginationMeta, ResponseBase
+from app.services.log_cleanup import cleanup_expired_logs
 
 
 def format_datetime_utc(dt: datetime | None) -> str | None:
@@ -361,4 +362,22 @@ async def list_password_logs(
             limit=limit,
             pages=(total + limit - 1) // limit,
         )
+    }
+
+
+# ============== Manual Cleanup ==============
+@router.post("/cleanup")
+async def trigger_cleanup(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(PermissionChecker("sys_config")),
+):
+    """Manually trigger log cleanup based on retention settings.
+
+    Requires sys_config permission.
+    """
+    deleted = await cleanup_expired_logs(db)
+    return {
+        "code": 0,
+        "message": "success",
+        "data": deleted,
     }

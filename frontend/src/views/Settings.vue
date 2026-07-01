@@ -15,10 +15,13 @@ const settings = ref<Record<string, any>>({})
 const form = ref({
   // 系统设置
   site_title: 'CMDB',
-  session_timeout: 1,
   copyright_text: '',
   beian_number: '',
   beian_url: '',
+  // 日志保留
+  login_log_retention: 30,
+  operation_log_retention: 30,
+  password_log_retention: 30,
   // 密码策略
   password_min_length: 8,
   password_require_uppercase: true,
@@ -27,6 +30,7 @@ const form = ref({
   password_require_special: false,
   // 登录设置
   max_login_attempts: 5,
+  session_timeout: 1,
   // 品牌设置
   login_subtitle: '企业资产配置管理平台',
   logo_image: null as string | null,
@@ -88,6 +92,9 @@ async function fetchSettings() {
     if (response.data.login_subtitle !== undefined) form.value.login_subtitle = response.data.login_subtitle
     if (response.data.logo_image !== undefined) form.value.logo_image = response.data.logo_image
     if (response.data.login_background_image !== undefined) form.value.login_background_image = response.data.login_background_image
+    if (response.data.login_log_retention !== undefined) form.value.login_log_retention = response.data.login_log_retention
+    if (response.data.operation_log_retention !== undefined) form.value.operation_log_retention = response.data.operation_log_retention
+    if (response.data.password_log_retention !== undefined) form.value.password_log_retention = response.data.password_log_retention
   } catch (error) {
     message.error('获取设置失败')
   } finally {
@@ -106,6 +113,9 @@ async function saveSettings() {
       data.copyright_text = form.value.copyright_text
       data.beian_number = form.value.beian_number
       data.beian_url = form.value.beian_url
+      data.login_log_retention = form.value.login_log_retention
+      data.operation_log_retention = form.value.operation_log_retention
+      data.password_log_retention = form.value.password_log_retention
     } else if (activeTab.value === 'security') {
       data.password_min_length = form.value.password_min_length
       data.password_require_uppercase = form.value.password_require_uppercase
@@ -137,6 +147,9 @@ function resetToDefaults() {
     form.value.copyright_text = ''
     form.value.beian_number = ''
     form.value.beian_url = ''
+    form.value.login_log_retention = 30
+    form.value.operation_log_retention = 30
+    form.value.password_log_retention = 30
   } else if (activeTab.value === 'security') {
     form.value.password_min_length = 8
     form.value.password_require_uppercase = true
@@ -314,6 +327,57 @@ onMounted(() => {
                 placeholder="https://beian.miit.gov.cn/"
               />
               <p class="text-xs text-slate-500 mt-1">备案号点击后跳转的链接，留空则不设为链接</p>
+            </div>
+          </div>
+
+          <!-- Log Retention Section -->
+          <div class="border-t border-slate-100 pt-6 mt-6">
+            <h3 class="text-sm font-medium text-slate-700 mb-4">日志保留</h3>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">登录日志保留时间</label>
+                <div class="flex items-center gap-3">
+                  <input
+                    v-model.number="form.login_log_retention"
+                    type="number"
+                    min="1"
+                    max="365"
+                    class="input-field w-32"
+                  />
+                  <span class="text-slate-600">天</span>
+                </div>
+                <p class="text-xs text-slate-500 mt-1">超过此天数的登录日志将自动删除</p>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">操作日志保留时间</label>
+                <div class="flex items-center gap-3">
+                  <input
+                    v-model.number="form.operation_log_retention"
+                    type="number"
+                    min="1"
+                    max="365"
+                    class="input-field w-32"
+                  />
+                  <span class="text-slate-600">天</span>
+                </div>
+                <p class="text-xs text-slate-500 mt-1">超过此天数的操作日志将自动删除</p>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">改密日志保留时间</label>
+                <div class="flex items-center gap-3">
+                  <input
+                    v-model.number="form.password_log_retention"
+                    type="number"
+                    min="1"
+                    max="365"
+                    class="input-field w-32"
+                  />
+                  <span class="text-slate-600">天</span>
+                </div>
+                <p class="text-xs text-slate-500 mt-1">超过此天数的改密日志将自动删除</p>
+              </div>
             </div>
           </div>
         </div>

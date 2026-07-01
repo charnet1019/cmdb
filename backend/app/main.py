@@ -2,15 +2,34 @@
 CMDB FastAPI Application
 Main entry point
 """
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import settings
-from app.database import init_db, close_db
+from app.database import init_db, close_db, async_session_maker
 from app.api import api_router
+from app.services.log_cleanup import cleanup_expired_logs
+
+logger = logging.getLogger(__name__)
+
+scheduler = BackgroundScheduler(daemon=True, timezone="UTC")
+
+
+def _run_cleanup():
+    """Wrapper: run log cleanup in a thread (BackgroundScheduler)"""
+    import asyncio
+    async def _inner():
+        async with async_session_maker() as session:
+            try:
+                await cleanup_expired_logs(session)
+            except Exception:  # noqa: BLE001
+                logger.exception("Log cleanup failed")
+    asyncio.run(_inner())
 
 
 def _ensure_upload_dir():
@@ -24,8 +43,19 @@ async def lifespan(app: FastAPI):
     """Application lifespan events"""
     # Startup
     await init_db()
+    # Schedule daily log cleanup at 2:00 AM UTC
+    scheduler.add_job(
+        _run_cleanup,
+        "cron",
+        hour=2,
+        minute=0,
+        id="log_cleanup",
+        replace_existing=True,
+    )
+    scheduler.start()
     yield
     # Shutdown
+    scheduler.shutdown(wait=False)
     await close_db()
 
 
