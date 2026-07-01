@@ -27,6 +27,9 @@ const branding = ref({
   login_subtitle: '' as string,
   logo_image: null as string | null,
   login_background_image: null as string | null,
+  copyright_text: '' as string,
+  beian_number: '' as string,
+  beian_url: '' as string,
 })
 
 // Toggle password visibility
@@ -42,6 +45,9 @@ async function fetchBranding() {
     if (data.login_subtitle !== undefined) branding.value.login_subtitle = data.login_subtitle
     if (data.logo_image !== undefined) branding.value.logo_image = data.logo_image
     if (data.login_background_image !== undefined) branding.value.login_background_image = data.login_background_image
+    if (data.copyright_text !== undefined) branding.value.copyright_text = data.copyright_text
+    if (data.beian_number !== undefined) branding.value.beian_number = data.beian_number
+    if (data.beian_url !== undefined) branding.value.beian_url = data.beian_url
   } catch {
     // Use defaults on error
   }
@@ -212,10 +218,19 @@ onMounted(() => {
         </form>
 
         <!-- Footer -->
-        <div class="mt-8 pt-6 border-t border-slate-200 text-center text-sm text-slate-500">
-          <a href="#" class="hover:text-primary">安全策略</a>
-          <span class="mx-2">·</span>
-          <a href="#" class="hover:text-primary">服务条款</a>
+        <div class="mt-8 pt-6 border-t border-slate-200 text-center text-sm text-slate-500 space-y-2">
+          <p v-if="branding.copyright_text" class="text-slate-400">{{ branding.copyright_text }}</p>
+          <p v-if="branding.beian_number">
+            <a v-if="branding.beian_url" :href="branding.beian_url" target="_blank" rel="noopener noreferrer" class="hover:text-primary">
+              {{ branding.beian_number }}
+            </a>
+            <span v-else>{{ branding.beian_number }}</span>
+          </p>
+          <p>
+            <a href="#" class="hover:text-primary">安全策略</a>
+            <span class="mx-2">·</span>
+            <a href="#" class="hover:text-primary">服务条款</a>
+          </p>
         </div>
       </div>
     </div>

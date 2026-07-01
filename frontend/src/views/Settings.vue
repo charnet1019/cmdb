@@ -16,6 +16,9 @@ const form = ref({
   // 系统设置
   site_title: 'CMDB',
   session_timeout: 24,
+  copyright_text: '',
+  beian_number: '',
+  beian_url: '',
   // 密码策略
   password_min_length: 8,
   password_require_uppercase: true,
@@ -73,6 +76,9 @@ async function fetchSettings() {
     // Populate form with settings
     if (response.data.site_title !== undefined) form.value.site_title = response.data.site_title
     if (response.data.session_timeout !== undefined) form.value.session_timeout = response.data.session_timeout
+    if (response.data.copyright_text !== undefined) form.value.copyright_text = response.data.copyright_text
+    if (response.data.beian_number !== undefined) form.value.beian_number = response.data.beian_number
+    if (response.data.beian_url !== undefined) form.value.beian_url = response.data.beian_url
     if (response.data.password_min_length !== undefined) form.value.password_min_length = response.data.password_min_length
     if (response.data.password_require_uppercase !== undefined) form.value.password_require_uppercase = response.data.password_require_uppercase
     if (response.data.password_require_lowercase !== undefined) form.value.password_require_lowercase = response.data.password_require_lowercase
@@ -98,6 +104,9 @@ async function saveSettings() {
     if (activeTab.value === 'system') {
       data.site_title = form.value.site_title
       data.session_timeout = form.value.session_timeout
+      data.copyright_text = form.value.copyright_text
+      data.beian_number = form.value.beian_number
+      data.beian_url = form.value.beian_url
     } else if (activeTab.value === 'password') {
       data.password_min_length = form.value.password_min_length
       data.password_require_uppercase = form.value.password_require_uppercase
@@ -127,6 +136,9 @@ function resetToDefaults() {
   if (activeTab.value === 'system') {
     form.value.site_title = 'CMDB'
     form.value.session_timeout = 24
+    form.value.copyright_text = ''
+    form.value.beian_number = ''
+    form.value.beian_url = ''
   } else if (activeTab.value === 'password') {
     form.value.password_min_length = 8
     form.value.password_require_uppercase = true
@@ -292,6 +304,42 @@ onMounted(() => {
                 <span class="text-slate-600">小时</span>
               </div>
               <p class="text-xs text-slate-500 mt-1">用户登录后，无操作自动登出的时间 (1-168小时)</p>
+            </div>
+
+            <!-- Copyright -->
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">版权信息</label>
+              <input
+                v-model="form.copyright_text"
+                type="text"
+                class="input-field"
+                placeholder="© 2026 CMDB. All rights reserved."
+              />
+              <p class="text-xs text-slate-500 mt-1">显示在登录页底部，留空则不显示</p>
+            </div>
+
+            <!-- Beian Number -->
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">备案号</label>
+              <input
+                v-model="form.beian_number"
+                type="text"
+                class="input-field"
+                placeholder="京ICP备12345678号"
+              />
+              <p class="text-xs text-slate-500 mt-1">显示在登录页底部，留空则不显示</p>
+            </div>
+
+            <!-- Beian URL -->
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">备案链接</label>
+              <input
+                v-model="form.beian_url"
+                type="text"
+                class="input-field"
+                placeholder="https://beian.miit.gov.cn/"
+              />
+              <p class="text-xs text-slate-500 mt-1">备案号点击后跳转的链接，留空则不设为链接</p>
             </div>
           </div>
         </div>

@@ -22,7 +22,7 @@ def format_datetime_utc(dt: datetime | None) -> str | None:
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
 
-PUBLIC_BRANDING_KEYS = {"site_title", "login_subtitle", "logo_image", "login_background_image"}
+PUBLIC_BRANDING_KEYS = {"site_title", "login_subtitle", "logo_image", "login_background_image", "copyright_text", "beian_number", "beian_url"}
 
 
 @router.get("")
