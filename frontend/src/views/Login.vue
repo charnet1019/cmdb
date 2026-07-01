@@ -219,13 +219,14 @@ onMounted(() => {
       </div>
 
       <!-- Footer -->
-      <div class="absolute bottom-0 left-0 right-0 p-6 text-center text-sm text-slate-500 space-y-2">
-        <p v-if="branding.copyright_text" class="text-slate-400" v-html="branding.copyright_text" />
-        <p v-if="branding.beian_number">
-          <a v-if="branding.beian_url" :href="branding.beian_url" target="_blank" rel="noopener noreferrer" class="hover:text-primary">
+      <div class="absolute bottom-0 left-0 right-0 p-6 text-center text-sm text-slate-400 space-y-1">
+        <p v-if="branding.copyright_text || branding.beian_number">
+          <span v-if="branding.copyright_text" v-html="branding.copyright_text" />
+          <span v-if="branding.copyright_text && branding.beian_number" class="mx-2">·</span>
+          <a v-if="branding.beian_number && branding.beian_url" :href="branding.beian_url" target="_blank" rel="noopener noreferrer" class="hover:text-primary">
             {{ branding.beian_number }}
           </a>
-          <span v-else>{{ branding.beian_number }}</span>
+          <span v-if="branding.beian_number && !branding.beian_url">{{ branding.beian_number }}</span>
         </p>
       </div>
     </div>
