@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
-import { SettingOutlined, LockOutlined, SafetyCertificateOutlined, LoadingOutlined, SaveOutlined, InfoCircleOutlined, PictureOutlined, DatabaseOutlined } from '@ant-design/icons-vue'
+import { SettingOutlined, SafetyCertificateOutlined, LoadingOutlined, SaveOutlined, InfoCircleOutlined, PictureOutlined, DatabaseOutlined } from '@ant-design/icons-vue'
 import { getSettings, updateSettings, uploadImage, deleteImage } from '@/api/settings'
 
 // Loading states
@@ -15,7 +15,7 @@ const settings = ref<Record<string, any>>({})
 const form = ref({
   // 系统设置
   site_title: 'CMDB',
-  session_timeout: 24,
+  session_timeout: 1,
   copyright_text: '',
   beian_number: '',
   beian_url: '',
@@ -103,18 +103,17 @@ async function saveSettings() {
 
     if (activeTab.value === 'system') {
       data.site_title = form.value.site_title
-      data.session_timeout = form.value.session_timeout
       data.copyright_text = form.value.copyright_text
       data.beian_number = form.value.beian_number
       data.beian_url = form.value.beian_url
-    } else if (activeTab.value === 'password') {
+    } else if (activeTab.value === 'security') {
       data.password_min_length = form.value.password_min_length
       data.password_require_uppercase = form.value.password_require_uppercase
       data.password_require_lowercase = form.value.password_require_lowercase
       data.password_require_digit = form.value.password_require_digit
       data.password_require_special = form.value.password_require_special
-    } else if (activeTab.value === 'security') {
       data.max_login_attempts = form.value.max_login_attempts
+      data.session_timeout = form.value.session_timeout
     } else if (activeTab.value === 'branding') {
       data.login_subtitle = form.value.login_subtitle
       data.logo_image = form.value.logo_image
@@ -135,18 +134,17 @@ async function saveSettings() {
 function resetToDefaults() {
   if (activeTab.value === 'system') {
     form.value.site_title = 'CMDB'
-    form.value.session_timeout = 24
     form.value.copyright_text = ''
     form.value.beian_number = ''
     form.value.beian_url = ''
-  } else if (activeTab.value === 'password') {
+  } else if (activeTab.value === 'security') {
     form.value.password_min_length = 8
     form.value.password_require_uppercase = true
     form.value.password_require_lowercase = true
     form.value.password_require_digit = true
     form.value.password_require_special = false
-  } else if (activeTab.value === 'security') {
     form.value.max_login_attempts = 5
+    form.value.session_timeout = 1
   } else if (activeTab.value === 'branding') {
     form.value.login_subtitle = '企业资产配置管理平台'
     form.value.logo_image = null
@@ -242,20 +240,12 @@ onMounted(() => {
             系统设置
           </button>
           <button
-            @click="activeTab = 'password'"
-            :class="activeTab === 'password' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'"
-            class="px-6 py-4 text-sm font-medium border-b-2 -mb-px transition-colors"
-          >
-            <LockOutlined class="text-lg align-middle mr-1" />
-            密码策略
-          </button>
-          <button
             @click="activeTab = 'security'"
             :class="activeTab === 'security' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'"
             class="px-6 py-4 text-sm font-medium border-b-2 -mb-px transition-colors"
           >
             <SafetyCertificateOutlined class="text-lg align-middle mr-1" />
-            登录安全
+            安全
           </button>
           <button
             @click="activeTab = 'branding'"
@@ -288,22 +278,6 @@ onMounted(() => {
                 placeholder="CMDB"
               />
               <p class="text-xs text-slate-500 mt-1">显示在浏览器标签和页面标题中</p>
-            </div>
-
-            <!-- Session Timeout -->
-            <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">会话超时时间</label>
-              <div class="flex items-center gap-3">
-                <input
-                  v-model.number="form.session_timeout"
-                  type="number"
-                  min="1"
-                  max="168"
-                  class="input-field w-32"
-                />
-                <span class="text-slate-600">小时</span>
-              </div>
-              <p class="text-xs text-slate-500 mt-1">用户登录后，无操作自动登出的时间 (1-168小时)</p>
             </div>
 
             <!-- Copyright -->
@@ -355,124 +329,135 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- Password Policy Tab -->
-      <div v-else-if="activeTab === 'password'" class="p-6 space-y-6">
-        <div class="max-w-2xl space-y-6">
-          <!-- Complexity Score -->
-          <div class="p-4 bg-slate-50 rounded-lg">
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-sm font-medium text-slate-700">密码强度等级</span>
-              <span :class="complexityLevel.color" class="font-bold">{{ complexityLevel.label }}</span>
-            </div>
-            <div class="w-full bg-slate-200 rounded-full h-2">
-              <div
-                class="h-2 rounded-full transition-all duration-300"
-                :class="passwordComplexityScore >= 5 ? 'bg-success' : passwordComplexityScore >= 3 ? 'bg-yellow-500' : 'bg-error'"
-                :style="{ width: `${(passwordComplexityScore / 6) * 100}%` }"
-              ></div>
-            </div>
-            <p class="text-xs text-slate-500 mt-2">根据配置的密码要求计算强度等级</p>
-          </div>
-
-          <!-- Minimum Length -->
-          <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">最小密码长度</label>
-            <div class="flex items-center gap-4">
-              <input
-                v-model.number="form.password_min_length"
-                type="range"
-                min="6"
-                max="32"
-                class="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary"
-              />
-              <span class="w-12 text-center font-bold text-primary text-lg">{{ form.password_min_length }}</span>
-            </div>
-            <p class="text-xs text-slate-500 mt-1">建议不少于8个字符</p>
-          </div>
-
-          <!-- Character Requirements -->
-          <div>
-            <label class="block text-sm font-medium text-slate-700 mb-3">字符要求</label>
-            <div class="space-y-3">
-              <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
-                <input
-                  v-model="form.password_require_uppercase"
-                  type="checkbox"
-                  class="w-4 h-4 text-primary rounded focus:ring-primary"
-                />
-                <div>
-                  <span class="font-medium text-slate-700">大写字母</span>
-                  <span class="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded font-mono">A-Z</span>
-                </div>
-              </label>
-
-              <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
-                <input
-                  v-model="form.password_require_lowercase"
-                  type="checkbox"
-                  class="w-4 h-4 text-primary rounded focus:ring-primary"
-                />
-                <div>
-                  <span class="font-medium text-slate-700">小写字母</span>
-                  <span class="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded font-mono">a-z</span>
-                </div>
-              </label>
-
-              <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
-                <input
-                  v-model="form.password_require_digit"
-                  type="checkbox"
-                  class="w-4 h-4 text-primary rounded focus:ring-primary"
-                />
-                <div>
-                  <span class="font-medium text-slate-700">数字</span>
-                  <span class="ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded font-mono">0-9</span>
-                </div>
-              </label>
-
-              <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
-                <input
-                  v-model="form.password_require_special"
-                  type="checkbox"
-                  class="w-4 h-4 text-primary rounded focus:ring-primary"
-                />
-                <div>
-                  <span class="font-medium text-slate-700">特殊字符</span>
-                  <span class="ml-2 px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded font-mono">!@#$%^&*</span>
-                </div>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <!-- Actions -->
-        <div class="flex items-center gap-3 pt-4 border-t border-slate-100">
-          <button @click="saveSettings" :disabled="saving" class="btn-primary flex items-center gap-2">
-            <LoadingOutlined v-if="saving" class="animate-spin text-lg" />
-            <SaveOutlined v-else class="text-lg" />
-            {{ saving ? '保存中...' : '保存设置' }}
-          </button>
-          <button @click="resetToDefaults" class="btn-secondary">恢复默认</button>
-        </div>
-      </div>
-
       <!-- Security Tab -->
       <div v-else-if="activeTab === 'security'" class="p-6 space-y-6">
         <div class="max-w-2xl space-y-6">
-          <!-- Login Attempts -->
+          <!-- Password Policy Section -->
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">最大登录尝试次数</label>
-            <div class="flex items-center gap-4">
-              <input
-                v-model.number="form.max_login_attempts"
-                type="number"
-                min="1"
-                max="10"
-                class="input-field w-32"
-              />
-              <span class="text-slate-600">次</span>
+            <h3 class="text-sm font-medium text-slate-700 mb-4">密码策略</h3>
+
+            <!-- Complexity Score -->
+            <div class="p-4 bg-slate-50 rounded-lg mb-4">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-slate-700">密码强度等级</span>
+                <span :class="complexityLevel.color" class="font-bold">{{ complexityLevel.label }}</span>
+              </div>
+              <div class="w-full bg-slate-200 rounded-full h-2">
+                <div
+                  class="h-2 rounded-full transition-all duration-300"
+                  :class="passwordComplexityScore >= 5 ? 'bg-success' : passwordComplexityScore >= 3 ? 'bg-yellow-500' : 'bg-error'"
+                  :style="{ width: `${(passwordComplexityScore / 6) * 100}%` }"
+                ></div>
+              </div>
+              <p class="text-xs text-slate-500 mt-2">根据配置的密码要求计算强度等级</p>
             </div>
-            <p class="text-xs text-slate-500 mt-1">超过此次数后账户将被临时锁定</p>
+
+            <!-- Minimum Length -->
+            <div class="mb-4">
+              <label class="block text-sm font-medium text-slate-700 mb-1">最小密码长度</label>
+              <div class="flex items-center gap-4">
+                <input
+                  v-model.number="form.password_min_length"
+                  type="range"
+                  min="6"
+                  max="32"
+                  class="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary"
+                />
+                <span class="w-12 text-center font-bold text-primary text-lg">{{ form.password_min_length }}</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-1">建议不少于8个字符</p>
+            </div>
+
+            <!-- Character Requirements -->
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-3">字符要求</label>
+              <div class="space-y-3">
+                <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+                  <input
+                    v-model="form.password_require_uppercase"
+                    type="checkbox"
+                    class="w-4 h-4 text-primary rounded focus:ring-primary"
+                  />
+                  <div>
+                    <span class="font-medium text-slate-700">大写字母</span>
+                    <span class="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded font-mono">A-Z</span>
+                  </div>
+                </label>
+
+                <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+                  <input
+                    v-model="form.password_require_lowercase"
+                    type="checkbox"
+                    class="w-4 h-4 text-primary rounded focus:ring-primary"
+                  />
+                  <div>
+                    <span class="font-medium text-slate-700">小写字母</span>
+                    <span class="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded font-mono">a-z</span>
+                  </div>
+                </label>
+
+                <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+                  <input
+                    v-model="form.password_require_digit"
+                    type="checkbox"
+                    class="w-4 h-4 text-primary rounded focus:ring-primary"
+                  />
+                  <div>
+                    <span class="font-medium text-slate-700">数字</span>
+                    <span class="ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded font-mono">0-9</span>
+                  </div>
+                </label>
+
+                <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+                  <input
+                    v-model="form.password_require_special"
+                    type="checkbox"
+                    class="w-4 h-4 text-primary rounded focus:ring-primary"
+                  />
+                  <div>
+                    <span class="font-medium text-slate-700">特殊字符</span>
+                    <span class="ml-2 px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded font-mono">!@#$%^&*</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Login Security Section -->
+          <div>
+            <h3 class="text-sm font-medium text-slate-700 mb-4">登录安全</h3>
+
+            <!-- Login Attempts -->
+            <div class="mb-4">
+              <label class="block text-sm font-medium text-slate-700 mb-1">最大登录尝试次数</label>
+              <div class="flex items-center gap-4">
+                <input
+                  v-model.number="form.max_login_attempts"
+                  type="number"
+                  min="1"
+                  max="10"
+                  class="input-field w-32"
+                />
+                <span class="text-slate-600">次</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-1">超过此次数后账户将被临时锁定</p>
+            </div>
+
+            <!-- Session Timeout -->
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">会话超时时间</label>
+              <div class="flex items-center gap-3">
+                <input
+                  v-model.number="form.session_timeout"
+                  type="number"
+                  min="1"
+                  max="168"
+                  class="input-field w-32"
+                />
+                <span class="text-slate-600">小时</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-1">用户登录后，无操作自动登出的时间 (1-168小时)</p>
+            </div>
           </div>
 
           <!-- Security Info -->
