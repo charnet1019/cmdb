@@ -63,6 +63,10 @@
     @apply border-slate-300;
   }
 
+  .input-field[type="date"] {
+    @apply cursor-pointer;
+  }
+
   /* Status badges */
   .badge {
     @apply px-2.5 py-0.5 rounded-full text-xs font-bold;

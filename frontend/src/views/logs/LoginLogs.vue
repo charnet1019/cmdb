@@ -3,7 +3,7 @@ import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getLoginLogs, type LoginLog, type LoginLogStats } from '@/api/logs'
 import { formatDateTime } from '@/utils/datetime'
-import { SearchOutlined } from '@ant-design/icons-vue'
+import { SearchOutlined, CloseOutlined } from '@ant-design/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -19,7 +19,7 @@ const stats = ref<LoginLogStats>({
 const loading = ref(false)
 const total = ref(0)
 const page = ref(1)
-const limit = ref(20)
+const limit = ref(15)
 
 // Filters
 const searchQuery = ref('')
@@ -29,6 +29,14 @@ const dateTo = ref('')
 
 // Logs data
 const logs = ref<LoginLog[]>([])
+
+// Force open date picker on click
+function openDatePicker(e: MouseEvent) {
+  const target = e.target as HTMLInputElement
+  if (target.showPicker) {
+    target.showPicker()
+  }
+}
 
 // Fetch logs
 async function fetchLogs() {
@@ -59,10 +67,47 @@ function handleSearch() {
   fetchLogs()
 }
 
+// Clear search
+function clearSearch() {
+  searchQuery.value = ''
+  page.value = 1
+  fetchLogs()
+}
+
 // Handle page change
 function handlePageChange(newPage: number) {
   page.value = newPage
   fetchLogs()
+}
+
+// Handle limit change
+function handleLimitChange() {
+  page.value = 1
+  fetchLogs()
+}
+
+// Get visible page numbers for pagination
+function getPageNumbers(): (number | string)[] {
+  const totalPages = Math.ceil(total.value / limit.value) || 1
+  const pages: (number | string)[] = []
+
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) {
+      pages.push(i)
+    }
+  } else {
+    pages.push(1)
+    if (page.value > 3) pages.push('...')
+    const start = Math.max(2, page.value - 1)
+    const end = Math.min(totalPages - 1, page.value + 1)
+    for (let i = start; i <= end; i++) {
+      pages.push(i)
+    }
+    if (page.value < totalPages - 2) pages.push('...')
+    pages.push(totalPages)
+  }
+
+  return pages
 }
 
 // Initial load
@@ -117,12 +162,15 @@ watch([page, searchQuery, statusFilter, dateFrom, dateTo], () => {
             v-model="searchQuery"
             type="text"
             placeholder="搜索用户..."
-            class="input-field pl-10"
+            class="input-field pl-10 pr-8"
             @keyup.enter="handleSearch"
           />
+          <button v-if="searchQuery" @click="clearSearch" class="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
+            <CloseOutlined class="text-sm" />
+          </button>
         </div>
-        <input type="date" v-model="dateFrom" class="input-field w-40" />
-        <input type="date" v-model="dateTo" class="input-field w-40" />
+        <input type="date" v-model="dateFrom" class="input-field w-40" @click="openDatePicker" />
+        <input type="date" v-model="dateTo" class="input-field w-40" @click="openDatePicker" />
         <select v-model="statusFilter" class="input-field w-28">
           <option value="">全部状态</option>
           <option value="success">成功</option>
@@ -186,22 +234,44 @@ watch([page, searchQuery, statusFilter, dateFrom, dateTo], () => {
       <!-- Pagination -->
       <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
         <span class="text-sm text-slate-500">共 {{ total }} 条记录</span>
-        <div class="flex items-center gap-2">
-          <button
-            @click="handlePageChange(page - 1)"
-            :disabled="page === 1"
-            class="px-3 py-1.5 text-sm border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-50"
-          >
-            上一页
-          </button>
-          <span class="text-sm text-slate-600">{{ page }} / {{ Math.ceil(total / limit) || 1 }}</span>
-          <button
-            @click="handlePageChange(page + 1)"
-            :disabled="page >= Math.ceil(total / limit)"
-            class="px-3 py-1.5 text-sm border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-50"
-          >
-            下一页
-          </button>
+        <div class="flex items-center gap-3">
+          <select v-model.number="limit" @change="handleLimitChange" class="text-sm border border-slate-200 rounded px-2 py-1.5 bg-white focus:border-primary outline-none">
+            <option :value="15">15条/页</option>
+            <option :value="30">30条/页</option>
+            <option :value="50">50条/页</option>
+            <option :value="100">100条/页</option>
+          </select>
+          <div class="flex items-center gap-1">
+            <button
+              @click="handlePageChange(page - 1)"
+              :disabled="page === 1"
+              class="px-2.5 py-1.5 text-sm border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              上一页
+            </button>
+            <template v-for="(p, i) in getPageNumbers()" :key="i">
+              <span v-if="p === '...'" class="px-2 py-1.5 text-sm text-slate-400">...</span>
+              <button
+                v-else
+                @click="handlePageChange(p as number)"
+                :class="[
+                  'px-2.5 py-1.5 text-sm border rounded transition-colors',
+                  page === p
+                    ? 'bg-primary text-white border-primary'
+                    : 'border-slate-200 hover:bg-slate-50'
+                ]"
+              >
+                {{ p }}
+              </button>
+            </template>
+            <button
+              @click="handlePageChange(page + 1)"
+              :disabled="page >= Math.ceil(total / limit)"
+              class="px-2.5 py-1.5 text-sm border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              下一页
+            </button>
+          </div>
         </div>
       </div>
     </div>

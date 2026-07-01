@@ -84,6 +84,7 @@ export async function getOperationLogs(params: {
 export async function getPasswordLogs(params: {
   page?: number
   limit?: number
+  search?: string
   user_id?: number
   change_type?: string
   date_from?: string

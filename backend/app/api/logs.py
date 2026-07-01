@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, cast, String, alias
 
 from app.database import get_db
 from app.models import User, LoginLog, OperationLog, PasswordChangeLog, Asset, Credential
@@ -142,14 +142,21 @@ async def list_operation_logs(
     current_user: User = Depends(PermissionChecker("audit_log")),
 ):
     """List operation logs with pagination and filters"""
-    query = select(OperationLog)
+    query = select(OperationLog).outerjoin(
+        User, User.id == OperationLog.user_id
+    )
 
     # Apply filters
     if search:
         query = query.where(
             or_(
+                OperationLog.action.ilike(f"%{search}%"),
                 OperationLog.resource_type.ilike(f"%{search}%"),
-                OperationLog.details.ilike(f"%{search}%"),
+                cast(OperationLog.resource_id, String).ilike(f"%{search}%"),
+                User.username.ilike(f"%{search}%"),
+                cast(OperationLog.details["username"], String).ilike(f"%{search}%"),
+                cast(OperationLog.details["name"], String).ilike(f"%{search}%"),
+                cast(OperationLog.details["group_name"], String).ilike(f"%{search}%"),
             )
         )
 
@@ -228,6 +235,7 @@ async def list_operation_logs(
 async def list_password_logs(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
+    search: Optional[str] = Query(None),
     user_id: Optional[int] = Query(None),
     change_type: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
@@ -236,9 +244,30 @@ async def list_password_logs(
     current_user: User = Depends(PermissionChecker("audit_log")),
 ):
     """List password change logs with pagination and filters"""
+    # Aliases for multiple User joins
+    UserAlias = alias(User)
+    ChangerAlias = alias(User)
+
     query = select(PasswordChangeLog)
 
     # Apply filters
+    if search:
+        query = (
+            query
+            .outerjoin(UserAlias, UserAlias.c.id == PasswordChangeLog.user_id)
+            .outerjoin(Credential, Credential.id == PasswordChangeLog.credential_id)
+            .outerjoin(Asset, Asset.id == Credential.asset_id)
+            .outerjoin(ChangerAlias, ChangerAlias.c.id == PasswordChangeLog.changed_by)
+            .where(
+                or_(
+                    UserAlias.c.username.ilike(f"%{search}%"),
+                    Credential.username.ilike(f"%{search}%"),
+                    Asset.name.ilike(f"%{search}%"),
+                    ChangerAlias.c.username.ilike(f"%{search}%"),
+                )
+            )
+        )
+
     if user_id:
         query = query.where(PasswordChangeLog.user_id == user_id)
 
