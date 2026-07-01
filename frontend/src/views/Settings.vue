@@ -580,8 +580,8 @@ onMounted(() => {
                   />
                   <DatabaseOutlined v-else class="text-white text-xl" />
                 </div>
-                <span class="text-white font-bold text-sm">{{ form.site_title || 'CMDB' }}</span>
-                <span class="text-white/80 text-xs">{{ form.login_subtitle || '企业资产配置管理平台' }}</span>
+                <span v-if="form.site_title" class="text-white font-bold text-sm">{{ form.site_title }}</span>
+                <span v-if="form.login_subtitle" class="text-white/80 text-xs">{{ form.login_subtitle }}</span>
               </div>
             </div>
           </div>

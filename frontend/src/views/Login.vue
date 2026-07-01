@@ -23,8 +23,8 @@ const showPassword = ref(false)
 
 // Branding settings
 const branding = ref({
-  site_title: 'CMDB',
-  login_subtitle: '企业资产配置管理平台',
+  site_title: '' as string,
+  login_subtitle: '' as string,
   logo_image: null as string | null,
   login_background_image: null as string | null,
 })
@@ -116,9 +116,9 @@ onMounted(() => {
         </div>
 
         <!-- Title -->
-        <h1 class="text-4xl font-bold text-white mb-4 font-headline">{{ branding.site_title || 'CMDB' }}</h1>
-        <p class="text-white/80 text-center max-w-md text-lg">
-          {{ branding.login_subtitle || '企业资产配置管理平台' }}
+        <h1 v-if="branding.site_title" class="text-4xl font-bold text-white mb-4 font-headline">{{ branding.site_title }}</h1>
+        <p v-if="branding.login_subtitle" class="text-white/80 text-center max-w-md text-lg">
+          {{ branding.login_subtitle }}
         </p>
 
         <!-- Features -->
