@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth'
-import { ref, onUnmounted } from 'vue'
+import { ref, onUnmounted, onMounted } from 'vue'
 import { MenuOutlined, SearchOutlined, BellOutlined, DownOutlined, SettingOutlined, LogoutOutlined } from '@ant-design/icons-vue'
+import { getSettings } from '@/api/settings'
 
 const authStore = useAuthStore()
 
@@ -12,7 +13,17 @@ const emit = defineEmits<{
 
 const searchQuery = ref('')
 const showUserMenu = ref(false)
+const siteTitle = ref('CMDB')
 let hideTimeout: ReturnType<typeof setTimeout> | null = null
+
+onMounted(async () => {
+  try {
+    const response = await getSettings()
+    if (response.data.site_title) siteTitle.value = response.data.site_title
+  } catch {
+    // Keep default
+  }
+})
 
 function handleToggleSidebar() {
   emit('toggle-sidebar')
@@ -59,7 +70,7 @@ onUnmounted(() => {
         <div style="width: 32px; height: 32px; background: linear-gradient(to bottom right, #005daa, #0075d5); border-radius: 8px; display: flex; align-items: center; justify-content: center;">
           <span style="color: white; font-weight: 700; font-size: 14px;">C</span>
         </div>
-        <span style="font-size: 18px; font-weight: 700; color: #0f172a;">CMDB</span>
+        <span style="font-size: 18px; font-weight: 700; color: #0f172a;">{{ siteTitle }}</span>
       </router-link>
     </div>
 
