@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { UserOutlined, LockOutlined, EyeOutlined, EyeInvisibleOutlined, LoadingOutlined, DatabaseOutlined, CheckCircleOutlined } from '@ant-design/icons-vue'
 import { useAuthStore } from '@/stores/auth'
+import { getPublicSettings } from '@/api/settings'
 
 const router = useRouter()
 const route = useRoute()
@@ -20,9 +21,30 @@ const formState = ref({
 // Password visibility
 const showPassword = ref(false)
 
+// Branding settings
+const branding = ref({
+  site_title: 'CMDB',
+  login_subtitle: '企业资产配置管理平台',
+  logo_image: null as string | null,
+  login_background_image: null as string | null,
+})
+
 // Toggle password visibility
 function togglePasswordVisibility() {
   showPassword.value = !showPassword.value
+}
+
+// Fetch public branding settings
+async function fetchBranding() {
+  try {
+    const data = await getPublicSettings()
+    if (data.site_title !== undefined) branding.value.site_title = data.site_title
+    if (data.login_subtitle !== undefined) branding.value.login_subtitle = data.login_subtitle
+    if (data.logo_image !== undefined) branding.value.logo_image = data.logo_image
+    if (data.login_background_image !== undefined) branding.value.login_background_image = data.login_background_image
+  } catch {
+    // Use defaults on error
+  }
 }
 
 // Handle login
@@ -51,14 +73,25 @@ async function handleLogin() {
     loading.value = false
   }
 }
+
+onMounted(() => {
+  fetchBranding()
+})
 </script>
 
 <template>
   <div class="min-h-screen flex">
     <!-- Left section - Branding -->
-    <div class="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary to-primary-container relative overflow-hidden">
-      <!-- Background pattern -->
-      <div class="absolute inset-0 opacity-20">
+    <div
+      class="hidden lg:flex lg:w-1/2 relative overflow-hidden"
+      :class="branding.login_background_image ? '' : 'bg-gradient-to-br from-primary to-primary-container'"
+      :style="branding.login_background_image ? { backgroundImage: `url(${branding.login_background_image})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}"
+    >
+      <!-- Overlay for readability when background image is set -->
+      <div v-if="branding.login_background_image" class="absolute inset-0 bg-black/30" />
+
+      <!-- Background pattern (only when no image) -->
+      <div v-else class="absolute inset-0 opacity-20">
         <svg class="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
           <defs>
             <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
@@ -73,13 +106,19 @@ async function handleLogin() {
       <div class="relative z-10 flex flex-col items-center justify-center w-full p-12">
         <!-- Logo -->
         <div class="bg-white/10 backdrop-blur-xl border border-white/20 rounded-full p-8 mb-8">
-          <DatabaseOutlined class="text-white text-5xl" />
+          <img
+            v-if="branding.logo_image"
+            :src="branding.logo_image"
+            class="w-16 h-16 object-contain"
+            alt="Logo"
+          />
+          <DatabaseOutlined v-else class="text-white text-5xl" />
         </div>
 
         <!-- Title -->
-        <h1 class="text-4xl font-bold text-white mb-4 font-headline">CMDB</h1>
+        <h1 class="text-4xl font-bold text-white mb-4 font-headline">{{ branding.site_title || 'CMDB' }}</h1>
         <p class="text-white/80 text-center max-w-md text-lg">
-          企业资产配置管理平台
+          {{ branding.login_subtitle || '企业资产配置管理平台' }}
         </p>
 
         <!-- Features -->

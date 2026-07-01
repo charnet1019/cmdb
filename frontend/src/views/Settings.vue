@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
-import { SettingOutlined, LockOutlined, SafetyCertificateOutlined, LoadingOutlined, SaveOutlined, InfoCircleOutlined } from '@ant-design/icons-vue'
-import { getSettings, updateSettings } from '@/api/settings'
+import { SettingOutlined, LockOutlined, SafetyCertificateOutlined, LoadingOutlined, SaveOutlined, InfoCircleOutlined, PictureOutlined, DatabaseOutlined } from '@ant-design/icons-vue'
+import { getSettings, updateSettings, uploadImage, deleteImage } from '@/api/settings'
 
 // Loading states
 const loading = ref(false)
@@ -24,7 +24,23 @@ const form = ref({
   password_require_special: false,
   // 登录设置
   max_login_attempts: 5,
+  // 品牌设置
+  login_subtitle: '企业资产配置管理平台',
+  logo_image: null as string | null,
+  login_background_image: null as string | null,
 })
+
+// Upload states
+const logoUploading = ref(false)
+const bgUploading = ref(false)
+
+// File input refs for resetting after upload/clear
+const logoInput = ref<HTMLInputElement | null>(null)
+const bgInput = ref<HTMLInputElement | null>(null)
+
+function resetFileInput(inputRef: typeof logoInput) {
+  if (inputRef.value) inputRef.value.value = ''
+}
 
 // Active tab
 const activeTab = ref('system')
@@ -63,6 +79,9 @@ async function fetchSettings() {
     if (response.data.password_require_digit !== undefined) form.value.password_require_digit = response.data.password_require_digit
     if (response.data.password_require_special !== undefined) form.value.password_require_special = response.data.password_require_special
     if (response.data.max_login_attempts !== undefined) form.value.max_login_attempts = response.data.max_login_attempts
+    if (response.data.login_subtitle !== undefined) form.value.login_subtitle = response.data.login_subtitle
+    if (response.data.logo_image !== undefined) form.value.logo_image = response.data.logo_image
+    if (response.data.login_background_image !== undefined) form.value.login_background_image = response.data.login_background_image
   } catch (error) {
     message.error('获取设置失败')
   } finally {
@@ -74,7 +93,26 @@ async function fetchSettings() {
 async function saveSettings() {
   saving.value = true
   try {
-    await updateSettings(form.value)
+    const data: Record<string, any> = {}
+
+    if (activeTab.value === 'system') {
+      data.site_title = form.value.site_title
+      data.session_timeout = form.value.session_timeout
+    } else if (activeTab.value === 'password') {
+      data.password_min_length = form.value.password_min_length
+      data.password_require_uppercase = form.value.password_require_uppercase
+      data.password_require_lowercase = form.value.password_require_lowercase
+      data.password_require_digit = form.value.password_require_digit
+      data.password_require_special = form.value.password_require_special
+    } else if (activeTab.value === 'security') {
+      data.max_login_attempts = form.value.max_login_attempts
+    } else if (activeTab.value === 'branding') {
+      data.login_subtitle = form.value.login_subtitle
+      data.logo_image = form.value.logo_image
+      data.login_background_image = form.value.login_background_image
+    }
+
+    await updateSettings(data)
     message.success('设置已保存')
   } catch (error: any) {
     message.error(error.response?.data?.detail || '保存失败')
@@ -85,16 +123,89 @@ async function saveSettings() {
 
 // Reset to defaults
 function resetToDefaults() {
-  form.value = {
-    site_title: 'CMDB',
-    session_timeout: 24,
-    password_min_length: 8,
-    password_require_uppercase: true,
-    password_require_lowercase: true,
-    password_require_digit: true,
-    password_require_special: false,
-    max_login_attempts: 5,
+  if (activeTab.value === 'system') {
+    form.value.site_title = 'CMDB'
+    form.value.session_timeout = 24
+  } else if (activeTab.value === 'password') {
+    form.value.password_min_length = 8
+    form.value.password_require_uppercase = true
+    form.value.password_require_lowercase = true
+    form.value.password_require_digit = true
+    form.value.password_require_special = false
+  } else if (activeTab.value === 'security') {
+    form.value.max_login_attempts = 5
+  } else if (activeTab.value === 'branding') {
+    form.value.login_subtitle = '企业资产配置管理平台'
+    form.value.logo_image = null
+    form.value.login_background_image = null
   }
+}
+
+// Upload logo
+async function handleLogoUpload(file: File) {
+  logoUploading.value = true
+  try {
+    // Delete old logo if exists
+    if (form.value.logo_image) {
+      const oldFilename = form.value.logo_image.split('/').pop()
+      if (oldFilename) {
+        try { await deleteImage(oldFilename) } catch {}
+      }
+    }
+    const result = await uploadImage(file)
+    form.value.logo_image = result.url
+    message.success('Logo 上传成功')
+  } catch (error: any) {
+    message.error(error.response?.data?.detail || '上传失败')
+  } finally {
+    logoUploading.value = false
+    resetFileInput(logoInput)
+  }
+}
+
+// Upload background image
+async function handleBgUpload(file: File) {
+  bgUploading.value = true
+  try {
+    if (form.value.login_background_image) {
+      const oldFilename = form.value.login_background_image.split('/').pop()
+      if (oldFilename) {
+        try { await deleteImage(oldFilename) } catch {}
+      }
+    }
+    const result = await uploadImage(file)
+    form.value.login_background_image = result.url
+    message.success('背景图片上传成功')
+  } catch (error: any) {
+    message.error(error.response?.data?.detail || '上传失败')
+  } finally {
+    bgUploading.value = false
+    resetFileInput(bgInput)
+  }
+}
+
+// Clear logo
+async function clearLogo() {
+  if (form.value.logo_image) {
+    const filename = form.value.logo_image.split('/').pop()
+    if (filename) {
+      try { await deleteImage(filename) } catch {}
+    }
+  }
+  form.value.logo_image = null
+  resetFileInput(logoInput)
+}
+
+// Clear background
+async function clearBackground() {
+  if (form.value.login_background_image) {
+    const filename = form.value.login_background_image.split('/').pop()
+    if (filename) {
+      try { await deleteImage(filename) } catch {}
+    }
+  }
+  form.value.login_background_image = null
+  resetFileInput(bgInput)
 }
 
 // Initial load
@@ -132,6 +243,14 @@ onMounted(() => {
           >
             <SafetyCertificateOutlined class="text-lg align-middle mr-1" />
             登录安全
+          </button>
+          <button
+            @click="activeTab = 'branding'"
+            :class="activeTab === 'branding' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'"
+            class="px-6 py-4 text-sm font-medium border-b-2 -mb-px transition-colors"
+          >
+            <PictureOutlined class="text-lg align-middle mr-1" />
+            品牌设置
           </button>
         </nav>
       </div>
@@ -337,6 +456,132 @@ onMounted(() => {
               <div class="flex items-center justify-between py-2">
                 <span class="text-slate-600">JWT 签名算法</span>
                 <span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded font-medium">HS256</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center gap-3 pt-4 border-t border-slate-100">
+          <button @click="saveSettings" :disabled="saving" class="btn-primary flex items-center gap-2">
+            <LoadingOutlined v-if="saving" class="animate-spin text-lg" />
+            <SaveOutlined v-else class="text-lg" />
+            {{ saving ? '保存中...' : '保存设置' }}
+          </button>
+          <button @click="resetToDefaults" class="btn-secondary">恢复默认</button>
+        </div>
+      </div>
+
+      <!-- Branding Tab -->
+      <div v-else-if="activeTab === 'branding'" class="p-6 space-y-6">
+        <div class="max-w-2xl space-y-6">
+          <!-- Login Subtitle -->
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">登录页副标题</label>
+            <input
+              v-model="form.login_subtitle"
+              type="text"
+              class="input-field"
+              placeholder="企业资产配置管理平台"
+            />
+            <p class="text-xs text-slate-500 mt-1">显示在登录页 Logo 下方的描述文字</p>
+          </div>
+
+          <!-- Logo Image -->
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Logo 图片</label>
+            <div class="flex items-center gap-4">
+              <div class="w-20 h-20 rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden bg-slate-50">
+                <img
+                  v-if="form.logo_image"
+                  :src="form.logo_image"
+                  class="w-full h-full object-contain"
+                  alt="Logo preview"
+                />
+                <DatabaseOutlined v-else class="text-slate-400 text-2xl" />
+              </div>
+              <div class="flex-1 space-y-2">
+                <label
+                  class="flex items-center justify-center gap-1 px-4 py-2 border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors text-sm"
+                >
+                  <LoadingOutlined v-if="logoUploading" class="animate-spin" />
+                  <span v-else>选择文件</span>
+                  <input
+                    ref="logoInput"
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                    class="hidden"
+                    @change="($event: any) => $event.target.files[0] && handleLogoUpload($event.target.files[0])"
+                  />
+                </label>
+                <p v-if="form.logo_image" class="text-xs text-slate-500">
+                  已上传
+                  <button @click="clearLogo" class="text-error hover:underline ml-1">移除</button>
+                </p>
+                <p v-else class="text-xs text-slate-500">支持 PNG、JPG、GIF、WebP、SVG，最大 10MB</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Background Image -->
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">登录页背景图片</label>
+            <div class="flex items-center gap-4">
+              <div class="w-32 h-20 rounded-lg border-2 border-dashed border-slate-300 overflow-hidden bg-slate-50 relative">
+                <img
+                  v-if="form.login_background_image"
+                  :src="form.login_background_image"
+                  class="w-full h-full object-cover"
+                  alt="Background preview"
+                />
+                <div v-else class="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary to-primary-container">
+                  <span class="text-white/60 text-xs">无图片</span>
+                </div>
+              </div>
+              <div class="flex-1 space-y-2">
+                <label
+                  class="flex items-center justify-center gap-1 px-4 py-2 border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors text-sm"
+                >
+                  <LoadingOutlined v-if="bgUploading" class="animate-spin" />
+                  <span v-else>选择文件</span>
+                  <input
+                    ref="bgInput"
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif,image/webp"
+                    class="hidden"
+                    @change="($event: any) => $event.target.files[0] && handleBgUpload($event.target.files[0])"
+                  />
+                </label>
+                <p v-if="form.login_background_image" class="text-xs text-slate-500">
+                  已上传
+                  <button @click="clearBackground" class="text-error hover:underline ml-1">移除</button>
+                </p>
+                <p v-else class="text-xs text-slate-500">支持 PNG、JPG、GIF、WebP，最大 10MB</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Preview -->
+          <div class="p-4 bg-slate-50 rounded-lg">
+            <p class="text-sm font-medium text-slate-700 mb-2">预览</p>
+            <div
+              class="rounded-lg overflow-hidden h-32 flex items-center justify-center relative"
+              :class="form.login_background_image ? '' : 'bg-gradient-to-br from-primary to-primary-container'"
+              :style="form.login_background_image ? { backgroundImage: `url(${form.login_background_image})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}"
+            >
+              <div v-if="form.login_background_image" class="absolute inset-0 bg-black/30" />
+              <div class="relative z-10 flex flex-col items-center">
+                <div class="bg-white/10 backdrop-blur-xl rounded-full p-2 mb-2">
+                  <img
+                    v-if="form.logo_image"
+                    :src="form.logo_image"
+                    class="w-8 h-8 object-contain"
+                    alt="Logo"
+                  />
+                  <DatabaseOutlined v-else class="text-white text-xl" />
+                </div>
+                <span class="text-white font-bold text-sm">{{ form.site_title || 'CMDB' }}</span>
+                <span class="text-white/80 text-xs">{{ form.login_subtitle || '企业资产配置管理平台' }}</span>
               </div>
             </div>
           </div>

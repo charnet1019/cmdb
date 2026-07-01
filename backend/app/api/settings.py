@@ -22,6 +22,9 @@ def format_datetime_utc(dt: datetime | None) -> str | None:
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
 
+PUBLIC_BRANDING_KEYS = {"site_title", "login_subtitle", "logo_image", "login_background_image"}
+
+
 @router.get("")
 async def get_settings(
     db: AsyncSession = Depends(get_db),
@@ -32,18 +35,41 @@ async def get_settings(
     Requires sys_config permission
     """
     result = await db.execute(select(Setting))
-    settings = result.scalars().all()
+    settings_list = result.scalars().all()
 
     # Convert to dictionary format
     settings_dict = {}
-    for setting in settings:
+    for setting in settings_list:
         settings_dict[setting.key] = setting.value.get("value") if setting.value else None
 
     return {
         "code": 0,
         "message": "success",
         "data": settings_dict,
-        "raw": [{"id": s.id, "key": s.key, "value": s.value, "description": s.description, "updated_at": format_datetime_utc(s.updated_at)} for s in settings]
+        "raw": [{"id": s.id, "key": s.key, "value": s.value, "description": s.description, "updated_at": format_datetime_utc(s.updated_at)} for s in settings_list]
+    }
+
+
+@router.get("/public")
+async def get_public_settings(
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Get public branding settings (no authentication required)
+    Used by the login page to display dynamic branding
+    """
+    result = await db.execute(select(Setting))
+    settings_list = result.scalars().all()
+
+    settings_dict = {}
+    for setting in settings_list:
+        if setting.key in PUBLIC_BRANDING_KEYS:
+            settings_dict[setting.key] = setting.value.get("value") if setting.value else None
+
+    return {
+        "code": 0,
+        "message": "success",
+        "data": settings_dict,
     }
 
 
@@ -119,7 +145,7 @@ async def update_settings(
     current_user: User = Depends(PermissionChecker("sys_config")),
 ) -> Dict[str, Any]:
     """
-    Update multiple settings at once
+    Update multiple settings at once. Creates missing settings if needed.
     Requires sys_config permission
     """
     updated = []
@@ -130,7 +156,10 @@ async def update_settings(
 
         if setting:
             setting.value = {"value": value}
-            updated.append(key)
+        else:
+            setting = Setting(key=key, value={"value": value})
+            db.add(setting)
+        updated.append(key)
 
     await db.commit()
 

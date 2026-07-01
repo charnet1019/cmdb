@@ -3,12 +3,20 @@ CMDB FastAPI Application
 Main entry point
 """
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import init_db, close_db
 from app.api import api_router
+
+
+def _ensure_upload_dir():
+    """Create upload directory if it doesn't exist"""
+    upload_dir = Path(settings.UPLOAD_DIR)
+    upload_dir.mkdir(parents=True, exist_ok=True)
 
 
 @asynccontextmanager
@@ -61,6 +69,10 @@ CMDB - Configuration Management Database API
 
     # Include API router
     app.include_router(api_router, prefix="/api/v1")
+
+    # Mount static file serving for uploads
+    _ensure_upload_dir()
+    app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
     return app
 

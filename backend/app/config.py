@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # CORS - parse from env or .env
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
+     # Upload
+    UPLOAD_DIR: str = "/opt/upload/"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
