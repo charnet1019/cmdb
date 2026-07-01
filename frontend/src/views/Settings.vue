@@ -114,6 +114,7 @@ async function saveSettings() {
 
     await updateSettings(data)
     message.success('设置已保存')
+    window.dispatchEvent(new CustomEvent('settings:updated', { detail: data }))
   } catch (error: any) {
     message.error(error.response?.data?.detail || '保存失败')
   } finally {

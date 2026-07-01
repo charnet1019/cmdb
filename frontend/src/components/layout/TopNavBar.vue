@@ -16,13 +16,32 @@ const showUserMenu = ref(false)
 const siteTitle = ref('')
 let hideTimeout: ReturnType<typeof setTimeout> | null = null
 
-onMounted(async () => {
+async function fetchSiteTitle() {
   try {
     const response = await getSettings()
     siteTitle.value = response.data.site_title || ''
   } catch {
     // Keep empty
   }
+}
+
+const handleSettingsUpdated = (event: Event) => {
+  const detail = (event as CustomEvent).detail as { site_title?: string }
+  if (detail && 'site_title' in detail) {
+    siteTitle.value = detail.site_title || ''
+  }
+}
+
+onMounted(() => {
+  fetchSiteTitle()
+  window.addEventListener('settings:updated', handleSettingsUpdated)
+})
+
+onUnmounted(() => {
+  if (hideTimeout) {
+    clearTimeout(hideTimeout)
+  }
+  window.removeEventListener('settings:updated', handleSettingsUpdated)
 })
 
 function handleToggleSidebar() {
@@ -47,12 +66,6 @@ function hideMenu() {
     showUserMenu.value = false
   }, 300)
 }
-
-onUnmounted(() => {
-  if (hideTimeout) {
-    clearTimeout(hideTimeout)
-  }
-})
 </script>
 
 <template>
