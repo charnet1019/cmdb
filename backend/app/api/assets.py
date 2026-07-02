@@ -1080,7 +1080,7 @@ async def export_assets(
         resource_type="asset",
         resource_id=0,
         details={
-            "name": f"export_{scope}",
+            "name": f"export_{export_category or scope}",
             "format": format,
             "scope": scope,
             "category": export_category,
