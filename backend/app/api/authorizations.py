@@ -36,7 +36,7 @@ async def list_authorizations(
     target_type: Optional[str] = Query(None),
     is_active: Optional[bool] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("authorize")),
 ):
     """List authorizations with pagination and filters"""
     query = select(Authorization)
@@ -146,9 +146,9 @@ async def list_authorizations(
 async def create_authorization(
     data: AuthorizationCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(PermissionChecker("manage")),
+    current_user: User = Depends(PermissionChecker("authorize")),
 ):
-    """Create a new authorization (manage permission required)"""
+    """Create a new authorization (authorize permission required)"""
     # Validate entity exists
     if data.entity_type == "user":
         entity_result = await db.execute(select(User).where(User.id == data.entity_id))
@@ -219,9 +219,9 @@ async def update_authorization(
     auth_id: int,
     data: AuthorizationUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(PermissionChecker("manage")),
+    current_user: User = Depends(PermissionChecker("authorize")),
 ):
-    """Update an authorization (manage permission required)"""
+    """Update an authorization (authorize permission required)"""
     result = await db.execute(select(Authorization).where(Authorization.id == auth_id))
     auth = result.scalar_one_or_none()
 
@@ -262,9 +262,9 @@ async def update_authorization(
 async def delete_authorization(
     auth_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(PermissionChecker("manage")),
+    current_user: User = Depends(PermissionChecker("authorize")),
 ):
-    """Delete an authorization (manage permission required)"""
+    """Delete an authorization (authorize permission required)"""
     result = await db.execute(select(Authorization).where(Authorization.id == auth_id))
     auth = result.scalar_one_or_none()
 

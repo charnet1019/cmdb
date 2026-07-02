@@ -132,7 +132,7 @@ async def get_user_permissions(
     """
     if user.is_superuser:
         return [
-            "view", "manage", "view_users", "user_mgmt", "sys_config",
+            "view", "manage", "authorize", "view_users", "user_mgmt", "sys_config",
             "audit_log", "view_pwd", "export"
         ]
 

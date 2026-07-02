@@ -45,7 +45,7 @@ const routes: RouteRecordRaw[] = [
         path: 'permissions/authorizations',
         name: 'Authorizations',
         component: () => import('@/views/permissions/Authorizations.vue'),
-        meta: { title: '资产授权', icon: 'verified_user', permissions: ['manage'] }
+        meta: { title: '资产授权', icon: 'verified_user', permissions: ['authorize'] }
       },
       {
         path: 'logs/login',

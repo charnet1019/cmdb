@@ -46,6 +46,7 @@ class PermissionType(str, enum.Enum):
     AUDIT_LOG = "audit_log"          # 日志审计
     VIEW_PWD = "view_pwd"            # 查看密码
     EXPORT = "export"                # 导出资产
+    AUTHORIZE = "authorize"          # 资产授权
 
 
 class User(Base):

@@ -103,6 +103,7 @@ const orgTreeData = ref<OrgTreeNode[]>([])
 const permissionOptions = [
   { key: 'view', label: '查看资产' },
   { key: 'manage', label: '管理资产' },
+  { key: 'authorize', label: '资产授权' },
   { key: 'view_users', label: '查看用户' },
   { key: 'user_mgmt', label: '用户管理' },
   { key: 'sys_config', label: '系统设置' },
