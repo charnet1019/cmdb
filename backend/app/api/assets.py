@@ -856,6 +856,7 @@ async def import_assets(
             resource_type="asset",
             resource_id=0,
             details={
+                "name": f"import_{category}",
                 "category": category,
                 "mode": mode,
                 "total_rows": len(valid_records) + len(parse_errors),
@@ -1079,6 +1080,7 @@ async def export_assets(
         resource_type="asset",
         resource_id=0,
         details={
+            "name": f"export_{scope}",
             "format": format,
             "scope": scope,
             "category": export_category,
