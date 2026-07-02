@@ -18,6 +18,7 @@ export async function getAuthorizations(params: {
   entity_type?: string
   target_type?: string
   is_active?: boolean
+  keyword?: string
 }) {
   const response = await api.get('/authorizations', { params })
   return {

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, and_
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
@@ -35,10 +35,11 @@ async def list_authorizations(
     entity_type: Optional[str] = Query(None),
     target_type: Optional[str] = Query(None),
     is_active: Optional[bool] = Query(None),
+    keyword: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("authorize")),
 ):
-    """List authorizations with pagination and filters"""
+    """List authorizations with pagination, filters and keyword search"""
     query = select(Authorization)
 
     # Apply filters
@@ -50,6 +51,52 @@ async def list_authorizations(
 
     if is_active is not None:
         query = query.where(Authorization.is_active == is_active)
+
+    # Keyword search: match entity name (user/group) or target asset name
+    if keyword:
+        search_pattern = f"%{keyword}%"
+
+        # Two-step asset search: first get matching asset IDs, then check JSONB containment
+        asset_ids = []
+        if target_type != "organization":  # Don't restrict asset search when filtering orgs
+            asset_result = await db.execute(
+                select(Asset.id).where(Asset.name.ilike(search_pattern))
+            )
+            asset_ids = [aid for (aid,) in asset_result.all()]
+
+        conditions = []
+
+        # Search user by username or full_name
+        conditions.append(and_(
+            Authorization.entity_type == "user",
+            Authorization.entity_id.in_(
+                select(User.id).where(
+                    or_(
+                        User.username.ilike(search_pattern),
+                        User.full_name.ilike(search_pattern),
+                    )
+                )
+            ),
+        ))
+
+        # Search group by name
+        conditions.append(and_(
+            Authorization.entity_type == "group",
+            Authorization.entity_id.in_(
+                select(Group.id).where(Group.name.ilike(search_pattern))
+            ),
+        ))
+
+        # Search asset by name (check if any target_id matches)
+        if asset_ids:
+            conditions.append(and_(
+                Authorization.target_type == "asset",
+                or_(
+                    Authorization.target_ids.contains([aid]) for aid in asset_ids
+                ),
+            ))
+
+        query = query.where(or_(*conditions))
 
     # Count total
     count_query = select(func.count()).select_from(query.subquery())

@@ -24,11 +24,12 @@ const authorizations = ref<any[]>([])
 const loading = ref(false)
 const total = ref(0)
 const page = ref(1)
-const limit = ref(20)
+const limit = ref(15)
 
 // Filters
 const entityTypeFilter = ref('')
 const isActiveFilter = ref<boolean | null>(null)
+const keywordSearch = ref('')
 
 // Modal
 const showModal = ref(false)
@@ -254,7 +255,8 @@ async function fetchAuthorizations() {
       page: page.value,
       limit: limit.value,
       entity_type: entityTypeFilter.value || undefined,
-      is_active: isActiveFilter.value ?? undefined
+      is_active: isActiveFilter.value ?? undefined,
+      keyword: keywordSearch.value || undefined
     })
     authorizations.value = result.items || []
     total.value = result.total || 0
@@ -272,9 +274,21 @@ function handleSearch() {
   fetchAuthorizations()
 }
 
-// Handle page change
-function handlePageChange(newPage: number) {
-  page.value = newPage
+// Handle keyword search with enter key
+function handleKeywordSearch() {
+  page.value = 1
+  fetchAuthorizations()
+}
+
+// Handle pagination change (page or size)
+function handlePaginationChange(pagination: { current?: number; pageSize?: number }) {
+  if (pagination.current) {
+    page.value = pagination.current
+  }
+  if (pagination.pageSize) {
+    limit.value = pagination.pageSize
+    page.value = 1
+  }
   fetchAuthorizations()
 }
 
@@ -427,9 +441,11 @@ onMounted(() => {
   // Restore state from URL
   const query = route.query
   if (query.page) page.value = Number(query.page)
+  if (query.limit) limit.value = Number(query.limit)
   if (query.entity) entityTypeFilter.value = query.entity as string
   if (query.active === 'true') isActiveFilter.value = true
   else if (query.active === 'false') isActiveFilter.value = false
+  if (query.keyword) keywordSearch.value = query.keyword as string
 
   fetchAuthorizations()
   fetchSelectionOptions()
@@ -450,11 +466,13 @@ watch(() => form.value.target_type, () => {
 })
 
 // Sync state to URL
-watch([page, entityTypeFilter, isActiveFilter], () => {
+watch([page, limit, entityTypeFilter, isActiveFilter, keywordSearch], () => {
   const query: Record<string, string> = {}
   if (page.value !== 1) query.page = String(page.value)
+  if (limit.value !== 15) query.limit = String(limit.value)
   if (entityTypeFilter.value) query.entity = entityTypeFilter.value
   if (isActiveFilter.value !== null) query.active = String(isActiveFilter.value)
+  if (keywordSearch.value) query.keyword = keywordSearch.value
   router.replace({ query })
 }, { deep: true })
 </script>
@@ -468,6 +486,13 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
           <PlusOutlined />
           新增授权
         </button>
+        <a-input-search
+          v-model:value="keywordSearch"
+          placeholder="搜索用户、用户组、资产名称..."
+          allow-clear
+          @search="handleKeywordSearch"
+          style="width: 280px"
+        />
         <select v-model="entityTypeFilter" @change="handleSearch" class="input-field w-32">
           <option value="">全部对象</option>
           <option value="user">用户</option>
@@ -565,23 +590,16 @@ watch([page, entityTypeFilter, isActiveFilter], () => {
       <!-- Pagination -->
       <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
         <span class="text-sm text-slate-500">共 {{ total }} 条记录</span>
-        <div class="flex items-center gap-2">
-          <button
-            @click="handlePageChange(page - 1)"
-            :disabled="page === 1"
-            class="px-3 py-1.5 text-sm border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-50"
-          >
-            上一页
-          </button>
-          <span class="text-sm text-slate-600">{{ page }} / {{ Math.ceil(total / limit) || 1 }}</span>
-          <button
-            @click="handlePageChange(page + 1)"
-            :disabled="page >= Math.ceil(total / limit)"
-            class="px-3 py-1.5 text-sm border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-50"
-          >
-            下一页
-          </button>
-        </div>
+        <a-pagination
+          v-model:current="page"
+          v-model:page-size="limit"
+          :total="total"
+          :page-size-options="['15', '30', '50', '100']"
+          :show-size-changer="true"
+          :show-quick-jumper="true"
+          show-less-items
+          @change="handlePaginationChange"
+        />
       </div>
     </div>
 
