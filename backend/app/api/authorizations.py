@@ -190,6 +190,37 @@ async def list_authorizations(
     }
 
 
+async def _resolve_entity_name(db: AsyncSession, entity_type: str, entity_id: int) -> str:
+    """Resolve entity name for audit logging"""
+    if entity_type == "user":
+        user = await db.execute(select(User).where(User.id == entity_id))
+        user = user.scalar_one_or_none()
+        return user.username if user else str(entity_id)
+    else:
+        group = await db.execute(select(Group).where(Group.id == entity_id))
+        group = group.scalar_one_or_none()
+        return group.name if group else str(entity_id)
+
+async def _resolve_target_names(db: AsyncSession, target_type: str, target_ids: list[str]) -> str:
+    """Resolve target names for audit logging"""
+    if target_type == "asset":
+        assets = await db.execute(select(Asset).where(Asset.id.in_(target_ids)))
+        assets = assets.scalars().all()
+        names = [a.name for a in assets]
+        if len(names) <= 3:
+            return ", ".join(names)
+        return ", ".join(names[:3]) + f" 等{len(names)}个"
+    else:
+        org_ids = [int(tid) for tid in target_ids if tid != "__all__" and tid.isdigit()]
+        names = []
+        if "__all__" in target_ids:
+            names.append("Default")
+        if org_ids:
+            orgs = await db.execute(select(Organization).where(Organization.id.in_(org_ids)))
+            orgs = orgs.scalars().all()
+            names.extend([o.name for o in orgs])
+        return ", ".join(names) if names else str(target_ids)
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_authorization(
     data: AuthorizationCreate,
@@ -250,26 +281,20 @@ async def create_authorization(
     await db.commit()
     await db.refresh(auth)
 
-    # Get entity name for log
-    entity_name = ""
-    if data.entity_type == "user":
-        user_result = await db.execute(select(User).where(User.id == data.entity_id))
-        user = user_result.scalar_one_or_none()
-        entity_name = user.username if user else f"user:{data.entity_id}"
-    else:
-        group_result = await db.execute(select(Group).where(Group.id == data.entity_id))
-        group = group_result.scalar_one_or_none()
-        entity_name = group.name if group else f"group:{data.entity_id}"
+    # Resolve names for audit log
+    entity_name = await _resolve_entity_name(db, data.entity_type, data.entity_id)
+    target_names = await _resolve_target_names(db, data.target_type, data.target_ids)
 
     await log_operation(
         db, current_user.id, "create", "authorization", auth.id,
         details={
-            "name": f"{data.entity_type}:{entity_name} -> {data.target_type}:{data.target_ids}",
+            "name": f"{entity_name} -> {target_names}",
             "entity_type": auth.entity_type,
             "entity_id": auth.entity_id,
             "entity_name": entity_name,
             "target_type": auth.target_type,
             "target_ids": auth.target_ids,
+            "target_names": target_names,
             "permissions": auth.permissions,
         },
         ip_address=ip,
@@ -326,7 +351,7 @@ async def update_authorization(
     await log_operation(
         db, current_user.id, "update", "authorization", auth.id,
         details={
-            "name": f"{auth.entity_type}:{auth.entity_id} -> {auth.target_type}",
+            "name": f"{await _resolve_entity_name(db, auth.entity_type, auth.entity_id)} -> {await _resolve_target_names(db, auth.target_type, auth.target_ids)}",
             "entity_type": auth.entity_type,
             "entity_id": auth.entity_id,
             "target_type": auth.target_type,
@@ -369,7 +394,7 @@ async def delete_authorization(
     await log_operation(
         db, current_user.id, "delete", "authorization", auth.id,
         details={
-            "name": f"{auth.entity_type}:{auth.entity_id} -> {auth.target_type}",
+            "name": f"{await _resolve_entity_name(db, auth.entity_type, auth.entity_id)} -> {await _resolve_target_names(db, auth.target_type, auth.target_ids)}",
             "entity_type": auth.entity_type,
             "entity_id": auth.entity_id,
             "target_type": auth.target_type,
