@@ -865,7 +865,7 @@ async def export_assets(
     search: Optional[str] = Query(None, description="Search query"),
     ids: Optional[str] = Query(None, description="Comma-separated asset IDs for selected scope"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(PermissionChecker("manage")),
+    current_user: User = Depends(PermissionChecker("export")),
 ):
     """
     Export assets to Excel or CSV with chunked streaming.

@@ -404,7 +404,8 @@ const permissionLabels: Record<string, string> = {
   user_mgmt: '用户管理',
   sys_config: '系统设置',
   audit_log: '日志审计',
-  view_pwd: '查看密码'
+  view_pwd: '查看密码',
+  export: '导出资产'
 }
 
 // Open authorizations modal

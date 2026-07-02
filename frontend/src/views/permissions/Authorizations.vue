@@ -107,7 +107,8 @@ const permissionOptions = [
   { key: 'user_mgmt', label: '用户管理' },
   { key: 'sys_config', label: '系统设置' },
   { key: 'audit_log', label: '日志审计' },
-  { key: 'view_pwd', label: '查看密码' }
+  { key: 'view_pwd', label: '查看密码' },
+  { key: 'export', label: '导出资产' }
 ]
 
 // Format organization name path (e.g. "Default/开发部/数据库")

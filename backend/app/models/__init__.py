@@ -45,6 +45,7 @@ class PermissionType(str, enum.Enum):
     SYS_CONFIG = "sys_config"        # 系统设置
     AUDIT_LOG = "audit_log"          # 日志审计
     VIEW_PWD = "view_pwd"            # 查看密码
+    EXPORT = "export"                # 导出资产
 
 
 class User(Base):

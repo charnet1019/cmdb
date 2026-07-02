@@ -1010,7 +1010,7 @@ onMounted(async () => {
               </select>
               <button @click="showColumnCustomizer = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="自定义列"><SettingOutlined class="text-sm" /></button>
               <button v-if="hasPermission('manage') && activeCategory !== 'all'" @click="showImportModal = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导入"><ImportOutlined class="text-sm" /></button>
-              <button v-if="hasPermission('manage')" @click="showExportModal = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导出"><ExportOutlined class="text-sm" /></button>
+              <button v-if="hasPermission('export')" @click="showExportModal = true" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="导出"><ExportOutlined class="text-sm" /></button>
               <button @click="handleSearch" class="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded" title="刷新"><ReloadOutlined class="text-sm" /></button>
             </div>
           </div>
