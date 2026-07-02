@@ -3,7 +3,7 @@ Pydantic Schemas
 Request/Response models for API
 """
 from datetime import datetime
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
 
 
@@ -12,6 +12,7 @@ class ResponseBase(BaseModel):
     """Base response model"""
     code: int = 0
     message: str = "success"
+    data: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(exclude_none=True)
 
@@ -46,6 +47,7 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     full_name: Optional[str] = Field(None, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
+    avatar_url: Optional[str] = Field(None, max_length=500)
     group_ids: Optional[List[int]] = None
     is_active: Optional[bool] = None
     is_superuser: Optional[bool] = None
@@ -57,6 +59,7 @@ class UserResponse(UserBase):
     id: int
     is_active: bool
     mfa_enabled: bool
+    avatar_url: Optional[str] = None
     last_login_at: Optional[datetime]
     created_at: datetime
     groups: List["GroupSimple"] = []
@@ -70,6 +73,7 @@ class UserSimple(BaseModel):
     username: str
     full_name: Optional[str]
     email: str
+    avatar_url: Optional[str] = None
     is_superuser: bool = False
     permissions: List[str] = []
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { SettingOutlined, SafetyCertificateOutlined, LoadingOutlined, SaveOutlined, InfoCircleOutlined, PictureOutlined, DatabaseOutlined } from '@ant-design/icons-vue'
 import { getSettings, updateSettings, uploadImage, deleteImage } from '@/api/settings'
@@ -50,7 +51,16 @@ function resetFileInput(inputRef: typeof logoInput) {
 }
 
 // Active tab
-const activeTab = ref('system')
+const route = useRoute()
+const router = useRouter()
+
+// Active tab — persisted in URL query so refreshing keeps the tab
+const activeTab = computed({
+  get: () => (route.query.tab as 'system' | 'security' | 'branding') || 'system',
+  set: (value: 'system' | 'security' | 'branding') => {
+    router.push({ query: { ...route.query, tab: value } })
+  },
+})
 
 // Password complexity score
 const passwordComplexityScore = computed(() => {

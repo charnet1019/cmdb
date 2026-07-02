@@ -4,7 +4,10 @@ Login, logout, token management
 """
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+import os
+import uuid
+from pathlib import Path
+from fastapi import APIRouter, Depends, HTTPException, status, Request, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -119,6 +122,7 @@ async def login(
                 username=user.username,
                 full_name=user.full_name,
                 email=user.email,
+                avatar_url=user.avatar_url,
                 is_superuser=user.is_superuser,
                 permissions=user_permissions,
             )
@@ -220,7 +224,75 @@ async def get_current_user_info(
             username=current_user.username,
             full_name=current_user.full_name,
             email=current_user.email,
+            avatar_url=current_user.avatar_url,
             is_superuser=current_user.is_superuser,
             permissions=permissions,
         )
     )
+
+
+ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+
+
+@router.post("/avatar", response_model=ResponseBase)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload or update user avatar — any authenticated user can update their own."""
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"不支持的文件类型: {ext}",
+        )
+
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"文件过大，最大 {MAX_FILE_SIZE // (1024 * 1024)}MB",
+        )
+
+    upload_dir = Path(settings.UPLOAD_DIR) / "avatars"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = f"{current_user.id}_{uuid.uuid4().hex}{ext}"
+    file_path = upload_dir / filename
+
+    # Delete old avatar if exists
+    if current_user.avatar_url:
+        old_filename = current_user.avatar_url.split("/")[-1]
+        old_path = upload_dir / old_filename
+        if old_path.exists():
+            old_path.unlink()
+
+    file_path.write_bytes(content)
+    avatar_url = f"/uploads/avatars/{filename}"
+    current_user.avatar_url = avatar_url
+    await db.commit()
+
+    return ResponseBase(message="头像上传成功", data={"avatar_url": avatar_url})
+
+
+@router.delete("/avatar", response_model=ResponseBase)
+async def delete_avatar(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete user avatar — any authenticated user can delete their own."""
+    if not current_user.avatar_url:
+        return ResponseBase(message="没有头像可删除")
+
+    upload_dir = Path(settings.UPLOAD_DIR) / "avatars"
+    filename = current_user.avatar_url.split("/")[-1]
+    file_path = upload_dir / filename
+    if file_path.exists():
+        file_path.unlink()
+
+    current_user.avatar_url = None
+    await db.commit()
+
+    return ResponseBase(message="头像已删除")

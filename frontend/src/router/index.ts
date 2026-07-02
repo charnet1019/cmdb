@@ -70,6 +70,12 @@ const routes: RouteRecordRaw[] = [
         name: 'Settings',
         component: () => import('@/views/Settings.vue'),
         meta: { title: '系统设置', icon: 'settings', permissions: ['sys_config'] }
+      },
+      {
+        path: 'profile',
+        name: 'Profile',
+        component: () => import('@/views/Profile.vue'),
+        meta: { requiresAuth: true, title: '个人中心' }
       }
     ]
   },

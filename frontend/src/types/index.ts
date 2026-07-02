@@ -5,6 +5,7 @@ export interface User {
   email: string
   full_name: string | null
   phone: string | null
+  avatar_url: string | null
   is_active: boolean
   mfa_enabled: boolean
   last_login_at: string | null
@@ -163,6 +164,7 @@ export interface UserSimple {
   username: string
   full_name: string | null
   email: string
+  avatar_url: string | null
   is_superuser: boolean
   permissions: string[]
 }

@@ -83,6 +83,7 @@ async def list_users(
             "phone": user.phone,
             "is_active": user.is_active,
             "mfa_enabled": user.mfa_enabled,
+            "avatar_url": user.avatar_url,
             "last_login_at": user.last_login_at,
             "created_at": user.created_at,
             "groups": user_groups_map.get(user.id, []),
@@ -300,6 +301,10 @@ async def update_user(
     if data.phone is not None and data.phone != user.phone:
         changes["phone"] = [user.phone, data.phone]
         user.phone = data.phone
+
+    if data.avatar_url is not None and data.avatar_url != user.avatar_url:
+        changes["avatar_url"] = [user.avatar_url, data.avatar_url]
+        user.avatar_url = data.avatar_url
 
     if data.is_active is not None and data.is_active != user.is_active:
         changes["is_active"] = [user.is_active, data.is_active]

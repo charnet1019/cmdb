@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth'
 import { ref, onUnmounted, onMounted } from 'vue'
-import { MenuOutlined, SearchOutlined, BellOutlined, DownOutlined, SettingOutlined, LogoutOutlined } from '@ant-design/icons-vue'
+import { MenuOutlined, SearchOutlined, BellOutlined, DownOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons-vue'
 import { getSettings } from '@/api/settings'
 
 const authStore = useAuthStore()
@@ -108,8 +108,14 @@ function hideMenu() {
 
       <!-- User menu -->
       <div style="display: flex; align-items: center; gap: 8px; padding-left: 12px; border-left: 1px solid #e2e8f0;">
-        <div style="width: 32px; height: 32px; background-color: rgba(0, 93, 170, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-          <span style="color: #005daa; font-weight: 500; font-size: 14px;">
+        <div style="width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;" :style="authStore.user?.avatar_url ? { backgroundColor: 'transparent' } : { backgroundColor: 'rgba(0, 93, 170, 0.1)' }">
+          <img
+            v-if="authStore.user?.avatar_url"
+            :src="authStore.user.avatar_url"
+            style="width: 100%; height: 100%; object-fit: cover;"
+            alt="avatar"
+          />
+          <span v-else style="color: #005daa; font-weight: 500; font-size: 14px;">
             {{ authStore.user?.full_name?.[0] || authStore.user?.username?.[0]?.toUpperCase() || 'U' }}
           </span>
         </div>
@@ -125,14 +131,14 @@ function hideMenu() {
 
           <div
             v-show="showUserMenu"
-            style="position: absolute; right: 0; top: 100%; margin-top: 4px; width: 192px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border: 1px solid #f1f5f9; padding: 4px 0;"
+            style="position: absolute; right: 0; top: 100%; margin-top: 4px; width: 140px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border: 1px solid #f1f5f9; padding: 4px 0;"
           >
-            <router-link to="/settings" style="display: block; padding: 8px 16px; font-size: 14px; color: #334155; text-decoration: none;">
-              <SettingOutlined style="font-size: 16px; margin-right: 8px; vertical-align: middle;" />
-              系统设置
+            <router-link to="/profile" @click="showUserMenu = false" class="dropdown-menu-item">
+              <UserOutlined style="font-size: 14px; margin-right: 6px; vertical-align: middle;" />
+              个人中心
             </router-link>
-            <button @click="handleLogout" style="width: 100%; text-align: left; padding: 8px 16px; font-size: 14px; color: #334155; border: none; background: none; cursor: pointer;">
-              <LogoutOutlined style="font-size: 16px; margin-right: 8px; vertical-align: middle;" />
+            <button @click="handleLogout" class="dropdown-menu-item">
+              <LogoutOutlined style="font-size: 14px; margin-right: 6px; vertical-align: middle;" />
               退出登录
             </button>
           </div>
@@ -141,3 +147,23 @@ function hideMenu() {
     </div>
   </header>
 </template>
+
+<style scoped>
+.dropdown-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: #334155;
+  text-decoration: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.dropdown-menu-item:hover {
+  background-color: #f2f4f7;
+}
+</style>
