@@ -4,7 +4,7 @@ Asset authorization management
 """
 from datetime import datetime, timezone
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, and_
 from sqlalchemy.orm import selectinload
@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models import User, Group, Asset, Organization, Authorization
 from app.api.deps import get_current_user, PermissionChecker
+from app.utils.audit import log_operation
 from app.schemas import (
     AuthorizationCreate, AuthorizationUpdate, AuthorizationResponse,
     PaginationMeta, ResponseBase
@@ -194,8 +195,10 @@ async def create_authorization(
     data: AuthorizationCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("authorize")),
+    request: Request = None,
 ):
     """Create a new authorization (authorize permission required)"""
+    ip = request.client.host if request and request.client else None
     # Validate entity exists
     if data.entity_type == "user":
         entity_result = await db.execute(select(User).where(User.id == data.entity_id))
@@ -247,6 +250,31 @@ async def create_authorization(
     await db.commit()
     await db.refresh(auth)
 
+    # Get entity name for log
+    entity_name = ""
+    if data.entity_type == "user":
+        user_result = await db.execute(select(User).where(User.id == data.entity_id))
+        user = user_result.scalar_one_or_none()
+        entity_name = user.username if user else f"user:{data.entity_id}"
+    else:
+        group_result = await db.execute(select(Group).where(Group.id == data.entity_id))
+        group = group_result.scalar_one_or_none()
+        entity_name = group.name if group else f"group:{data.entity_id}"
+
+    await log_operation(
+        db, current_user.id, "create", "authorization", auth.id,
+        details={
+            "name": f"{data.entity_type}:{entity_name} -> {data.target_type}:{data.target_ids}",
+            "entity_type": auth.entity_type,
+            "entity_id": auth.entity_id,
+            "entity_name": entity_name,
+            "target_type": auth.target_type,
+            "target_ids": auth.target_ids,
+            "permissions": auth.permissions,
+        },
+        ip_address=ip,
+    )
+
     return {
         "code": 0,
         "message": "授权创建成功",
@@ -267,8 +295,10 @@ async def update_authorization(
     data: AuthorizationUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("authorize")),
+    request: Request = None,
 ):
     """Update an authorization (authorize permission required)"""
+    ip = request.client.host if request and request.client else None
     result = await db.execute(select(Authorization).where(Authorization.id == auth_id))
     auth = result.scalar_one_or_none()
 
@@ -293,6 +323,19 @@ async def update_authorization(
     await db.commit()
     await db.refresh(auth)
 
+    await log_operation(
+        db, current_user.id, "update", "authorization", auth.id,
+        details={
+            "name": f"{auth.entity_type}:{auth.entity_id} -> {auth.target_type}",
+            "entity_type": auth.entity_type,
+            "entity_id": auth.entity_id,
+            "target_type": auth.target_type,
+            "permissions": auth.permissions,
+            "is_active": auth.is_active,
+        },
+        ip_address=ip,
+    )
+
     return {
         "code": 0,
         "message": "授权更新成功",
@@ -310,8 +353,10 @@ async def delete_authorization(
     auth_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("authorize")),
+    request: Request = None,
 ):
     """Delete an authorization (authorize permission required)"""
+    ip = request.client.host if request and request.client else None
     result = await db.execute(select(Authorization).where(Authorization.id == auth_id))
     auth = result.scalar_one_or_none()
 
@@ -320,6 +365,19 @@ async def delete_authorization(
 
     await db.delete(auth)
     await db.commit()
+
+    await log_operation(
+        db, current_user.id, "delete", "authorization", auth.id,
+        details={
+            "name": f"{auth.entity_type}:{auth.entity_id} -> {auth.target_type}",
+            "entity_type": auth.entity_type,
+            "entity_id": auth.entity_id,
+            "target_type": auth.target_type,
+            "target_ids": auth.target_ids,
+            "permissions": auth.permissions,
+        },
+        ip_address=ip,
+    )
 
     return ResponseBase(message="授权已删除")
 
