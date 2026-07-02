@@ -31,6 +31,7 @@ const form = ref({
   password_require_special: false,
   // 登录设置
   max_login_attempts: 5,
+  lockout_duration: 30,
   session_timeout: 1,
   // 品牌设置
   login_subtitle: '企业资产配置管理平台',
@@ -99,6 +100,7 @@ async function fetchSettings() {
     if (response.data.password_require_digit !== undefined) form.value.password_require_digit = response.data.password_require_digit
     if (response.data.password_require_special !== undefined) form.value.password_require_special = response.data.password_require_special
     if (response.data.max_login_attempts !== undefined) form.value.max_login_attempts = response.data.max_login_attempts
+    if (response.data.lockout_duration !== undefined) form.value.lockout_duration = response.data.lockout_duration
     if (response.data.login_subtitle !== undefined) form.value.login_subtitle = response.data.login_subtitle
     if (response.data.logo_image !== undefined) form.value.logo_image = response.data.logo_image
     if (response.data.login_background_image !== undefined) form.value.login_background_image = response.data.login_background_image
@@ -133,6 +135,7 @@ async function saveSettings() {
       data.password_require_digit = form.value.password_require_digit
       data.password_require_special = form.value.password_require_special
       data.max_login_attempts = form.value.max_login_attempts
+      data.lockout_duration = form.value.lockout_duration
       data.session_timeout = form.value.session_timeout
     } else if (activeTab.value === 'branding') {
       data.login_subtitle = form.value.login_subtitle
@@ -167,6 +170,7 @@ function resetToDefaults() {
     form.value.password_require_digit = true
     form.value.password_require_special = false
     form.value.max_login_attempts = 5
+    form.value.lockout_duration = 30
     form.value.session_timeout = 1
   } else if (activeTab.value === 'branding') {
     form.value.login_subtitle = '企业资产配置管理平台'
@@ -517,6 +521,22 @@ onMounted(() => {
               <p class="text-xs text-slate-500 mt-1">超过此次数后账户将被临时锁定</p>
             </div>
 
+            <!-- Lockout Duration -->
+            <div class="mb-4">
+              <label class="block text-sm font-medium text-slate-700 mb-1">锁定时间</label>
+              <div class="flex items-center gap-4">
+                <input
+                  v-model.number="form.lockout_duration"
+                  type="number"
+                  min="1"
+                  max="1440"
+                  class="input-field w-32"
+                />
+                <span class="text-slate-600">分钟</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-1">账户被锁定的持续时间，超过后自动解锁 (1-1440分钟)</p>
+            </div>
+
             <!-- Session Timeout -->
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-1">会话超时时间</label>
@@ -542,6 +562,7 @@ onMounted(() => {
                 <p class="font-medium">安全提示</p>
                 <ul class="mt-2 space-y-1 list-disc list-inside text-blue-700">
                   <li>建议将最大登录尝试次数设置为 3-5 次</li>
+                  <li>账户锁定时间建议 15-30 分钟，过短则无法有效防止暴力破解</li>
                   <li>会话超时时间不宜过长，建议 8-24 小时</li>
                   <li>强密码策略可有效防止暴力破解攻击</li>
                 </ul>

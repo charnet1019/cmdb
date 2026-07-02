@@ -74,6 +74,7 @@ async def init_db():
             Setting(key="password_require_special", value={"value": False}, description="密码要求特殊字符"),
             Setting(key="session_timeout", value={"value": 1}, description="会话超时时间(小时)"),
             Setting(key="max_login_attempts", value={"value": 5}, description="最大登录尝试次数"),
+            Setting(key="lockout_duration", value={"value": 30}, description="账户锁定时间(分钟)"),
             Setting(key="login_log_retention", value={"value": 30}, description="登录日志保留天数"),
             Setting(key="operation_log_retention", value={"value": 30}, description="操作日志保留天数"),
             Setting(key="password_log_retention", value={"value": 30}, description="改密日志保留天数"),
