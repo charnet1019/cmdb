@@ -4,13 +4,14 @@ Login logs, operation logs, and password change logs
 """
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, cast, String, alias
 
 from app.database import get_db
 from app.models import User, LoginLog, OperationLog, PasswordChangeLog, Asset, Credential
 from app.api.deps import get_current_user, PermissionChecker
+from app.utils.audit import log_operation
 from app.schemas import PaginationMeta, ResponseBase
 from app.services.log_cleanup import cleanup_expired_logs
 
@@ -21,6 +22,24 @@ def format_datetime_utc(dt: datetime | None) -> str | None:
         return None
     # Ensure we treat it as UTC and add Z suffix
     return dt.replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z')
+
+def _get_resource_name(log: OperationLog) -> Optional[str]:
+    """Resolve resource name from details or resource_id.
+
+    The previous one-liner had a precedence bug: the ternary
+    ``if log.resource_id else None`` applied to the entire
+    expression, so when resource_id was 0 (falsy) the whole thing
+    returned None — even though details.name might hold a real
+    name.  This function checks details fields first, then falls
+    back to resource_id only when details have nothing.
+    """
+    details = log.details or {}
+    name = details.get("username") or details.get("name") or details.get("group_name")
+    if name:
+        return name
+    if log.resource_id is not None:
+        return str(log.resource_id)
+    return None
 
 
 router = APIRouter(prefix="/logs", tags=["日志审计"])
@@ -214,7 +233,7 @@ async def list_operation_logs(
                 "action": log.action,
                 "resource_type": log.resource_type,
                 "resource_id": log.resource_id,
-                "resource_name": (log.details or {}).get("username") or (log.details or {}).get("name") or (log.details or {}).get("group_name") or str(log.resource_id) if log.resource_id else None,
+                "resource_name": _get_resource_name(log),
                 "details": log.details,
                 "ip_address": log.ip_address,
                 "status": log.status,
@@ -370,12 +389,25 @@ async def list_password_logs(
 async def trigger_cleanup(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("sys_config")),
+    request: Request = None,
 ):
     """Manually trigger log cleanup based on retention settings.
 
     Requires sys_config permission.
     """
+    ip = request.client.host if request and request.client else None
     deleted = await cleanup_expired_logs(db)
+
+    # Audit log
+    await log_operation(
+        db, current_user.id, "update", "log_cleanup", 0,
+        details={
+            "name": "manual_log_cleanup",
+            "deleted_counts": deleted,
+        },
+        ip_address=ip,
+    )
+
     return {
         "code": 0,
         "message": "success",

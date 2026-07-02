@@ -480,8 +480,10 @@ async def create_asset(
     data: AssetCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("manage")),
+    request: Request = None,
 ) -> Dict[str, Any]:
     """Create a new asset"""
+    ip = request.client.host if request and request.client else None
     # Validate category
     valid_categories = ["host", "network", "database", "cloud", "web", "gpt"]
     if data.category not in valid_categories:
@@ -555,6 +557,17 @@ async def create_asset(
     db.add(asset)
     await db.commit()
     await db.refresh(asset)
+
+    # Audit log
+    await log_operation(
+        db, current_user.id, "create", "asset", 0,
+        details={
+            "name": asset.name,
+            "category": asset.category,
+            "asset_code": asset.asset_code,
+        },
+        ip_address=ip,
+    )
 
     # Auto-authorize creator with "manage" on the new asset
     if not current_user.is_superuser:
@@ -640,19 +653,21 @@ async def create_asset(
 # ============== Bulk Operations APIs ==============
 @router.put("/bulk", response_model=ResponseBase)
 async def bulk_update_assets(
-    request: BulkUpdateRequest,
+    body: BulkUpdateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("manage")),
+    request: Request = None,
 ):
     """Bulk update assets (activate/deactivate)"""
-    if not request.ids:
+    ip = request.client.host if request and request.client else None
+    if not body.ids:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="请选择要操作的资产"
         )
 
     result = await db.execute(
-        select(Asset).where(Asset.id.in_(request.ids))
+        select(Asset).where(Asset.id.in_(body.ids))
     )
     assets = result.scalars().all()
 
@@ -671,29 +686,43 @@ async def bulk_update_assets(
 
     # Update each asset
     for asset in assets:
-        if "status" in request.data:
-            asset.status = request.data["status"]
+        if "status" in body.data:
+            asset.status = body.data["status"]
 
     await db.commit()
+
+    # Audit log
+    await log_operation(
+        db, current_user.id, "update", "asset", 0,
+        details={
+            "action": "bulk_update",
+            "count": len(assets),
+            "asset_ids": [a.id for a in assets],
+            "data": body.data,
+        },
+        ip_address=ip,
+    )
 
     return ResponseBase(message=f"已更新 {len(assets)} 个资产")
 
 
 @router.delete("/bulk", response_model=ResponseBase)
 async def bulk_delete_assets(
-    request: BulkDeleteRequest,
+    body: BulkDeleteRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("manage")),
+    request: Request = None,
 ):
     """Bulk delete assets"""
-    if not request.ids:
+    ip = request.client.host if request and request.client else None
+    if not body.ids:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="请选择要删除的资产"
         )
 
     result = await db.execute(
-        select(Asset).where(Asset.id.in_(request.ids))
+        select(Asset).where(Asset.id.in_(body.ids))
     )
     assets = result.scalars().all()
 
@@ -715,6 +744,17 @@ async def bulk_delete_assets(
         await db.delete(asset)
 
     await db.commit()
+
+    # Audit log
+    await log_operation(
+        db, current_user.id, "delete", "asset", 0,
+        details={
+            "action": "bulk_delete",
+            "count": len(assets),
+            "asset_ids": [a.id for a in assets],
+        },
+        ip_address=ip,
+    )
 
     return ResponseBase(message=f"已删除 {len(assets)} 个资产")
 
@@ -1113,8 +1153,10 @@ async def update_asset(
     data: AssetUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("manage")),
+    request: Request = None,
 ) -> Dict[str, Any]:
     """Update asset information"""
+    ip = request.client.host if request and request.client else None
     result = await db.execute(
         select(Asset).where(Asset.id == asset_id)
     )
@@ -1227,6 +1269,17 @@ async def update_asset(
                 db.add(storage)
         await db.commit()
 
+    # Audit log
+    await log_operation(
+        db, current_user.id, "update", "asset", 0,
+        details={
+            "name": asset.name,
+            "category": asset.category,
+            "asset_code": asset.asset_code,
+        },
+        ip_address=ip,
+    )
+
     await db.refresh(asset)
 
     # Reload asset with eagerly loaded relations to avoid lazy-load in async context
@@ -1257,8 +1310,10 @@ async def delete_asset(
     asset_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("manage")),
+    request: Request = None,
 ):
     """Delete an asset"""
+    ip = request.client.host if request and request.client else None
     result = await db.execute(
         select(Asset).where(Asset.id == asset_id)
     )
@@ -1276,8 +1331,24 @@ async def delete_asset(
         organization_id=asset.organization_id,
     )
 
+    # Capture asset info before deletion
+    asset_name = asset.name
+    asset_category = asset.category
+    asset_code = asset.asset_code
+
     await db.delete(asset)
     await db.commit()
+
+    # Audit log
+    await log_operation(
+        db, current_user.id, "delete", "asset", 0,
+        details={
+            "name": asset_name,
+            "category": asset_category,
+            "asset_code": asset_code,
+        },
+        ip_address=ip,
+    )
 
     return ResponseBase(message="资产已删除")
 

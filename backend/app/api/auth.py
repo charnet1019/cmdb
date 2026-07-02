@@ -21,6 +21,7 @@ from app.core.security import verify_password, create_access_token, get_password
 from app.core.redis_client import get_redis, ONLINE_KEY_PREFIX, ONLINE_TTL_SECONDS
 from app.api.deps import get_current_user, get_user_permissions
 from app.config import settings
+from app.utils.audit import log_operation
 
 
 router = APIRouter(prefix="/auth", tags=["认证"])
@@ -133,12 +134,26 @@ async def login(
 @router.post("/logout", response_model=ResponseBase)
 async def logout(
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    request: Request = None,
 ):
     """
     User logout endpoint — remove online presence
     """
+    ip = request.client.host if request and request.client else None
     redis_client = get_redis()
     await redis_client.delete(f"{ONLINE_KEY_PREFIX}{current_user.id}")
+
+    # Audit log
+    await log_operation(
+        db, current_user.id, "update", "auth", 0,
+        details={
+            "name": "logout",
+            "action": "logout",
+        },
+        ip_address=ip,
+    )
+
     return ResponseBase(message="登出成功")
 
 

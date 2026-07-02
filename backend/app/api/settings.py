@@ -3,12 +3,13 @@ Settings API Routes
 """
 from datetime import datetime, timezone
 from typing import List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db
 from app.api.deps import PermissionChecker
+from app.utils.audit import log_operation
 from app.models import Setting, User
 
 
@@ -109,11 +110,13 @@ async def update_setting(
     value: Dict[str, Any],
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("sys_config")),
+    request: Request = None,
 ) -> Dict[str, Any]:
     """
     Update a single setting
     Requires sys_config permission
     """
+    ip = request.client.host if request and request.client else None
     result = await db.execute(select(Setting).where(Setting.key == key))
     setting = result.scalar_one_or_none()
 
@@ -126,6 +129,16 @@ async def update_setting(
 
     await db.commit()
     await db.refresh(setting)
+
+    # Audit log
+    await log_operation(
+        db, current_user.id, "update", "setting", 0,
+        details={
+            "name": key,
+            "value": value,
+        },
+        ip_address=ip,
+    )
 
     return {
         "data": {
@@ -143,11 +156,13 @@ async def update_settings(
     settings_data: Dict[str, Any],
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("sys_config")),
+    request: Request = None,
 ) -> Dict[str, Any]:
     """
     Update multiple settings at once. Creates missing settings if needed.
     Requires sys_config permission
     """
+    ip = request.client.host if request and request.client else None
     updated = []
 
     for key, value in settings_data.items():
@@ -162,6 +177,16 @@ async def update_settings(
         updated.append(key)
 
     await db.commit()
+
+    # Audit log
+    await log_operation(
+        db, current_user.id, "update", "setting", 0,
+        details={
+            "name": "batch_update",
+            "keys": updated,
+        },
+        ip_address=ip,
+    )
 
     return {
         "data": {
