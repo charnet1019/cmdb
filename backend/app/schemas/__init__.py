@@ -59,6 +59,7 @@ class UserResponse(UserBase):
     id: int
     is_active: bool
     mfa_enabled: bool
+    mfa_bound: bool = False  # True if mfa_secret is set
     avatar_url: Optional[str] = None
     last_login_at: Optional[datetime]
     created_at: datetime
@@ -394,6 +395,29 @@ class PasswordChangeRequest(BaseModel):
     old_password: str
     new_password: str
     confirm_password: str
+
+
+# ============== MFA Schemas ==============
+class MFARequiredData(BaseModel):
+    """MFA required data"""
+    requires_mfa: bool = True
+    user_id: int
+    setup: bool = False  # True = needs binding (no secret yet)
+
+class MFARequiredResponse(ResponseBase):
+    """Response when MFA is required during login"""
+    data: MFARequiredData
+
+class MFAVerifyRequest(BaseModel):
+    """TOTP verification request for login"""
+    user_id: int
+    code: str = Field(..., min_length=6, max_length=6)
+    setup: bool = False  # True = first-time binding
+
+class MFASetupQRData(BaseModel):
+    """MFA setup QR data"""
+    qr_code: str
+    mfa_secret: str
 
 
 # ============== Log Schemas ==============

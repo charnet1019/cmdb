@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth'
 import { ref, onUnmounted, onMounted } from 'vue'
-import { MenuOutlined, SearchOutlined, BellOutlined, DownOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons-vue'
+import { MenuOutlined, BellOutlined, DownOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons-vue'
 import { getPublicSettings } from '@/api/settings'
 
 const authStore = useAuthStore()
@@ -11,7 +11,6 @@ const emit = defineEmits<{
   (e: 'logout'): void
 }>()
 
-const searchQuery = ref('')
 const showUserMenu = ref(false)
 const siteTitle = ref('')
 let hideTimeout: ReturnType<typeof setTimeout> | null = null
@@ -85,17 +84,6 @@ function hideMenu() {
         </div>
         <span v-if="siteTitle" style="font-size: 18px; font-weight: 700; color: #0f172a;">{{ siteTitle }}</span>
       </router-link>
-    </div>
-
-    <!-- Center section - Search -->
-    <div style="flex: 1; max-width: 28rem; margin: 0 32px; position: relative;">
-      <SearchOutlined style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8;" />
-      <input
-        v-model="searchQuery"
-        type="text"
-        placeholder="搜索资产、用户..."
-        style="width: 100%; background-color: #f2f4f7; border-radius: 8px; padding: 8px 16px 8px 40px; border: none; font-size: 14px; outline: none;"
-      />
     </div>
 
     <!-- Right section -->

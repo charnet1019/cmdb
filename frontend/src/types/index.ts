@@ -8,6 +8,7 @@ export interface User {
   avatar_url: string | null
   is_active: boolean
   mfa_enabled: boolean
+  mfa_bound?: boolean
   last_login_at: string | null
   created_at: string
   groups: Group[]
@@ -167,6 +168,19 @@ export interface UserSimple {
   avatar_url: string | null
   is_superuser: boolean
   permissions: string[]
+  mfa_enabled?: boolean
+}
+
+// MFA types
+export interface MFARequiredData {
+  requires_mfa: true
+  user_id: number
+  setup: boolean  // true = first-time binding (no secret yet)
+}
+
+export interface MFASetupQRData {
+  qr_code: string
+  mfa_secret: string
 }
 
 export interface AssetSimple {

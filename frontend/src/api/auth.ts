@@ -1,8 +1,8 @@
 import api from './index'
-import type { LoginRequest, TokenResponse, UserSimple, ApiResponse } from '@/types'
+import type { LoginRequest, TokenResponse, UserSimple, ApiResponse, MFARequiredData, MFASetupQRData } from '@/types'
 
-export async function login(data: LoginRequest): Promise<TokenResponse> {
-  const response = await api.post<ApiResponse<TokenResponse>>('/auth/login', data)
+export async function login(data: LoginRequest): Promise<TokenResponse | MFARequiredData> {
+  const response = await api.post<ApiResponse<TokenResponse | MFARequiredData>>('/auth/login', data)
   return response.data.data
 }
 
@@ -38,4 +38,26 @@ export async function uploadAvatar(file: File): Promise<{ avatar_url: string }> 
 
 export async function deleteAvatar(): Promise<void> {
   await api.delete('/auth/avatar')
+}
+
+export async function loginMFAVerify(userId: number, code: string, setup = false): Promise<TokenResponse> {
+  const response = await api.post<ApiResponse<TokenResponse>>('/auth/mfa/login-verify', {
+    user_id: userId,
+    code,
+    setup,
+  })
+  return response.data.data
+}
+
+export async function getMFASetupQR(userId: number): Promise<MFASetupQRData> {
+  const response = await api.post<ApiResponse<MFASetupQRData>>(`/auth/mfa/setup-qr?user_id=${userId}`)
+  return response.data.data
+}
+
+export async function resetUserMFA(userId: number): Promise<void> {
+  await api.post(`/auth/mfa/reset?user_id=${userId}`)
+}
+
+export async function disableUserMFA(userId: number): Promise<void> {
+  await api.post(`/auth/mfa/disable?user_id=${userId}`)
 }

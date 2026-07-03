@@ -33,6 +33,8 @@ const form = ref({
   max_login_attempts: 5,
   lockout_duration: 30,
   session_timeout: 1,
+  // OTP 设置
+  otp_issuer_name: 'CMDB',
   // 品牌设置
   login_subtitle: '企业资产配置管理平台',
   logo_image: null as string | null,
@@ -107,6 +109,7 @@ async function fetchSettings() {
     if (response.data.login_log_retention !== undefined) form.value.login_log_retention = response.data.login_log_retention
     if (response.data.operation_log_retention !== undefined) form.value.operation_log_retention = response.data.operation_log_retention
     if (response.data.password_log_retention !== undefined) form.value.password_log_retention = response.data.password_log_retention
+    if (response.data.otp_issuer_name !== undefined) form.value.otp_issuer_name = response.data.otp_issuer_name
   } catch (error) {
     message.error('获取设置失败')
   } finally {
@@ -137,6 +140,7 @@ async function saveSettings() {
       data.max_login_attempts = form.value.max_login_attempts
       data.lockout_duration = form.value.lockout_duration
       data.session_timeout = form.value.session_timeout
+      data.otp_issuer_name = form.value.otp_issuer_name
     } else if (activeTab.value === 'branding') {
       data.login_subtitle = form.value.login_subtitle
       data.logo_image = form.value.logo_image
@@ -172,6 +176,7 @@ function resetToDefaults() {
     form.value.max_login_attempts = 5
     form.value.lockout_duration = 30
     form.value.session_timeout = 1
+    form.value.otp_issuer_name = 'CMDB'
   } else if (activeTab.value === 'branding') {
     form.value.login_subtitle = '企业资产配置管理平台'
     form.value.logo_image = null
@@ -551,6 +556,21 @@ onMounted(() => {
                 <span class="text-slate-600">小时</span>
               </div>
               <p class="text-xs text-slate-500 mt-1">用户登录后，无操作自动登出的时间 (1-168小时)</p>
+            </div>
+
+            <!-- OTP Issuer Name -->
+            <div class="border-t border-slate-100 pt-4 mt-4">
+              <h3 class="text-sm font-medium text-slate-700 mb-4">MFA 设置</h3>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">OTP 验证器名称</label>
+                <input
+                  v-model="form.otp_issuer_name"
+                  type="text"
+                  class="input-field w-64"
+                  placeholder="CMDB"
+                />
+                <p class="text-xs text-slate-500 mt-1">用户扫码绑定 MFA 时，验证器应用中显示的服务名称</p>
+              </div>
             </div>
           </div>
 

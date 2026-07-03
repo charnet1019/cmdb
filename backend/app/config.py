@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     PASSWORD_REQUIRE_SPECIAL: bool = False
     PASSWORD_HISTORY_COUNT: int = 3
 
+    # MFA
+    OTP_ISSUER_NAME: str = "CMDB"
+
     # CORS - parse from env or .env
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 

@@ -1,6 +1,6 @@
 """
 Authentication API
-Login, logout, token management
+Login, logout, token management, MFA
 """
 from datetime import datetime, timedelta
 from typing import Optional
@@ -12,14 +12,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db
-from app.models import User, LoginLog
+from app.models import User, LoginLog, Setting
 from app.schemas import (
     LoginRequest, LoginResponse, TokenResponse, UserSimple, CurrentUserResponse,
-    PasswordChangeRequest, ResponseBase
+    PasswordChangeRequest, ResponseBase,
+    MFARequiredResponse, MFARequiredData, MFAVerifyRequest, MFASetupQRData
 )
-from app.core.security import verify_password, create_access_token, get_password_hash, validate_password_strength
+from app.core.security import (
+    verify_password, create_access_token, get_password_hash, validate_password_strength,
+    generate_totp_secret, verify_totp, generate_totp_qr
+)
 from app.core.redis_client import get_redis, ONLINE_KEY_PREFIX, ONLINE_TTL_SECONDS
-from app.api.deps import get_current_user, get_user_permissions
+from app.api.deps import get_current_user, get_user_permissions, PermissionChecker
 from app.config import settings
 from app.utils.audit import log_operation
 
@@ -27,14 +31,14 @@ from app.utils.audit import log_operation
 router = APIRouter(prefix="/auth", tags=["认证"])
 
 
-@router.post("/login", response_model=LoginResponse)
+@router.post("/login")
 async def login(
     request: Request,
     data: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    User login endpoint
+    User login endpoint — two phase: password check, then MFA if enabled
     """
     # Find user by username or email
     result = await db.execute(
@@ -80,7 +84,19 @@ async def login(
             detail="用户名或密码错误"
         )
 
-    # Update last login
+    # MFA enabled — return requires_mfa instead of token
+    if user.mfa_enabled:
+        await db.commit()
+        setup = not bool(user.mfa_secret)  # No secret = first-time binding
+        return MFARequiredResponse(
+            data=MFARequiredData(
+                requires_mfa=True,
+                user_id=user.id,
+                setup=setup,
+            )
+        )
+
+    # No MFA — complete login
     user.last_login_at = datetime.utcnow()
     user.last_login_ip = request.client.host if request.client else None
 
@@ -311,3 +327,231 @@ async def delete_avatar(
     await db.commit()
 
     return ResponseBase(message="头像已删除")
+
+
+# ============== MFA Endpoints ==============
+
+MFA_SETUP_KEY_PREFIX = "mfa:setup:"
+MFA_SETUP_TTL = 300  # 5 minutes
+
+def _issue_login_response(
+    user: User,
+    expires_delta: timedelta,
+    db: AsyncSession,
+) -> LoginResponse:
+    """Build LoginResponse after successful MFA verification."""
+    access_token = create_access_token(subject=user.id, expires_delta=expires_delta)
+    expires_at = datetime.utcnow() + expires_delta
+    return LoginResponse(
+        data=TokenResponse(
+            access_token=access_token,
+            expires_at=expires_at,
+            user=UserSimple(
+                id=user.id,
+                username=user.username,
+                full_name=user.full_name,
+                email=user.email,
+                avatar_url=user.avatar_url,
+                is_superuser=user.is_superuser,
+                permissions=[],  # filled by caller
+            ),
+        )
+    )
+
+
+@router.post("/mfa/setup-qr")
+async def mfa_setup_qr(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate temporary TOTP secret for MFA binding (no auth required — called during login flow)."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    if not user.mfa_enabled or user.mfa_secret:
+        raise HTTPException(status_code=400, detail="MFA 未启用或已绑定")
+
+    # Generate temporary secret
+    secret = generate_totp_secret()
+
+    # Store in Redis with TTL
+    redis_client = get_redis()
+    await redis_client.setex(f"{MFA_SETUP_KEY_PREFIX}{user_id}", MFA_SETUP_TTL, secret)
+
+    # Generate QR code with configured issuer name
+    # Read otp_issuer_name from DB settings, fall back to config default
+    issuer_result = await db.execute(select(Setting).where(Setting.key == "otp_issuer_name"))
+    issuer_setting = issuer_result.scalar_one_or_none()
+    issuer = issuer_setting.value.get("value") if issuer_setting else settings.OTP_ISSUER_NAME
+    qr_code = generate_totp_qr(secret, user.username, issuer)
+
+    return ResponseBase(data=MFASetupQRData(qr_code=qr_code, mfa_secret=secret).model_dump())
+
+
+@router.post("/mfa/login-verify", response_model=LoginResponse)
+async def login_mfa_verify(
+    request: Request,
+    data: MFAVerifyRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Second phase of login: verify TOTP code and issue token.
+
+    If setup=True, the secret was stored temporarily in Redis during the binding flow.
+    If setup=False, the secret is already persisted in the database.
+    """
+    result = await db.execute(select(User).where(User.id == data.user_id))
+    user = result.scalar_one_or_none()
+
+    if not user or not user.mfa_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="用户未启用 MFA",
+        )
+
+    # Get the secret (from DB or Redis)
+    secret: Optional[str] = None
+    if data.setup:
+        redis_client = get_redis()
+        secret = await redis_client.get(f"{MFA_SETUP_KEY_PREFIX}{user.id}")
+        if not secret:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="MFA 绑定已过期，请重试",
+            )
+    else:
+        secret = user.mfa_secret
+
+    if not secret or not verify_totp(secret, data.code):
+        login_log = LoginLog(
+            user_id=user.id,
+            username=user.username,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            status="failed",
+            failure_reason="MFA 验证码错误",
+        )
+        db.add(login_log)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="MFA 验证码错误",
+        )
+
+    # If setup mode, persist the secret
+    if data.setup:
+        user.mfa_secret = secret
+
+    # Complete login
+    user.last_login_at = datetime.utcnow()
+    user.last_login_ip = request.client.host if request.client else None
+
+    login_log = LoginLog(
+        user_id=user.id,
+        username=user.username,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        status="success",
+    )
+    db.add(login_log)
+
+    await db.commit()
+    await db.refresh(user)
+
+    # Mark user as online in Redis
+    redis_client = get_redis()
+    await redis_client.setex(
+        f"{ONLINE_KEY_PREFIX}{user.id}",
+        ONLINE_TTL_SECONDS,
+        "1",
+    )
+
+    # Create access token
+    expires_delta = timedelta(hours=settings.JWT_ACCESS_TOKEN_EXPIRE_HOURS)
+    access_token = create_access_token(
+        subject=user.id,
+        expires_delta=expires_delta,
+    )
+    expires_at = datetime.utcnow() + expires_delta
+
+    # Get user permissions
+    user_permissions = await get_user_permissions(user, db)
+
+    return LoginResponse(
+        data=TokenResponse(
+            access_token=access_token,
+            expires_at=expires_at,
+            user=UserSimple(
+                id=user.id,
+                username=user.username,
+                full_name=user.full_name,
+                email=user.email,
+                avatar_url=user.avatar_url,
+                is_superuser=user.is_superuser,
+                permissions=user_permissions,
+            ),
+        )
+    )
+
+
+@router.post("/mfa/reset", response_model=ResponseBase)
+async def reset_mfa(
+    request: Request,
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(PermissionChecker("user_mgmt")),
+):
+    """Admin: reset MFA binding — clear secret, keep mfa_enabled=True."""
+    ip = request.client.host if request.client else None
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    if not user.mfa_enabled:
+        return ResponseBase(message="该用户未启用 MFA")
+
+    user.mfa_secret = None
+    await db.commit()
+
+    await log_operation(
+        db, current_user.id, "update", "user", user.id,
+        details={"name": "reset_mfa", "action": "mfa_reset"},
+        ip_address=ip,
+    )
+
+    return ResponseBase(message="MFA 已重置，用户下次登录需重新绑定")
+
+
+@router.post("/mfa/disable", response_model=ResponseBase)
+async def disable_mfa(
+    request: Request,
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(PermissionChecker("user_mgmt")),
+):
+    """Admin: disable MFA for a user."""
+    ip = request.client.host if request.client else None
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    if not user.mfa_enabled:
+        return ResponseBase(message="该用户未启用 MFA")
+
+    user.mfa_secret = None
+    user.mfa_enabled = False
+    await db.commit()
+
+    await log_operation(
+        db, current_user.id, "update", "user", user.id,
+        details={"name": "disable_mfa", "action": "mfa_disable"},
+        ip_address=ip,
+    )
+
+    return ResponseBase(message="MFA 已禁用")

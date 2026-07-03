@@ -83,6 +83,8 @@ async def list_users(
             "phone": user.phone,
             "is_active": user.is_active,
             "mfa_enabled": user.mfa_enabled,
+            "mfa_bound": bool(user.mfa_secret),
+            "avatar_url": user.avatar_url,
             "avatar_url": user.avatar_url,
             "last_login_at": user.last_login_at,
             "created_at": user.created_at,
@@ -140,7 +142,7 @@ async def create_user(
                 detail="; ".join(errors)
             )
 
-        # Create user
+        # Create user (MFA enabled but no secret — user binds on first login)
         user = User(
             username=data.username,
             email=data.email,
@@ -184,6 +186,8 @@ async def create_user(
                 phone=user.phone,
                 is_active=user.is_active,
                 mfa_enabled=user.mfa_enabled,
+                mfa_bound=bool(user.mfa_secret),
+                avatar_url=user.avatar_url,
                 last_login_at=user.last_login_at,
                 created_at=user.created_at,
                 groups=[{"id": g.id, "name": g.name} for g in groups],
@@ -242,6 +246,8 @@ async def get_user(
             phone=user.phone,
             is_active=user.is_active,
             mfa_enabled=user.mfa_enabled,
+            mfa_bound=bool(user.mfa_secret),
+            avatar_url=user.avatar_url,
             last_login_at=user.last_login_at,
             created_at=user.created_at,
             groups=[{"id": g.id, "name": g.name} for g in groups],
@@ -313,6 +319,9 @@ async def update_user(
     if data.mfa_enabled is not None and data.mfa_enabled != user.mfa_enabled:
         changes["mfa_enabled"] = [user.mfa_enabled, data.mfa_enabled]
         user.mfa_enabled = data.mfa_enabled
+        if not data.mfa_enabled:
+            # Clear secret when disabling MFA
+            user.mfa_secret = None
 
     if data.is_superuser is not None and data.is_superuser != user.is_superuser:
         changes["is_superuser"] = [user.is_superuser, data.is_superuser]
@@ -355,6 +364,8 @@ async def update_user(
             phone=user.phone,
             is_active=user.is_active,
             mfa_enabled=user.mfa_enabled,
+            mfa_bound=bool(user.mfa_secret),
+            avatar_url=user.avatar_url,
             last_login_at=user.last_login_at,
             created_at=user.created_at,
             groups=[{"id": g.id, "name": g.name} for g in groups],

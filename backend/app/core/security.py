@@ -1,11 +1,14 @@
 """
 Security Module
-Password hashing and JWT token management
+Password hashing, JWT token management, and TOTP MFA
 """
 from datetime import datetime, timedelta
+from io import BytesIO
 from typing import Any, Optional
 from jose import jwt, JWTError
 import bcrypt
+import pyotp
+import qrcode
 from app.config import settings
 
 
@@ -87,3 +90,28 @@ def validate_password_strength(password: str) -> tuple[bool, list[str]]:
             errors.append("密码必须包含特殊字符")
 
     return len(errors) == 0, errors
+
+
+def generate_totp_secret() -> str:
+    """Generate a random base32 TOTP secret"""
+    return pyotp.random_base32()
+
+
+def verify_totp(secret: str, code: str) -> bool:
+    """Verify a 6-digit TOTP code against the given secret"""
+    totp = pyotp.TOTP(secret)
+    return totp.verify(code)
+
+
+def generate_totp_qr(secret: str, username: str, issuer: Optional[str] = None) -> str:
+    """Generate QR code data URI for TOTP enrollment"""
+    if issuer is None:
+        issuer = settings.OTP_ISSUER_NAME
+    totp = pyotp.TOTP(secret)
+    uri = totp.provisioning_uri(name=username, issuer_name=issuer)
+    qr = qrcode.make(uri)
+    buffer = BytesIO()
+    qr.save(buffer, format="PNG")
+    import base64
+    b64 = base64.b64encode(buffer.getvalue()).decode("ascii")
+    return f"data:image/png;base64,{b64}"
