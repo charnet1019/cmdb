@@ -31,6 +31,11 @@ api.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
+      // Don't redirect if already on login page — MFA verification errors
+      // also return 401 and we want to stay on the MFA input form.
+      if (window.location.pathname === '/login') {
+        return Promise.reject(error)
+      }
       localStorage.removeItem('token')
       // Notify auth store to clear its token ref (prevents stale token in router guard)
       window.dispatchEvent(new CustomEvent('auth:token-cleared'))
