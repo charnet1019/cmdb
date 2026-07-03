@@ -2,10 +2,11 @@
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
-import { UserAddOutlined, SearchOutlined, SafetyCertificateOutlined, EditOutlined, LockOutlined, DeleteOutlined, CloseOutlined, EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons-vue'
+import { UserAddOutlined, SearchOutlined, SafetyCertificateOutlined, EditOutlined, LockOutlined, DeleteOutlined, CloseOutlined, EyeOutlined, EyeInvisibleOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { createUser, updateUser, deleteUser, resetUserPassword, getUserAuthorizations, getGroups } from '@/api/users'
 import { useUsersStore } from '@/stores/users'
 import { formatDateTime } from '@/utils/datetime'
+import { resetUserMFA } from '@/api/auth'
 import type { User, UserAuthorization } from '@/types'
 
 const router = useRouter()
@@ -277,7 +278,6 @@ async function handleSubmit() {
   modalLoading.value = true
   try {
     if (editingUser.value) {
-      // Update user
       await updateUser(editingUser.value.id, {
         email: userForm.value.email,
         full_name: userForm.value.full_name,
@@ -288,7 +288,6 @@ async function handleSubmit() {
       })
       message.success('用户更新成功')
     } else {
-      // Create user
       await createUser({
         username: userForm.value.username,
         email: userForm.value.email,
@@ -322,6 +321,25 @@ async function handleDelete(user: User) {
       try {
         await deleteUser(user.id)
         message.success('用户已删除')
+        fetchUsers()
+      } catch (e: any) {
+        message.error(getErrorMessage(e))
+      }
+    },
+  })
+}
+
+// Reset MFA binding
+async function handleResetMFA(user: User) {
+  Modal.confirm({
+    title: '重置 MFA 绑定',
+    content: `确定要重置用户 "${user.username}" 的 MFA 绑定吗？用户下次登录时需重新绑定验证器。`,
+    okText: '重置',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        await resetUserMFA(user.id)
+        message.success('MFA 已重置')
         fetchUsers()
       } catch (e: any) {
         message.error(getErrorMessage(e))
@@ -560,15 +578,16 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
             <th>用户组</th>
             <th>最后登录</th>
             <th>状态</th>
+            <th>MFA</th>
             <th>操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="7" class="text-center py-8 text-slate-500">加载中...</td>
+            <td colspan="8" class="text-center py-8 text-slate-500">加载中...</td>
           </tr>
           <tr v-else-if="users.length === 0">
-            <td colspan="7" class="text-center py-8 text-slate-500">暂无数据</td>
+            <td colspan="8" class="text-center py-8 text-slate-500">暂无数据</td>
           </tr>
           <tr v-for="user in users" :key="user.id">
             <td>
@@ -609,6 +628,15 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
                 {{ user.is_active ? '启用' : '禁用' }}
               </span>
             </td>
+          <td>
+              <span
+                class="badge"
+                :class="user.mfa_enabled ? (user.mfa_bound ? 'badge-success' : 'badge-warning') : 'bg-slate-100 text-slate-500'"
+              >
+                <SafetyOutlined class="text-sm mr-1" />
+                {{ user.mfa_enabled ? (user.mfa_bound ? '已启用' : '待绑定') : '未启用' }}
+              </span>
+            </td>
             <td>
               <div class="flex items-center gap-1">
                 <button @click="openAuthorizationsModal(user)" class="text-xs text-primary hover:underline flex items-center gap-1 mr-2" title="已授权资产">
@@ -623,6 +651,9 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
                 </button>
                 <button v-if="canManageUsers" @click="handleDelete(user)" class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600" title="删除">
                   <DeleteOutlined class="text-lg" />
+                </button>
+                <button v-if="canManageUsers && user.mfa_enabled && user.mfa_bound" @click="handleResetMFA(user)" class="p-1.5 hover:bg-blue-50 rounded text-slate-400 hover:text-primary" title="重置 MFA 绑定">
+                  <ReloadOutlined class="text-lg" />
                 </button>
               </div>
             </td>
