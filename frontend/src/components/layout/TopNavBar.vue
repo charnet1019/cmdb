@@ -2,7 +2,7 @@
 import { useAuthStore } from '@/stores/auth'
 import { ref, onUnmounted, onMounted } from 'vue'
 import { MenuOutlined, SearchOutlined, BellOutlined, DownOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons-vue'
-import { getSettings } from '@/api/settings'
+import { getPublicSettings } from '@/api/settings'
 
 const authStore = useAuthStore()
 
@@ -18,8 +18,8 @@ let hideTimeout: ReturnType<typeof setTimeout> | null = null
 
 async function fetchSiteTitle() {
   try {
-    const response = await getSettings()
-    siteTitle.value = response.data.site_title || ''
+    const data = await getPublicSettings()
+    siteTitle.value = data.site_title || ''
   } catch {
     // Keep empty
   }
