@@ -1,59 +1,68 @@
 """
 Initialize CMDB with default admin user and settings
 """
-import asyncio
-import secrets
-import string
+import logging
 from sqlalchemy import select
+
 from app.database import async_session_maker
 from app.models import User, Group, Setting
 from app.core.security import get_password_hash
 from app.config import settings
 
+logger = logging.getLogger(__name__)
 
-# Default admin password (change in production)
-DEFAULT_ADMIN_PASSWORD = "admin123"
-
-
-def generate_random_password(length: int = 16) -> str:
-    """Generate a secure random password"""
-    chars = string.ascii_letters + string.digits + "!@#$%^&*"
-    return ''.join(secrets.choice(chars) for _ in range(length))
+# Default admin credentials
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_PASSWORD = "Admin123"
 
 
-async def init_db():
-    """Initialize database with default data"""
+async def seed_default_data() -> None:
+    """Seed database with default admin user and settings (idempotent)."""
     # Validate encryption key is set
     if not settings.ENCRYPTION_KEY:
-        print("[ERROR] ENCRYPTION_KEY environment variable not set!")
-        print("        Generate encryption key and set environment variable:")
-        print("        python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"")
+        logger.error(
+            "ENCRYPTION_KEY environment variable not set! "
+            "Generate one: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+        )
         return
 
     async with async_session_maker() as session:
         # Check if admin user exists
-        result = await session.execute(select(User).where(User.username == "admin"))
-        if result.scalar_one_or_none():
-            print("Admin user already exists")
+        result = await session.execute(select(User).where(User.username == DEFAULT_ADMIN_USERNAME))
+        existing_admin = result.scalar_one_or_none()
+
+        if existing_admin:
+            # If admin exists but never logged in, ensure must_change_password is set
+            if existing_admin.last_login_at is None and not existing_admin.must_change_password:
+                existing_admin.must_change_password = True
+                await session.commit()
+                logger.warning(
+                    "Admin account exists but never logged in. "
+                    "must_change_password flag has been set. "
+                    "username: %s, password: %s",
+                    DEFAULT_ADMIN_USERNAME,
+                    DEFAULT_ADMIN_PASSWORD,
+                )
             return
 
         # Create admin group
         admin_group = Group(
             name="管理员",
-            description="系统管理员组，拥有所有权限"
+            description="系统管理员组，拥有所有权限",
         )
         session.add(admin_group)
         await session.flush()
 
         # Create admin user with default password
         admin_user = User(
-            username="admin",
+            username=DEFAULT_ADMIN_USERNAME,
             email="admin@example.com",
             full_name="系统管理员",
             password_hash=get_password_hash(DEFAULT_ADMIN_PASSWORD),
             is_active=True,
             is_superuser=True,
             mfa_enabled=False,
+            must_change_password=True,
         )
         session.add(admin_user)
         await session.flush()
@@ -83,15 +92,11 @@ async def init_db():
             session.add(setting)
 
         await session.commit()
-        print("=" * 60)
-        print("[OK] Initialization complete!")
-        print("=" * 60)
-        print("     Admin account: admin")
-        print(f"     Default password: {DEFAULT_ADMIN_PASSWORD}")
-        print("=" * 60)
-        print("[WARNING] Please change the default password immediately after login!")
-        print("=" * 60)
 
-
-if __name__ == "__main__":
-    asyncio.run(init_db())
+        # Log admin credentials to backend logs
+        logger.warning(
+            "CMDB initialized. Admin account created — "
+            "username: %s, password: %s. First login requires password change.",
+            DEFAULT_ADMIN_USERNAME,
+            DEFAULT_ADMIN_PASSWORD,
+        )

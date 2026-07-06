@@ -6,6 +6,7 @@ import { UserOutlined, LockOutlined, EyeOutlined, EyeInvisibleOutlined, LoadingO
 import { useAuthStore } from '@/stores/auth'
 import { getPublicSettings } from '@/api/settings'
 import { getMFASetupQR } from '@/api/auth'
+import type { MustChangePasswordData } from '@/types'
 
 const router = useRouter()
 const route = useRoute()
@@ -27,6 +28,16 @@ const mfaMode = ref(false)
 const mfaSetupMode = ref(false)  // true = first-time binding flow
 const mfaCode = ref('')
 const mfaLoading = ref(false)
+
+// Force change password state
+const forceChangeMode = ref(false)
+const forceChangeLoading = ref(false)
+const forceChangeForm = ref({
+  new_password: '',
+  confirm_password: '',
+})
+const showNewPassword = ref(false)
+const showConfirmPassword = ref(false)
 
 // MFA setup QR state
 const setupQRCode = ref('')
@@ -79,6 +90,14 @@ async function handleLogin() {
       formState.value.password,
       formState.value.remember
     )
+
+    // Check if must change password
+    if ((response as MustChangePasswordData).must_change_password) {
+      forceChangeMode.value = true
+      forceChangeForm.value = { new_password: '', confirm_password: '' }
+      loading.value = false
+      return
+    }
 
     // Check if MFA is required
     if ((response as any).requires_mfa) {
@@ -152,10 +171,38 @@ async function handleMFAVerify() {
 function backToLogin() {
   mfaMode.value = false
   mfaSetupMode.value = false
+  forceChangeMode.value = false
   mfaCode.value = ''
   setupQRCode.value = ''
   setupSecret.value = ''
+  forceChangeForm.value = { new_password: '', confirm_password: '' }
   authStore.clearPendingMFA()
+  authStore.clearPendingForceChange()
+}
+
+// Handle force password change
+async function handleForceChangePassword() {
+  if (!forceChangeForm.value.new_password || !forceChangeForm.value.confirm_password) {
+    message.error('请输入新密码并确认')
+    return
+  }
+
+  forceChangeLoading.value = true
+  try {
+    await authStore.forceChangePassword(
+      forceChangeForm.value.new_password,
+      forceChangeForm.value.confirm_password,
+    )
+    message.success('密码修改成功')
+
+    // Redirect to intended page or dashboard
+    const redirect = route.query.redirect as string || '/dashboard'
+    router.push(redirect)
+  } catch (error: any) {
+    message.error(error.response?.data?.detail || '密码修改失败')
+  } finally {
+    forceChangeLoading.value = false
+  }
 }
 
 onMounted(() => {
@@ -228,14 +275,14 @@ onMounted(() => {
       <div class="w-full max-w-md">
         <!-- Welcome text -->
         <div class="mb-8">
-          <template v-if="!mfaMode">
+          <template v-if="!mfaMode && !forceChangeMode">
             <h2 class="text-2xl font-bold text-slate-900 mb-2">欢迎回来</h2>
             <p class="text-slate-500">请登录您的账户继续访问</p>
           </template>
         </div>
 
         <!-- Login form -->
-        <form v-if="!mfaMode" @submit.prevent="handleLogin" autocomplete="on" class="space-y-6">
+        <form v-if="!mfaMode && !forceChangeMode" @submit.prevent="handleLogin" autocomplete="on" class="space-y-6">
           <!-- Username -->
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-2">用户名</label>
@@ -297,7 +344,7 @@ onMounted(() => {
         </form>
 
         <!-- MFA Verification form -->
-        <form v-else @submit.prevent="handleMFAVerify" class="space-y-6">
+        <form v-else-if="mfaMode" @submit.prevent="handleMFAVerify" class="space-y-6">
           <!-- Setup mode (first-time binding) -->
           <template v-if="mfaSetupMode">
             <div class="text-center mb-6">
@@ -373,6 +420,80 @@ onMounted(() => {
           >
             <LoadingOutlined v-if="mfaLoading" spin class="text-xl" />
             <span v-else>{{ mfaSetupMode ? '绑定并登录' : '验证' }}</span>
+          </button>
+
+          <!-- Back button -->
+          <button
+            type="button"
+            @click="backToLogin"
+            class="w-full text-sm text-slate-500 hover:text-slate-700 transition-colors"
+          >
+            返回登录
+          </button>
+        </form>
+
+        <!-- Force Change Password form -->
+        <form v-else-if="forceChangeMode" @submit.prevent="handleForceChangePassword" class="space-y-6">
+          <div class="text-center mb-6">
+            <div class="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <LockOutlined class="text-amber-600 text-3xl" />
+            </div>
+            <h3 class="text-lg font-semibold text-slate-900">首次登录，请修改密码</h3>
+            <p class="text-sm text-slate-500 mt-1">为了您的账户安全，请设置新密码</p>
+          </div>
+
+          <!-- New Password -->
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-2">新密码</label>
+            <div class="relative">
+              <LockOutlined class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                v-model="forceChangeForm.new_password"
+                :type="showNewPassword ? 'text' : 'password'"
+                placeholder="请输入新密码"
+                autocomplete="new-password"
+                class="input-field pl-12 pr-12"
+              />
+              <button
+                type="button"
+                @click="showNewPassword = !showNewPassword"
+                class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <component :is="showNewPassword ? EyeInvisibleOutlined : EyeOutlined" />
+              </button>
+            </div>
+          </div>
+
+          <!-- Confirm Password -->
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-2">确认密码</label>
+            <div class="relative">
+              <LockOutlined class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                v-model="forceChangeForm.confirm_password"
+                :type="showConfirmPassword ? 'text' : 'password'"
+                placeholder="请再次输入新密码"
+                autocomplete="new-password"
+                class="input-field pl-12 pr-12"
+              />
+              <button
+                type="button"
+                @click="showConfirmPassword = !showConfirmPassword"
+                class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <component :is="showConfirmPassword ? EyeInvisibleOutlined : EyeOutlined" />
+              </button>
+            </div>
+          </div>
+
+          <!-- Submit button -->
+          <button
+            type="submit"
+            :disabled="forceChangeLoading"
+            class="btn-primary w-full py-3.5 flex items-center justify-center gap-2"
+          >
+            <LoadingOutlined v-if="forceChangeLoading" spin class="text-xl" />
+            <span v-else>修改密码</span>
           </button>
 
           <!-- Back button -->

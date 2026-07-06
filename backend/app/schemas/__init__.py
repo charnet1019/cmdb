@@ -77,6 +77,7 @@ class UserSimple(BaseModel):
     avatar_url: Optional[str] = None
     is_superuser: bool = False
     permissions: List[str] = []
+    must_change_password: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -397,6 +398,13 @@ class PasswordChangeRequest(BaseModel):
     confirm_password: str
 
 
+class ForcePasswordChangeRequest(BaseModel):
+    """Force password change (first login) — must_change_password flag gates access"""
+    user_id: int
+    new_password: str
+    confirm_password: str
+
+
 # ============== MFA Schemas ==============
 class MFARequiredData(BaseModel):
     """MFA required data"""
@@ -413,6 +421,15 @@ class MFAVerifyRequest(BaseModel):
     user_id: int
     code: str = Field(..., min_length=6, max_length=6)
     setup: bool = False  # True = first-time binding
+
+class MustChangePasswordData(BaseModel):
+    """Must change password data"""
+    must_change_password: bool = True
+    user_id: int
+
+class MustChangePasswordResponse(ResponseBase):
+    """Response when user must change password on first login"""
+    data: MustChangePasswordData
 
 class MFASetupQRData(BaseModel):
     """MFA setup QR data"""

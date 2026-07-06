@@ -63,6 +63,7 @@ class User(Base):
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     mfa_secret: Mapped[Optional[str]] = mapped_column(String(100))
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
     avatar_url: Mapped[Optional[str]] = mapped_column(String(500))
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     last_login_ip: Mapped[Optional[str]] = mapped_column(String(45))

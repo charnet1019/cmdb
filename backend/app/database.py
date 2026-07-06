@@ -38,10 +38,13 @@ async def get_db() -> AsyncSession:
 
 
 async def init_db():
-    """Initialize database connection"""
+    """Initialize database connection and seed default data"""
     async with engine.begin() as conn:
         # Create tables (use Alembic for migrations in production)
         await conn.run_sync(Base.metadata.create_all)
+    # Seed default admin user and settings (idempotent)
+    from app.init_db import seed_default_data
+    await seed_default_data()
 
 
 async def close_db():

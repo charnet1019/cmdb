@@ -169,6 +169,7 @@ export interface UserSimple {
   is_superuser: boolean
   permissions: string[]
   mfa_enabled?: boolean
+  must_change_password?: boolean
 }
 
 // MFA types
@@ -176,6 +177,12 @@ export interface MFARequiredData {
   requires_mfa: true
   user_id: number
   setup: boolean  // true = first-time binding (no secret yet)
+}
+
+// Force password change types
+export interface MustChangePasswordData {
+  must_change_password: true
+  user_id: number
 }
 
 export interface MFASetupQRData {

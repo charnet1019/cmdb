@@ -15,8 +15,9 @@ from app.database import get_db
 from app.models import User, LoginLog, Setting
 from app.schemas import (
     LoginRequest, LoginResponse, TokenResponse, UserSimple, CurrentUserResponse,
-    PasswordChangeRequest, ResponseBase,
-    MFARequiredResponse, MFARequiredData, MFAVerifyRequest, MFASetupQRData
+    PasswordChangeRequest, ForcePasswordChangeRequest, ResponseBase,
+    MFARequiredResponse, MFARequiredData, MFAVerifyRequest, MFASetupQRData,
+    MustChangePasswordResponse, MustChangePasswordData,
 )
 from app.core.security import (
     verify_password, create_access_token, get_password_hash, validate_password_strength,
@@ -82,6 +83,16 @@ async def login(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="用户名或密码错误"
+        )
+
+    # Must change password — block normal login
+    if user.must_change_password:
+        await db.commit()
+        return MustChangePasswordResponse(
+            data=MustChangePasswordData(
+                must_change_password=True,
+                user_id=user.id,
+            )
         )
 
     # MFA enabled — return requires_mfa instead of token
@@ -237,6 +248,81 @@ async def change_password(
     await db.commit()
 
     return ResponseBase(message="密码修改成功")
+
+
+@router.post("/force-change-password", response_model=LoginResponse)
+async def force_change_password(
+    request: Request,
+    data: "ForcePasswordChangeRequest",
+    db: AsyncSession = Depends(get_db),
+):
+    """Force password change for users with must_change_password flag.
+
+    No current password required — the must_change_password flag gates access.
+    After changing, returns a new access token to complete the login.
+    """
+    result = await db.execute(select(User).where(User.id == data.user_id))
+    user = result.scalar_one_or_none()
+
+    if not user or not user.must_change_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权执行此操作",
+        )
+
+    if data.new_password != data.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="两次输入的密码不一致",
+        )
+
+    # Validate password strength
+    is_valid, errors = validate_password_strength(data.new_password)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="; ".join(errors),
+        )
+
+    # Update password and clear flag
+    user.password_hash = get_password_hash(data.new_password)
+    user.must_change_password = False
+
+    # Log
+    from app.models import PasswordChangeLog
+    password_log = PasswordChangeLog(
+        user_id=user.id,
+        change_type="user_password",
+        changed_by=user.id,
+        ip_address=request.client.host if request.client else None,
+    )
+    db.add(password_log)
+
+    await db.commit()
+    await db.refresh(user)
+
+    # Issue token — complete the login
+    expires_delta = timedelta(hours=settings.JWT_ACCESS_TOKEN_EXPIRE_HOURS)
+    access_token = create_access_token(subject=user.id, expires_delta=expires_delta)
+    expires_at = datetime.utcnow() + expires_delta
+
+    user_permissions = await get_user_permissions(user, db)
+
+    return LoginResponse(
+        data=TokenResponse(
+            access_token=access_token,
+            expires_at=expires_at,
+            user=UserSimple(
+                id=user.id,
+                username=user.username,
+                full_name=user.full_name,
+                email=user.email,
+                avatar_url=user.avatar_url,
+                is_superuser=user.is_superuser,
+                permissions=user_permissions,
+            ),
+        )
+    )
 
 
 @router.get("/me", response_model=CurrentUserResponse)

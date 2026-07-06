@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { UserSimple, MFARequiredData } from '@/types'
-import { login as loginApi, logout as logoutApi, getCurrentUser, heartbeat as heartbeatApi, loginMFAVerify } from '@/api/auth'
+import type { UserSimple, MFARequiredData, MustChangePasswordData } from '@/types'
+import { login as loginApi, logout as logoutApi, getCurrentUser, heartbeat as heartbeatApi, loginMFAVerify, forceChangePassword as forceChangePasswordApi } from '@/api/auth'
 
 const HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000  // 2 minutes
 
@@ -12,6 +12,7 @@ export const useAuthStore = defineStore('auth', () => {
   const permissions = ref<string[]>([])
   const pendingMFAUserId = ref<number | null>(null)
   const pendingMFASetup = ref(false)  // true = first-time binding flow
+  const pendingForceChangeUserId = ref<number | null>(null)
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 
   function startHeartbeat() {
@@ -40,6 +41,7 @@ export const useAuthStore = defineStore('auth', () => {
     permissions.value = []
     pendingMFAUserId.value = null
     pendingMFASetup.value = false
+    pendingForceChangeUserId.value = null
   }
 
   // Remove any existing listener first (prevents accumulation during HMR)
@@ -54,6 +56,13 @@ export const useAuthStore = defineStore('auth', () => {
   // Actions
   async function login(username: string, password: string, remember: boolean = false) {
     const response = await loginApi({ username, password, remember })
+
+    // Check if must change password
+    if ((response as MustChangePasswordData).must_change_password) {
+      const mcpResponse = response as MustChangePasswordData
+      pendingForceChangeUserId.value = mcpResponse.user_id
+      return response
+    }
 
     // Check if MFA is required
     if ((response as MFARequiredData).requires_mfa) {
@@ -94,6 +103,30 @@ export const useAuthStore = defineStore('auth', () => {
     pendingMFASetup.value = false
   }
 
+  async function forceChangePassword(newPassword: string, confirmPassword: string) {
+    const userId = pendingForceChangeUserId.value
+    if (!userId) {
+      throw new Error('No pending force change password')
+    }
+
+    const tokenResponse = await forceChangePasswordApi({
+      user_id: userId,
+      new_password: newPassword,
+      confirm_password: confirmPassword,
+    })
+    pendingForceChangeUserId.value = null
+    token.value = tokenResponse.access_token
+    user.value = tokenResponse.user
+    permissions.value = tokenResponse.user.permissions ?? []
+    localStorage.setItem('token', tokenResponse.access_token)
+    startHeartbeat()
+    return tokenResponse
+  }
+
+  function clearPendingForceChange() {
+    pendingForceChangeUserId.value = null
+  }
+
   async function logout() {
     stopHeartbeat()
     try {
@@ -104,6 +137,7 @@ export const useAuthStore = defineStore('auth', () => {
       token.value = null
       user.value = null
       permissions.value = []
+      pendingForceChangeUserId.value = null
       localStorage.removeItem('token')
     }
   }
@@ -139,12 +173,15 @@ export const useAuthStore = defineStore('auth', () => {
     permissions,
     pendingMFAUserId,
     pendingMFASetup,
+    pendingForceChangeUserId,
     isAuthenticated,
     isSuperuser,
     username,
     login,
     verifyMFA,
     clearPendingMFA,
+    forceChangePassword,
+    clearPendingForceChange,
     logout,
     fetchUser,
     hasPermission,

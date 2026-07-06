@@ -1,8 +1,8 @@
 import api from './index'
-import type { LoginRequest, TokenResponse, UserSimple, ApiResponse, MFARequiredData, MFASetupQRData } from '@/types'
+import type { LoginRequest, TokenResponse, UserSimple, ApiResponse, MFARequiredData, MFASetupQRData, MustChangePasswordData } from '@/types'
 
-export async function login(data: LoginRequest): Promise<TokenResponse | MFARequiredData> {
-  const response = await api.post<ApiResponse<TokenResponse | MFARequiredData>>('/auth/login', data)
+export async function login(data: LoginRequest): Promise<TokenResponse | MFARequiredData | MustChangePasswordData> {
+  const response = await api.post<ApiResponse<TokenResponse | MFARequiredData | MustChangePasswordData>>('/auth/login', data)
   return response.data.data
 }
 
@@ -60,4 +60,13 @@ export async function resetUserMFA(userId: number): Promise<void> {
 
 export async function disableUserMFA(userId: number): Promise<void> {
   await api.post(`/auth/mfa/disable?user_id=${userId}`)
+}
+
+export async function forceChangePassword(data: {
+  user_id: number
+  new_password: string
+  confirm_password: string
+}): Promise<TokenResponse> {
+  const response = await api.post<ApiResponse<TokenResponse>>('/auth/force-change-password', data)
+  return response.data.data
 }
