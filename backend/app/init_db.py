@@ -81,7 +81,7 @@ async def seed_default_data() -> None:
             Setting(key="password_require_lowercase", value={"value": True}, description="密码要求小写字母"),
             Setting(key="password_require_digit", value={"value": True}, description="密码要求数字"),
             Setting(key="password_require_special", value={"value": False}, description="密码要求特殊字符"),
-            Setting(key="session_timeout", value={"value": 1}, description="会话超时时间(小时)"),
+            Setting(key="session_timeout", value={"value": 30}, description="会话超时时间(分钟)"),
             Setting(key="max_login_attempts", value={"value": 5}, description="最大登录尝试次数"),
             Setting(key="lockout_duration", value={"value": 30}, description="账户锁定时间(分钟)"),
             Setting(key="login_log_retention", value={"value": 30}, description="登录日志保留天数"),

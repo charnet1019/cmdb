@@ -32,7 +32,7 @@ const form = ref({
   // 登录设置
   max_login_attempts: 5,
   lockout_duration: 30,
-  session_timeout: 1,
+  session_timeout: 30,
   // OTP 设置
   otp_issuer_name: 'CMDB',
   // 品牌设置
@@ -175,7 +175,7 @@ function resetToDefaults() {
     form.value.password_require_special = false
     form.value.max_login_attempts = 5
     form.value.lockout_duration = 30
-    form.value.session_timeout = 1
+    form.value.session_timeout = 30
     form.value.otp_issuer_name = 'CMDB'
   } else if (activeTab.value === 'branding') {
     form.value.login_subtitle = '企业资产配置管理平台'
@@ -550,12 +550,12 @@ onMounted(() => {
                   v-model.number="form.session_timeout"
                   type="number"
                   min="1"
-                  max="168"
+                  max="10080"
                   class="input-field w-32"
                 />
-                <span class="text-slate-600">小时</span>
+                <span class="text-slate-600">分钟</span>
               </div>
-              <p class="text-xs text-slate-500 mt-1">用户登录后，无操作自动登出的时间 (1-168小时)</p>
+              <p class="text-xs text-slate-500 mt-1">用户登录后，无操作自动登出的时间 (1-10080分钟)</p>
             </div>
 
             <!-- OTP Issuer Name -->
@@ -583,7 +583,7 @@ onMounted(() => {
                 <ul class="mt-2 space-y-1 list-disc list-inside text-blue-700">
                   <li>建议将最大登录尝试次数设置为 3-5 次</li>
                   <li>账户锁定时间建议 15-30 分钟，过短则无法有效防止暴力破解</li>
-                  <li>会话超时时间不宜过长，建议 8-24 小时</li>
+                  <li>会话超时时间不宜过长，建议 30-120 分钟</li>
                   <li>强密码策略可有效防止暴力破解攻击</li>
                 </ul>
               </div>

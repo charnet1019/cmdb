@@ -32,6 +32,23 @@ from app.utils.audit import log_operation
 router = APIRouter(prefix="/auth", tags=["认证"])
 
 
+async def _get_setting_value(db: AsyncSession, key: str, default):
+    result = await db.execute(select(Setting).where(Setting.key == key))
+    setting = result.scalar_one_or_none()
+    if not setting or not isinstance(setting.value, dict):
+        return default
+    return setting.value.get("value", default)
+
+
+async def _get_int_setting(db: AsyncSession, key: str, default: int, min_value: int, max_value: int) -> int:
+    value = await _get_setting_value(db, key, default)
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(min_value, min(parsed, max_value))
+
+
 @router.post("/login")
 async def login(
     request: Request,
@@ -127,9 +144,8 @@ async def login(
     )
 
     # Create access token
-    expires_delta = timedelta(hours=settings.JWT_ACCESS_TOKEN_EXPIRE_HOURS)
-    if data.remember:
-        expires_delta = timedelta(days=7)
+    session_minutes = await _get_int_setting(db, "session_timeout", 30, 1, 10080)
+    expires_delta = timedelta(days=7) if data.remember else timedelta(minutes=session_minutes)
 
     access_token = create_access_token(
         subject=user.id,
@@ -302,7 +318,8 @@ async def force_change_password(
     await db.refresh(user)
 
     # Issue token — complete the login
-    expires_delta = timedelta(hours=settings.JWT_ACCESS_TOKEN_EXPIRE_HOURS)
+    session_minutes = await _get_int_setting(db, "session_timeout", 30, 1, 10080)
+    expires_delta = timedelta(minutes=session_minutes)
     access_token = create_access_token(subject=user.id, expires_delta=expires_delta)
     expires_at = datetime.utcnow() + expires_delta
 
@@ -555,7 +572,8 @@ async def login_mfa_verify(
     )
 
     # Create access token
-    expires_delta = timedelta(hours=settings.JWT_ACCESS_TOKEN_EXPIRE_HOURS)
+    session_minutes = await _get_int_setting(db, "session_timeout", 30, 1, 10080)
+    expires_delta = timedelta(minutes=session_minutes)
     access_token = create_access_token(
         subject=user.id,
         expires_delta=expires_delta,
