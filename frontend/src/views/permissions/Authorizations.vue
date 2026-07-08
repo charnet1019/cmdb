@@ -228,25 +228,6 @@ function removeTargetId(id: string) {
   if (idx !== -1) form.value.target_ids.splice(idx, 1)
 }
 
-// Get target name for edit mode display
-function getTargetName(): string {
-  if (form.value.target_type === 'asset') {
-    return form.value.target_ids
-      .map(id => {
-        const asset = assets.value.find((a: { id: string; name: string }) => a.id === id)
-        return asset ? asset.name : id
-      })
-      .join(', ')
-  }
-  return form.value.target_ids
-    .map(id => {
-      if (id === '__all__') return 'Default'
-      const org = organizations.value.find((o: { id: number | null; name_path: string }) => String(o.id ?? '__all__') === id)
-      return org ? org.name_path : id
-    })
-    .join(', ')
-}
-
 // Fetch authorizations
 async function fetchAuthorizations() {
   loading.value = true
@@ -641,7 +622,7 @@ watch([page, limit, entityTypeFilter, isActiveFilter, keywordSearch], () => {
               <a-select
                 v-else
                 v-model:value="form.entity_id"
-                :placeholder="form.entity_type === 'user' ? '请选择用户' : '请选择用户组'"
+                placeholder="请选择用户组"
                 :options="groups.map(g => ({ label: g.name, value: g.id }))"
                 show-search
                 :allow-clear="true"

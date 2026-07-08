@@ -648,9 +648,9 @@ def _create_credentials(asset, record: Dict[str, Any], cred_type: str, db):
         ))
 
 
-def _replace_credentials(asset_id, record: Dict[str, Any], cred_type: str, db):
+async def _replace_credentials(asset_id, record: Dict[str, Any], cred_type: str, db):
     """Delete existing credentials and create new ones from record."""
-    db.execute(delete(Credential).where(Credential.asset_id == asset_id))
+    await db.execute(delete(Credential).where(Credential.asset_id == asset_id))
     if record.get("credentials"):
         for cred in record["credentials"]:
             db.add(Credential(
@@ -661,11 +661,11 @@ def _replace_credentials(asset_id, record: Dict[str, Any], cred_type: str, db):
             ))
 
 
-def _handle_database_relations(asset, record: Dict[str, Any], db):
+async def _handle_database_relations(asset, record: Dict[str, Any], db):
     """Handle runs_on hosts and storage_locations for database assets."""
     if record.get("runs_on"):
         for host_name in record["runs_on"]:
-            host_result = db.execute(
+            host_result = await db.execute(
                 select(Asset).where(
                     Asset.category == "host",
                     Asset.name == host_name,
@@ -685,13 +685,13 @@ def _handle_database_relations(asset, record: Dict[str, Any], db):
             ))
 
 
-def _replace_database_relations(asset_id, record: Dict[str, Any], db):
+async def _replace_database_relations(asset_id, record: Dict[str, Any], db):
     """Replace runs_on hosts and storage_locations for database assets."""
     if "runs_on" in record:
-        db.execute(delete(AssetHostRelation).where(AssetHostRelation.asset_id == asset_id))
+        await db.execute(delete(AssetHostRelation).where(AssetHostRelation.asset_id == asset_id))
         if record.get("runs_on"):
             for host_name in record["runs_on"]:
-                host_result = db.execute(
+                host_result = await db.execute(
                     select(Asset).where(
                         Asset.category == "host",
                         Asset.name == host_name,
@@ -702,7 +702,7 @@ def _replace_database_relations(asset_id, record: Dict[str, Any], db):
                     db.add(AssetHostRelation(asset_id=asset_id, host_id=host.id))
 
     if "storage_locations" in record:
-        db.execute(delete(StorageLocation).where(StorageLocation.asset_id == asset_id))
+        await db.execute(delete(StorageLocation).where(StorageLocation.asset_id == asset_id))
         if record.get("storage_locations"):
             for loc in record["storage_locations"]:
                 db.add(StorageLocation(
@@ -778,7 +778,7 @@ async def batch_create_assets(
             _create_credentials(asset, record, cred_type, db)
 
             if category == "database":
-                _handle_database_relations(asset, record, db)
+                await _handle_database_relations(asset, record, db)
 
             success_count += 1
         except Exception as e:
@@ -836,10 +836,10 @@ async def batch_update_assets(
                 asset.status = status
 
             if "credentials" in record:
-                _replace_credentials(asset.id, record, cred_type, db)
+                await _replace_credentials(asset.id, record, cred_type, db)
 
             if category == "database":
-                _replace_database_relations(asset.id, record, db)
+                await _replace_database_relations(asset.id, record, db)
 
             success_count += 1
         except Exception as e:

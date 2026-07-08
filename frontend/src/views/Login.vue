@@ -41,7 +41,6 @@ const showConfirmPassword = ref(false)
 
 // MFA setup QR state
 const setupQRCode = ref('')
-const setupSecret = ref('')
 const setupQRLoading = ref(false)
 
 // Branding settings
@@ -129,14 +128,13 @@ async function handleLogin() {
 
 // Fetch QR code for MFA setup
 async function fetchSetupQR() {
-  const userId = authStore.pendingMFAUserId
-  if (!userId) return
+  const challengeToken = authStore.pendingMFAChallengeToken
+  if (!challengeToken) return
 
   setupQRLoading.value = true
   try {
-    const data = await getMFASetupQR(userId)
+    const data = await getMFASetupQR(challengeToken)
     setupQRCode.value = data.qr_code
-    setupSecret.value = data.mfa_secret
   } catch (error: any) {
     message.error(error.response?.data?.detail || '获取二维码失败')
   } finally {
@@ -174,7 +172,6 @@ function backToLogin() {
   forceChangeMode.value = false
   mfaCode.value = ''
   setupQRCode.value = ''
-  setupSecret.value = ''
   forceChangeForm.value = { new_password: '', confirm_password: '' }
   authStore.clearPendingMFA()
   authStore.clearPendingForceChange()
@@ -189,11 +186,24 @@ async function handleForceChangePassword() {
 
   forceChangeLoading.value = true
   try {
-    await authStore.forceChangePassword(
+    const response = await authStore.forceChangePassword(
       forceChangeForm.value.new_password,
       forceChangeForm.value.confirm_password,
     )
     message.success('密码修改成功')
+
+    if ((response as any).requires_mfa) {
+      forceChangeMode.value = false
+      mfaMode.value = true
+      mfaCode.value = ''
+      if ((response as any).setup) {
+        mfaSetupMode.value = true
+        fetchSetupQR()
+      } else {
+        mfaSetupMode.value = false
+      }
+      return
+    }
 
     // Redirect to intended page or dashboard
     const redirect = route.query.redirect as string || '/dashboard'
@@ -363,12 +373,6 @@ onMounted(() => {
               <div class="p-4 bg-white border border-slate-200 rounded-xl inline-block">
                 <img :src="setupQRCode" alt="MFA QR Code" class="w-48 h-48" />
               </div>
-              <div class="mt-4 w-full text-left">
-                <p class="text-xs font-medium text-slate-700 mb-1">Secret（如无法扫码可手动输入）：</p>
-                <p class="text-xs font-mono bg-slate-50 px-3 py-2 rounded text-slate-600 select-all break-all">
-                  {{ setupSecret }}
-                </p>
-              </div>
             </div>
 
             <!-- MFA Code Input -->
@@ -510,7 +514,7 @@ onMounted(() => {
       <!-- Footer -->
       <div class="absolute bottom-0 left-0 right-0 p-6 text-center text-sm text-slate-400 space-y-1">
         <p v-if="branding.copyright_text || branding.beian_number">
-          <span v-if="branding.copyright_text" v-html="branding.copyright_text" />
+          <span v-if="branding.copyright_text">{{ branding.copyright_text }}</span>
           <span v-if="branding.copyright_text && branding.beian_number" class="mx-2">·</span>
           <a v-if="branding.beian_number && branding.beian_url" :href="branding.beian_url" target="_blank" rel="noopener noreferrer" class="hover:text-primary">
             {{ branding.beian_number }}

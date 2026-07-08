@@ -368,7 +368,7 @@ class LoginRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     """Token response schema"""
-    access_token: str
+    access_token: Optional[str] = None
     token_type: str = "bearer"
     expires_at: datetime
     user: UserSimple
@@ -399,8 +399,8 @@ class PasswordChangeRequest(BaseModel):
 
 
 class ForcePasswordChangeRequest(BaseModel):
-    """Force password change (first login) — must_change_password flag gates access"""
-    user_id: int
+    """Force password change after a password-verified login challenge"""
+    challenge_token: str
     new_password: str
     confirm_password: str
 
@@ -409,7 +409,7 @@ class ForcePasswordChangeRequest(BaseModel):
 class MFARequiredData(BaseModel):
     """MFA required data"""
     requires_mfa: bool = True
-    user_id: int
+    challenge_token: str
     setup: bool = False  # True = needs binding (no secret yet)
 
 class MFARequiredResponse(ResponseBase):
@@ -418,14 +418,14 @@ class MFARequiredResponse(ResponseBase):
 
 class MFAVerifyRequest(BaseModel):
     """TOTP verification request for login"""
-    user_id: int
+    challenge_token: str
     code: str = Field(..., min_length=6, max_length=6)
     setup: bool = False  # True = first-time binding
 
 class MustChangePasswordData(BaseModel):
     """Must change password data"""
     must_change_password: bool = True
-    user_id: int
+    challenge_token: str
 
 class MustChangePasswordResponse(ResponseBase):
     """Response when user must change password on first login"""
@@ -434,7 +434,7 @@ class MustChangePasswordResponse(ResponseBase):
 class MFASetupQRData(BaseModel):
     """MFA setup QR data"""
     qr_code: str
-    mfa_secret: str
+    mfa_secret: Optional[str] = None
 
 
 # ============== Log Schemas ==============

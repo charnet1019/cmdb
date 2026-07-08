@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
 import { ref, watch, computed } from 'vue'
+import type { ComponentPublicInstance, VNodeRef } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import {
   AppstoreOutlined,
@@ -36,12 +37,16 @@ let hoverHideTimer: ReturnType<typeof setTimeout> | null = null
 const parentItemRefs = ref<Record<string, HTMLElement>>({})
 const singleItemRefs = ref<Record<string, HTMLElement>>({})
 
-function setParentItemRef(id: string) {
-  return (el: HTMLElement | null) => { if (el) parentItemRefs.value[id] = el }
+function setParentItemRef(id: string): VNodeRef {
+  return (el: Element | ComponentPublicInstance | null) => {
+    if (el instanceof HTMLElement) parentItemRefs.value[id] = el
+  }
 }
 
-function setSingleItemRef(id: string) {
-  return (el: HTMLElement | null) => { if (el) singleItemRefs.value[id] = el }
+function setSingleItemRef(id: string): VNodeRef {
+  return (el: Element | ComponentPublicInstance | null) => {
+    if (el instanceof HTMLElement) singleItemRefs.value[id] = el
+  }
 }
 
 function onSingleEnter(item: any) {

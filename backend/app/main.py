@@ -5,14 +5,16 @@ Main entry point
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import settings
 from app.database import init_db, close_db, async_session_maker
 from app.api import api_router
+from app.api.deps import AUTH_COOKIE_NAME
 from app.services.log_cleanup import cleanup_expired_logs
 
 logger = logging.getLogger(__name__)
@@ -82,11 +84,33 @@ CMDB - Configuration Management Database API
 - Web应用 (web): 网站系统
 - GPT服务 (gpt): AI服务平台
         """,
-        openapi_url="/api/v1/openapi.json",
-        docs_url="/docs",
-        redoc_url="/redoc",
+        openapi_url="/api/v1/openapi.json" if settings.DEBUG else None,
+        docs_url="/docs" if settings.DEBUG else None,
+        redoc_url="/redoc" if settings.DEBUG else None,
         lifespan=lifespan,
     )
+
+
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):
+        unsafe_method = request.method in {"POST", "PUT", "PATCH", "DELETE"}
+        if (
+            unsafe_method
+            and request.url.path.startswith("/api/")
+            and request.cookies.get(AUTH_COOKIE_NAME)
+            and request.headers.get("x-cmdb-client") != "web"
+        ):
+            response = JSONResponse(
+                status_code=403,
+                content={"detail": "缺少 CSRF 防护请求头"},
+            )
+        else:
+            response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        return response
 
     # CORS middleware
     app.add_middleware(

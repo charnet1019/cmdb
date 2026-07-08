@@ -71,3 +71,5 @@ backend/dist/
 # Backups
 frontend/src/views/assets/backup/
 
+# Local agent/tool state
+.claude/

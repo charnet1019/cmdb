@@ -4,10 +4,10 @@ Dependency injection for FastAPI routes
 """
 from datetime import datetime
 from typing import Optional, List, Set, Dict
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text, func, or_, cast, String
+from sqlalchemy import select, func, or_, cast, String
 
 from app.database import get_db
 from app.core.security import decode_access_token
@@ -15,11 +15,15 @@ from app.models import User, Authorization, Group, UserGroup, Organization, Asse
 
 
 # HTTP Bearer security scheme
-security = HTTPBearer()
+AUTH_COOKIE_NAME = "cmdb_access_token"
+
+# Keep Bearer optional so browser clients can authenticate with HttpOnly cookies.
+security = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """
@@ -31,7 +35,10 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    token = credentials.credentials
+    token = credentials.credentials if credentials else request.cookies.get(AUTH_COOKIE_NAME)
+    if not token:
+        raise credentials_exception
+
     payload = decode_access_token(token)
 
     if payload is None:
@@ -54,6 +61,12 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="用户已被禁用"
+        )
+
+    if user.must_change_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="请先修改密码"
         )
 
     return user
@@ -121,6 +134,14 @@ def _permission_variants(need: str) -> Set[str]:
         result.update(parents)
         current = parents
     return result
+
+
+def _permissions_contain_any(permissions: Set[str]):
+    return or_(*[Authorization.permissions.contains([permission]) for permission in permissions])
+
+
+def _target_ids_contain_any(target_ids: List[str]):
+    return or_(*[Authorization.target_ids.contains([target_id]) for target_id in target_ids])
 
 
 async def get_user_permissions(
@@ -243,22 +264,18 @@ async def check_resource_permission(
 
     now = datetime.utcnow()
     satisfying_perms = _permission_variants(permission)
-    perm_check = or_(*[text(f"permissions @> '\"{p}\"'::jsonb") for p in satisfying_perms])
+    perm_check = _permissions_contain_any(satisfying_perms)
+    group_ids_subquery = select(UserGroup.group_id).where(UserGroup.user_id == user.id)
 
     # Check direct authorization on the resource
     result = await db.execute(
         select(Authorization)
         .where(or_(
-            text(f"(entity_type = 'user' AND entity_id = {user.id})"),
-            text(f"(entity_type = 'group' AND entity_id IN (SELECT group_id FROM user_groups WHERE user_id = {user.id}))"),
+            (Authorization.entity_type == "user") & (Authorization.entity_id == user.id),
+            (Authorization.entity_type == "group") & (Authorization.entity_id.in_(group_ids_subquery)),
         ))
         .where(Authorization.target_type == target_type)
-        .where(
-            or_(
-                text(f"target_ids @> '\"{resource_id}\"'::jsonb"),
-                text(f"target_ids @> '\"__all__\"'::jsonb"),
-            )
-        )
+        .where(_target_ids_contain_any([str(resource_id), "__all__"]))
         .where(Authorization.is_active == True)
         .where(
             (Authorization.valid_from == None) | (Authorization.valid_from <= now)
@@ -278,16 +295,11 @@ async def check_resource_permission(
         result = await db.execute(
             select(Authorization)
             .where(or_(
-                text(f"(entity_type = 'user' AND entity_id = {user.id})"),
-                text(f"(entity_type = 'group' AND entity_id IN (SELECT group_id FROM user_groups WHERE user_id = {user.id}))"),
+                (Authorization.entity_type == "user") & (Authorization.entity_id == user.id),
+                (Authorization.entity_type == "group") & (Authorization.entity_id.in_(group_ids_subquery)),
             ))
             .where(Authorization.target_type == "organization")
-            .where(
-                or_(
-                    text(f"target_ids @> '\"{organization_id}\"'::jsonb"),
-                    text(f"target_ids @> '\"__all__\"'::jsonb"),
-                )
-            )
+            .where(_target_ids_contain_any([str(organization_id), "__all__"]))
             .where(Authorization.is_active == True)
             .where(
                 (Authorization.valid_from == None) | (Authorization.valid_from <= now)
@@ -363,7 +375,7 @@ async def get_authorized_asset_ids(
                 (Authorization.valid_until == None) | (Authorization.valid_until >= now)
             )
             .where(
-                or_(*[text(f"permissions @> '\"{p}\"'::jsonb") for p in satisfying_perms])
+                _permissions_contain_any(satisfying_perms)
             )
         )
         for row in result.scalars().all():
@@ -391,7 +403,7 @@ async def get_authorized_asset_ids(
                 (Authorization.valid_until == None) | (Authorization.valid_until >= now)
             )
             .where(
-                or_(*[text(f"permissions @> '\"{p}\"'::jsonb") for p in satisfying_perms])
+                _permissions_contain_any(satisfying_perms)
             )
         )
         for row in result.scalars().all():

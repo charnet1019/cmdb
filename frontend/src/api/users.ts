@@ -1,5 +1,5 @@
 import { getPaginated, api } from './index'
-import type { User, Group, UserAuthorization, UserAuthorizationsResponse, GroupAuthorization, GroupMember } from '@/types'
+import type { User, Group, UserAuthorizationsResponse, GroupAuthorization, GroupMember } from '@/types'
 
 // User APIs
 export async function getUsers(params: {

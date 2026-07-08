@@ -93,33 +93,30 @@ const router = createRouter({
 
 // Navigation guard
 router.beforeEach(async (to, _from, next) => {
-  const token = localStorage.getItem('token')  // Read from source of truth
   const requiresAuth = to.meta.requiresAuth !== false
+  const { useAuthStore } = await import('@/stores/auth')
+  const authStore = useAuthStore()
 
-  if (requiresAuth && !token) {
-    next({ name: 'Login', query: { redirect: to.fullPath } })
-  } else if (to.name === 'Login' && token) {
-    next({ name: 'Dashboard' })
-  } else if (requiresAuth && token) {
-    // Restore user info on first load after refresh
-    const { useAuthStore } = await import('@/stores/auth')
-    const authStore = useAuthStore()
-    if (!authStore.user) {
-      try {
-        const result = await authStore.fetchUser()
-        if (!result) {
-          // Token was cleared by interceptor, redirect to login
-          localStorage.removeItem('token')
-          next({ name: 'Login', query: { redirect: to.fullPath } })
-          return
-        }
-      } catch {
-        next({ name: 'Login', query: { redirect: to.fullPath } })
-        return
-      }
+  if (requiresAuth && !authStore.user) {
+    try {
+      await authStore.fetchUser()
+    } catch {
+      next({ name: 'Login', query: { redirect: to.fullPath } })
+      return
     }
+  }
 
-    // Check route-level permissions
+  if (to.name === 'Login') {
+    if (authStore.user) {
+      next({ name: 'Dashboard' })
+      return
+    }
+    document.title = to.meta.title ? `${to.meta.title} - CMDB` : 'CMDB'
+    next()
+    return
+  }
+
+  if (requiresAuth) {
     const requiredPerms = to.meta.permissions as string[] | undefined
     if (requiredPerms && !authStore.isSuperuser) {
       if (!requiredPerms.some(p => authStore.hasPermission(p))) {
@@ -127,14 +124,10 @@ router.beforeEach(async (to, _from, next) => {
         return
       }
     }
-
-    document.title = to.meta.title ? `${to.meta.title} - CMDB` : 'CMDB'
-    next()
-  } else {
-    // Set page title
-    document.title = to.meta.title ? `${to.meta.title} - CMDB` : 'CMDB'
-    next()
   }
+
+  document.title = to.meta.title ? `${to.meta.title} - CMDB` : 'CMDB'
+  next()
 })
 
 export default router

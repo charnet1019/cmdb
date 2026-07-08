@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models import User, Group, Asset, Organization, Authorization
-from app.api.deps import get_current_user, PermissionChecker
+from app.api.deps import PermissionChecker
 from app.utils.audit import log_operation
 from app.schemas import (
     AuthorizationCreate, AuthorizationUpdate, AuthorizationResponse,
@@ -93,7 +93,7 @@ async def list_authorizations(
             conditions.append(and_(
                 Authorization.target_type == "asset",
                 or_(
-                    Authorization.target_ids.contains([aid]) for aid in asset_ids
+                    *[Authorization.target_ids.contains([aid]) for aid in asset_ids]
                 ),
             ))
 
@@ -410,7 +410,7 @@ async def delete_authorization(
 @router.get("/users")
 async def list_users_for_auth(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("authorize")),
 ):
     """List users for authorization selection"""
     result = await db.execute(
@@ -427,7 +427,7 @@ async def list_users_for_auth(
 @router.get("/groups")
 async def list_groups_for_auth(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("authorize")),
 ):
     """List groups for authorization selection"""
     result = await db.execute(select(Group).order_by(Group.name))
@@ -442,7 +442,7 @@ async def list_groups_for_auth(
 @router.get("/assets")
 async def list_assets_for_auth(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("authorize")),
 ):
     """List assets for authorization selection"""
     result = await db.execute(
@@ -459,7 +459,7 @@ async def list_assets_for_auth(
 @router.get("/organizations")
 async def list_organizations_for_auth(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("authorize")),
 ):
     """List organizations for authorization selection"""
     result = await db.execute(select(Organization).order_by(Organization.path))

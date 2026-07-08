@@ -18,7 +18,8 @@ from app.schemas import (
     GroupListResponse, PasswordResetRequest, ResponseBase
 )
 from app.api.deps import get_current_user, PermissionChecker, get_user_permissions
-from app.core.security import get_password_hash, verify_password, validate_password_strength
+from app.core.security import get_password_hash, verify_password
+from app.core.password_policy import validate_password_strength_from_settings
 
 
 router = APIRouter(prefix="/users", tags=["用户管理"])
@@ -85,7 +86,6 @@ async def list_users(
             "mfa_enabled": user.mfa_enabled,
             "mfa_bound": bool(user.mfa_secret),
             "avatar_url": user.avatar_url,
-            "avatar_url": user.avatar_url,
             "last_login_at": user.last_login_at,
             "created_at": user.created_at,
             "groups": user_groups_map.get(user.id, []),
@@ -135,7 +135,7 @@ async def create_user(
             )
 
         # Validate password
-        is_valid, errors = validate_password_strength(data.password)
+        is_valid, errors = await validate_password_strength_from_settings(data.password, db)
         if not is_valid:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -151,6 +151,7 @@ async def create_user(
             password_hash=get_password_hash(data.password),
             is_active=data.is_active,
             mfa_enabled=data.mfa_enabled,
+            must_change_password=True,
         )
 
         db.add(user)
@@ -217,7 +218,7 @@ async def get_user(
         if "user_mgmt" not in perms:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="缺少 'user_mgmt' 权限"
+                detail="缺少 user_mgmt 权限"
             )
 
     result = await db.execute(
@@ -266,13 +267,47 @@ async def update_user(
     """Update user information — self-update allowed, others require user_mgmt"""
     ip = request.client.host if request.client else None
 
-    if user_id != current_user.id and not current_user.is_superuser:
-        perms = await get_user_permissions(current_user, db)
-        if "user_mgmt" not in perms:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="缺少 'user_mgmt' 权限"
-            )
+    perms = await get_user_permissions(current_user, db)
+    has_user_mgmt = current_user.is_superuser or "user_mgmt" in perms
+    is_self_update = user_id == current_user.id
+
+    if not is_self_update and not has_user_mgmt:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="缺少 user_mgmt 权限"
+        )
+
+    admin_only_fields = {
+        "group_ids",
+        "is_active",
+        "is_superuser",
+        "mfa_enabled",
+    }
+    submitted_fields = data.model_dump(exclude_unset=True)
+    admin_field_updates = admin_only_fields.intersection(submitted_fields.keys())
+    if admin_field_updates and not has_user_mgmt:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="缺少 user_mgmt 权限"
+        )
+
+    if "is_superuser" in submitted_fields and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="只有超级管理员可以变更超级管理员状态"
+        )
+
+    if is_self_update and submitted_fields.get("is_active") is False:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="不能禁用自己"
+        )
+
+    if is_self_update and submitted_fields.get("is_superuser") is False and current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="不能移除自己的超级管理员权限"
+        )
 
     result = await db.execute(
         select(User).where(User.id == user_id)
@@ -457,11 +492,16 @@ async def reset_user_password(
 
     if data.method == "manual" and data.new_password:
         # Validate password
-        is_valid, errors = validate_password_strength(data.new_password)
+        is_valid, errors = await validate_password_strength_from_settings(data.new_password, db)
         if not is_valid:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="; ".join(errors)
+            )
+        if verify_password(data.new_password, user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="新密码不能与当前密码相同"
             )
         user.password_hash = get_password_hash(data.new_password)
         temp_password = None
@@ -474,6 +514,9 @@ async def reset_user_password(
         user.password_hash = get_password_hash(temp_password)
         # Note: In production, send email to user with temp password
         # For now, return it in response for admin to communicate
+
+    if data.force_change:
+        user.must_change_password = True
 
     await db.commit()
 

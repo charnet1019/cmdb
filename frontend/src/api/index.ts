@@ -5,24 +5,12 @@ import type { ApiResponse } from '@/types'
 const api: AxiosInstance = axios.create({
   baseURL: '/api/v1',
   timeout: 30000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
+    'X-CMDB-Client': 'web',
   },
 })
-
-// Request interceptor - add auth token
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
-    }
-    return config
-  },
-  (error) => {
-    return Promise.reject(error)
-  }
-)
 
 // Response interceptor - handle errors
 api.interceptors.response.use(
@@ -36,8 +24,6 @@ api.interceptors.response.use(
       if (window.location.pathname === '/login') {
         return Promise.reject(error)
       }
-      localStorage.removeItem('token')
-      // Notify auth store to clear its token ref (prevents stale token in router guard)
       window.dispatchEvent(new CustomEvent('auth:token-cleared'))
       window.location.href = '/login'
     }

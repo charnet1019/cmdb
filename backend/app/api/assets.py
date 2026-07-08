@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, F
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, delete, inspect, false, text
+from sqlalchemy import select, func, or_, delete, inspect, false
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
@@ -21,7 +21,7 @@ from app.schemas import (
     CredentialCreate, CredentialUpdate, CredentialResponse, CredentialDecryptResponse,
     ResponseBase, BulkUpdateRequest, BulkDeleteRequest
 )
-from app.api.deps import get_current_user, PermissionChecker, check_resource_permission, get_authorized_asset_ids
+from app.api.deps import get_user_permissions, PermissionChecker, check_resource_permission, get_authorized_asset_ids
 from app.core.encryption import encrypt_value, decrypt_value
 from app.services.import_service import (
     generate_category_template,
@@ -578,7 +578,7 @@ async def create_asset(
             .where(Authorization.entity_id == current_user.id)
             .where(Authorization.target_type == "asset")
             .where(Authorization.is_active == True)
-            .where(text("permissions @> '\"manage\"'::jsonb"))
+            .where(Authorization.permissions.contains(["manage"]))
             .order_by(Authorization.id.desc())
             .limit(1)
         )
@@ -764,7 +764,7 @@ async def bulk_delete_assets(
 async def download_import_template(
     category: str,
     mode: str = Query("create", description="create or update"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(PermissionChecker("manage")),
 ):
     """Download XLSX import template for specified category."""
     if category not in CATEGORY_FIELDS:
@@ -840,10 +840,33 @@ async def import_assets(
             else batch_update_assets
         )
 
+        process_errors = []
         if mode == "create":
             success_count, process_errors = await batch_fn(category, valid_records, db, current_user.id)
         else:
-            success_count, process_errors = await batch_fn(category, valid_records, db)
+            allowed_records = []
+            for record in valid_records:
+                asset_id = record.get("id")
+                result = await db.execute(select(Asset).where(Asset.id == asset_id))
+                asset = result.scalar_one_or_none()
+                if not asset:
+                    allowed_records.append(record)
+                    continue
+                if asset.category != category:
+                    process_errors.append({"id": asset_id, "error": "资产类型不匹配"})
+                    continue
+                try:
+                    await check_resource_permission(
+                        current_user, "manage", "asset", asset.id, db,
+                        organization_id=asset.organization_id,
+                    )
+                except HTTPException as exc:
+                    process_errors.append({"id": asset_id, "error": exc.detail})
+                    continue
+                allowed_records.append(record)
+
+            success_count, update_errors = await batch_fn(category, allowed_records, db)
+            process_errors.extend(update_errors)
 
         all_errors = parse_errors + process_errors
 
@@ -905,6 +928,7 @@ async def export_assets(
     organization_id: Optional[int] = Query(None, description="Organization ID"),
     search: Optional[str] = Query(None, description="Search query"),
     ids: Optional[str] = Query(None, description="Comma-separated asset IDs for selected scope"),
+    include_passwords: bool = Query(False, description="Whether to include decrypted asset credentials"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("export")),
 ):
@@ -943,6 +967,25 @@ async def export_assets(
         )
     if authorized_ids is not None:
         query = query.where(Asset.id.in_(authorized_ids))
+
+    can_export_passwords = False
+    if include_passwords:
+        permissions = await get_user_permissions(current_user, db)
+        if "view_pwd" not in permissions:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="导出密码需要 'view_pwd' 权限",
+            )
+        password_authorized_ids = await get_authorized_asset_ids(current_user, db, "view_pwd")
+        if password_authorized_ids is not None and len(password_authorized_ids) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="未找到允许导出密码的资产",
+            )
+        if password_authorized_ids is not None:
+            query = query.where(Asset.id.in_(password_authorized_ids))
+        can_export_passwords = True
+
     query = query.options(selectinload(Asset.credentials))
     if category == "database":
         query = query.options(
@@ -1032,19 +1075,21 @@ async def export_assets(
                 assets = (await db.execute(db_query)).scalars().all()
 
             for asset in assets:
-                # Decrypt credentials
                 credentials = []
                 for cred in asset.credentials:
-                    try:
-                        dp = decrypt_value(cred.password_encrypted)
-                        credentials.append({"username": cred.username, "password": dp})
-                    except Exception:
-                        credentials.append({"username": cred.username, "password": ""})
+                    if can_export_passwords:
+                        try:
+                            password_value = decrypt_value(cred.password_encrypted)
+                        except Exception:
+                            password_value = ""
+                    else:
+                        password_value = ""
+                    credentials.append({"username": cred.username, "password": password_value})
 
                 org_name = build_org_full_path(asset.organization_id, org_map)
 
                 decrypted_oob_password = None
-                if asset.oob_password_encrypted:
+                if can_export_passwords and asset.oob_password_encrypted:
                     try:
                         decrypted_oob_password = decrypt_value(asset.oob_password_encrypted)
                     except Exception:
@@ -1055,7 +1100,7 @@ async def export_assets(
                     org_name=org_name,
                     include_credentials=True,
                     credentials_data=credentials,
-                    include_decrypted_passwords=True,
+                    include_decrypted_passwords=can_export_passwords,
                     oob_password=decrypted_oob_password,
                     creator_name=creator_names.get(asset.created_by_id),
                 )
@@ -1577,6 +1622,17 @@ async def list_credentials(
     query = select(Credential)
 
     if asset_id:
+        asset_result = await db.execute(select(Asset).where(Asset.id == asset_id))
+        asset = asset_result.scalar_one_or_none()
+        if not asset:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="资产不存在",
+            )
+        await check_resource_permission(
+            current_user, "view_pwd", "asset", asset_id, db,
+            organization_id=asset.organization_id,
+        )
         query = query.where(Credential.asset_id == asset_id)
     else:
         # Filter by authorized assets
@@ -1617,7 +1673,8 @@ async def create_credential(
     result = await db.execute(
         select(Asset).where(Asset.id == asset_id)
     )
-    if not result.scalar_one_or_none():
+    asset = result.scalar_one_or_none()
+    if not asset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="资产不存在"
@@ -1626,6 +1683,7 @@ async def create_credential(
     # Check resource-level permission
     await check_resource_permission(
         current_user, "manage", "asset", asset_id, db,
+        organization_id=asset.organization_id,
     )
 
     credential = Credential(
@@ -1659,35 +1717,10 @@ async def create_credential(
     )
 
 
-class EncryptRequest(BaseModel):
-    """Encryption request"""
-    value: str
-
-
-class EncryptResponse(ResponseBase):
-    """Encryption response"""
-    data: dict
-
-
 class OOBDecryptResponse(BaseModel):
     """OOB password decrypt response"""
     oob_password: str
 
-
-@router.post("/encrypt", response_model=EncryptResponse)
-async def encrypt_value_endpoint(
-    request: EncryptRequest,
-    current_user: User = Depends(get_current_user),
-):
-    """Encrypt a value (for OOB password)"""
-    try:
-        encrypted = encrypt_value(request.value)
-        return EncryptResponse(data={"encrypted_value": encrypted})
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"加密失败：{str(e)}"
-        )
 
 
 @router.post("/{asset_id}/decrypt-oob", response_model=OOBDecryptResponse)
@@ -1772,9 +1805,13 @@ async def decrypt_credential(
             detail="凭证不存在"
         )
 
+    asset_result = await db.execute(select(Asset).where(Asset.id == credential.asset_id))
+    asset = asset_result.scalar_one_or_none()
+
     # Check resource-level permission on the asset
     await check_resource_permission(
         current_user, "view_pwd", "asset", credential.asset_id, db,
+        organization_id=asset.organization_id if asset else None,
     )
 
     try:
@@ -1812,9 +1849,13 @@ async def update_credential(
             detail="凭证不存在"
         )
 
+    asset_result = await db.execute(select(Asset).where(Asset.id == credential.asset_id))
+    asset = asset_result.scalar_one_or_none()
+
     # Check resource-level permission on the asset
     await check_resource_permission(
         current_user, "manage", "asset", credential.asset_id, db,
+        organization_id=asset.organization_id if asset else None,
     )
 
     # Update fields
@@ -1864,9 +1905,13 @@ async def delete_credential(
             detail="凭证不存在"
         )
 
+    asset_result = await db.execute(select(Asset).where(Asset.id == credential.asset_id))
+    asset = asset_result.scalar_one_or_none()
+
     # Check resource-level permission on the asset
     await check_resource_permission(
         current_user, "manage", "asset", credential.asset_id, db,
+        organization_id=asset.organization_id if asset else None,
     )
 
     await db.delete(credential)

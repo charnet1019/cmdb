@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { message, Dropdown, Select, Tooltip } from 'ant-design-vue'
+import { message, Dropdown, Select } from 'ant-design-vue'
 import {
   DownOutlined,
   UpOutlined,
@@ -1098,7 +1098,7 @@ onMounted(async () => {
                         </template>
                         <template v-else-if="key === 'storage_locations'">
                           <div v-if="asset.storage_locations?.length" class="flex flex-wrap gap-1">
-                            <span v-for="loc in asset.storage_locations" :key="loc.id" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-purple-100 text-purple-700" :title="loc.description">
+                            <span v-for="loc in asset.storage_locations" :key="loc.id" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-purple-100 text-purple-700" :title="loc.description || undefined">
                               <span class="mr-1 text-[9px] opacity-70">{{ loc.path_type }}</span>{{ loc.path }}
                             </span>
                           </div>

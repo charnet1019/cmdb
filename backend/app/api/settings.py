@@ -2,7 +2,8 @@
 Settings API Routes
 """
 from datetime import datetime, timezone
-from typing import List, Dict, Any
+from typing import Dict, Any
+from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -24,6 +25,103 @@ router = APIRouter(prefix="/settings", tags=["Settings"])
 
 
 PUBLIC_BRANDING_KEYS = {"site_title", "login_subtitle", "logo_image", "login_background_image", "copyright_text", "beian_number", "beian_url"}
+
+SETTING_SCHEMA: Dict[str, tuple[type, int | None]] = {
+    "site_title": (str, 100),
+    "site_logo": (str, 500),
+    "copyright_text": (str, 500),
+    "beian_number": (str, 100),
+    "beian_url": (str, 500),
+    "login_log_retention": (int, None),
+    "operation_log_retention": (int, None),
+    "password_log_retention": (int, None),
+    "password_min_length": (int, None),
+    "password_require_uppercase": (bool, None),
+    "password_require_lowercase": (bool, None),
+    "password_require_digit": (bool, None),
+    "password_require_special": (bool, None),
+    "max_login_attempts": (int, None),
+    "lockout_duration": (int, None),
+    "session_timeout": (int, None),
+    "otp_issuer_name": (str, 100),
+    "login_subtitle": (str, 200),
+    "logo_image": (str, 500),
+    "login_background_image": (str, 500),
+}
+
+INT_RANGES = {
+    "login_log_retention": (1, 3650),
+    "operation_log_retention": (1, 3650),
+    "password_log_retention": (1, 3650),
+    "password_min_length": (8, 128),
+    "max_login_attempts": (1, 50),
+    "lockout_duration": (1, 1440),
+    "session_timeout": (1, 10080),
+}
+
+URL_KEYS = {"beian_url", "site_logo", "logo_image", "login_background_image"}
+SENSITIVE_SETTING_KEY_PARTS = ("secret", "token", "credential", "private_key", "api_key", "smtp_password")
+
+
+def _audit_setting_value(key: str, value: Any) -> Any:
+    lowered = key.lower()
+    if any(part in lowered for part in SENSITIVE_SETTING_KEY_PARTS):
+        return "<redacted>"
+    return value
+
+
+def _validate_url(key: str, value: str) -> str:
+    if not value:
+        return value
+    parsed = urlparse(value)
+    if key in {"site_logo", "logo_image", "login_background_image"} and value.startswith("/uploads/"):
+        return value
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        return value
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"设置项 '{key}' 必须是 http(s) URL 或允许的上传路径",
+    )
+
+
+def _normalize_setting(key: str, value: Any) -> Any:
+    if key not in SETTING_SCHEMA:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"不允许的设置项: {key}",
+        )
+
+    expected_type, max_length = SETTING_SCHEMA[key]
+    if value is None:
+        return "" if expected_type is str else value
+
+    if expected_type is bool:
+        if not isinstance(value, bool):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"设置项 '{key}' 必须是布尔值")
+        return value
+
+    if expected_type is int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"设置项 '{key}' 必须是整数")
+        min_value, max_value = INT_RANGES.get(key, (0, 1000000))
+        if parsed < min_value or parsed > max_value:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"设置项 '{key}' 必须在 {min_value}-{max_value} 范围内",
+            )
+        return parsed
+
+    normalized = str(value).replace("\x00", "").strip()
+    if max_length is not None and len(normalized) > max_length:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"设置项 '{key}' 长度不能超过 {max_length}",
+        )
+    if key in URL_KEYS:
+        normalized = _validate_url(key, normalized)
+    return normalized
 
 
 @router.get("")
@@ -121,11 +219,12 @@ async def update_setting(
     setting = result.scalar_one_or_none()
 
     if not setting:
-        # Create new setting if it doesn't exist
-        setting = Setting(key=key, value=value)
+        normalized_value = _normalize_setting(key, value.get("value") if isinstance(value, dict) and "value" in value else value)
+        setting = Setting(key=key, value={"value": normalized_value})
         db.add(setting)
     else:
-        setting.value = value
+        normalized_value = _normalize_setting(key, value.get("value") if isinstance(value, dict) and "value" in value else value)
+        setting.value = {"value": normalized_value}
 
     await db.commit()
     await db.refresh(setting)
@@ -135,7 +234,7 @@ async def update_setting(
         db, current_user.id, "update", "setting", 0,
         details={
             "name": key,
-            "value": value,
+            "value": _audit_setting_value(key, value),
         },
         ip_address=ip,
     )
@@ -169,10 +268,11 @@ async def update_settings(
         result = await db.execute(select(Setting).where(Setting.key == key))
         setting = result.scalar_one_or_none()
 
+        normalized_value = _normalize_setting(key, value)
         if setting:
-            setting.value = {"value": value}
+            setting.value = {"value": normalized_value}
         else:
-            setting = Setting(key=key, value={"value": value})
+            setting = Setting(key=key, value={"value": normalized_value})
             db.add(setting)
         updated.append(key)
 

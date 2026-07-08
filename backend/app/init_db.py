@@ -2,6 +2,9 @@
 Initialize CMDB with default admin user and settings
 """
 import logging
+import os
+import secrets
+import string
 from sqlalchemy import select
 
 from app.database import async_session_maker
@@ -13,7 +16,19 @@ logger = logging.getLogger(__name__)
 
 # Default admin credentials
 DEFAULT_ADMIN_USERNAME = "admin"
-DEFAULT_ADMIN_PASSWORD = "Admin123"
+INITIAL_ADMIN_PASSWORD_ENV = "CMDB_INITIAL_ADMIN_PASSWORD"
+
+def _generate_initial_admin_password() -> str:
+    alphabet = string.ascii_letters + string.digits + "!@#%&*"
+    return "".join(secrets.choice(alphabet) for _ in range(20))
+
+
+def _reset_session_timeout_setting(setting: Setting | None) -> Setting:
+    if setting is None:
+        return Setting(key="session_timeout", value={"value": 30}, description="会话超时时间(分钟)")
+    setting.value = {"value": 30}
+    setting.description = "会话超时时间(分钟)"
+    return setting
 
 
 async def seed_default_data() -> None:
@@ -27,6 +42,11 @@ async def seed_default_data() -> None:
         return
 
     async with async_session_maker() as session:
+        setting_result = await session.execute(select(Setting).where(Setting.key == "session_timeout"))
+        session_timeout_setting = _reset_session_timeout_setting(setting_result.scalar_one_or_none())
+        if session_timeout_setting.id is None:
+            session.add(session_timeout_setting)
+
         # Check if admin user exists
         result = await session.execute(select(User).where(User.username == DEFAULT_ADMIN_USERNAME))
         existing_admin = result.scalar_one_or_none()
@@ -35,14 +55,12 @@ async def seed_default_data() -> None:
             # If admin exists but never logged in, ensure must_change_password is set
             if existing_admin.last_login_at is None and not existing_admin.must_change_password:
                 existing_admin.must_change_password = True
-                await session.commit()
                 logger.warning(
                     "Admin account exists but never logged in. "
-                    "must_change_password flag has been set. "
-                    "username: %s, password: %s",
+                    "must_change_password flag has been set for username: %s",
                     DEFAULT_ADMIN_USERNAME,
-                    DEFAULT_ADMIN_PASSWORD,
                 )
+            await session.commit()
             return
 
         # Create admin group
@@ -53,12 +71,14 @@ async def seed_default_data() -> None:
         session.add(admin_group)
         await session.flush()
 
-        # Create admin user with default password
+        initial_admin_password = os.getenv(INITIAL_ADMIN_PASSWORD_ENV) or _generate_initial_admin_password()
+
+        # Create admin user with initial password
         admin_user = User(
             username=DEFAULT_ADMIN_USERNAME,
             email="admin@example.com",
             full_name="系统管理员",
-            password_hash=get_password_hash(DEFAULT_ADMIN_PASSWORD),
+            password_hash=get_password_hash(initial_admin_password),
             is_active=True,
             is_superuser=True,
             mfa_enabled=False,
@@ -81,7 +101,6 @@ async def seed_default_data() -> None:
             Setting(key="password_require_lowercase", value={"value": True}, description="密码要求小写字母"),
             Setting(key="password_require_digit", value={"value": True}, description="密码要求数字"),
             Setting(key="password_require_special", value={"value": False}, description="密码要求特殊字符"),
-            Setting(key="session_timeout", value={"value": 30}, description="会话超时时间(分钟)"),
             Setting(key="max_login_attempts", value={"value": 5}, description="最大登录尝试次数"),
             Setting(key="lockout_duration", value={"value": 30}, description="账户锁定时间(分钟)"),
             Setting(key="login_log_retention", value={"value": 30}, description="登录日志保留天数"),
@@ -93,10 +112,17 @@ async def seed_default_data() -> None:
 
         await session.commit()
 
-        # Log admin credentials to backend logs
-        logger.warning(
-            "CMDB initialized. Admin account created — "
-            "username: %s, password: %s. First login requires password change.",
-            DEFAULT_ADMIN_USERNAME,
-            DEFAULT_ADMIN_PASSWORD,
-        )
+        if os.getenv(INITIAL_ADMIN_PASSWORD_ENV):
+            logger.warning(
+                "CMDB initialized. Admin account created for username: %s. "
+                "Initial password came from %s. First login requires password change.",
+                DEFAULT_ADMIN_USERNAME,
+                INITIAL_ADMIN_PASSWORD_ENV,
+            )
+        else:
+            logger.warning(
+                "CMDB initialized. Admin account created for username: %s. "
+                "Generated initial password: %s. First login requires password change.",
+                DEFAULT_ADMIN_USERNAME,
+                initial_admin_password,
+            )

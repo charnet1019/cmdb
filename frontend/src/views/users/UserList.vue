@@ -313,7 +313,7 @@ async function handleSubmit() {
 async function handleDelete(user: User) {
   Modal.confirm({
     title: '删除用户',
-    content: `确定要删除用户 "${user.username}" 吗？`,
+    content: "确定要删除该用户吗？此操作不可恢复。",
     okText: '删除',
     okType: 'danger',
     cancelText: '取消',
@@ -333,7 +333,7 @@ async function handleDelete(user: User) {
 async function handleResetMFA(user: User) {
   Modal.confirm({
     title: '重置 MFA 绑定',
-    content: `确定要重置用户 "${user.username}" 的 MFA 绑定吗？用户下次登录时需重新绑定验证器。`,
+    content: "确定要重置该用户的 MFA 绑定吗？用户下次登录需要重新绑定。",
     okText: '重置',
     cancelText: '取消',
     onOk: async () => {
@@ -388,7 +388,10 @@ async function handleResetPassword() {
 
     showResetPasswordModal.value = false
     if (resetPasswordForm.value.method === 'auto' && result.temp_password) {
-      message.success(`密码重置成功，临时密码: ${result.temp_password}`)
+      Modal.success({
+        title: "密码重置成功",
+        content: `临时密码：${result.temp_password}。该密码仅在本次重置后显示，请通过安全渠道发送给用户。`,
+      })
     } else {
       message.success('密码重置成功')
     }

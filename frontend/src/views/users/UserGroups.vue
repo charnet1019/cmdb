@@ -147,7 +147,8 @@ function openEditModal(group: Group) {
   selectedGroup.value = group
   groupForm.value = {
     name: group.name,
-    description: group.description || ''
+    description: group.description || '',
+    initial_member_ids: []
   }
   showEditModal.value = true
 }

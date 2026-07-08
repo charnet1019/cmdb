@@ -7,12 +7,12 @@ const HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000  // 2 minutes
 
 export const useAuthStore = defineStore('auth', () => {
   // State
-  const token = ref<string | null>(localStorage.getItem('token'))
+  const token = ref<string | null>(null)
   const user = ref<UserSimple | null>(null)
   const permissions = ref<string[]>([])
-  const pendingMFAUserId = ref<number | null>(null)
+  const pendingMFAChallengeToken = ref<string | null>(null)
   const pendingMFASetup = ref(false)  // true = first-time binding flow
-  const pendingForceChangeUserId = ref<number | null>(null)
+  const pendingForceChangeChallengeToken = ref<string | null>(null)
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 
   function startHeartbeat() {
@@ -39,9 +39,9 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = null
     user.value = null
     permissions.value = []
-    pendingMFAUserId.value = null
+    pendingMFAChallengeToken.value = null
     pendingMFASetup.value = false
-    pendingForceChangeUserId.value = null
+    pendingForceChangeChallengeToken.value = null
   }
 
   // Remove any existing listener first (prevents accumulation during HMR)
@@ -49,7 +49,7 @@ export const useAuthStore = defineStore('auth', () => {
   window.addEventListener('auth:token-cleared', handleTokenCleared)
 
   // Getters
-  const isAuthenticated = computed(() => !!token.value)
+  const isAuthenticated = computed(() => !!user.value || !!token.value)
   const isSuperuser = computed(() => user.value?.is_superuser ?? false)
   const username = computed(() => user.value?.username || '')
 
@@ -60,71 +60,80 @@ export const useAuthStore = defineStore('auth', () => {
     // Check if must change password
     if ((response as MustChangePasswordData).must_change_password) {
       const mcpResponse = response as MustChangePasswordData
-      pendingForceChangeUserId.value = mcpResponse.user_id
+      pendingMFAChallengeToken.value = null
+      pendingMFASetup.value = false
+      pendingForceChangeChallengeToken.value = mcpResponse.challenge_token
       return response
     }
 
     // Check if MFA is required
     if ((response as MFARequiredData).requires_mfa) {
       const mfaResponse = response as MFARequiredData
-      pendingMFAUserId.value = mfaResponse.user_id
+      pendingForceChangeChallengeToken.value = null
+      pendingMFAChallengeToken.value = mfaResponse.challenge_token
       pendingMFASetup.value = mfaResponse.setup ?? false
       return response
     }
 
     const tokenResponse = response as any
-    token.value = tokenResponse.access_token
+    token.value = 'cookie-session'
     user.value = tokenResponse.user
     permissions.value = tokenResponse.user.permissions ?? []
-    localStorage.setItem('token', tokenResponse.access_token)
-    startHeartbeat()
+        startHeartbeat()
     return tokenResponse
   }
 
   async function verifyMFA(code: string, isSetup: boolean = false) {
-    const userId = pendingMFAUserId.value
-    if (!userId) {
+    const challengeToken = pendingMFAChallengeToken.value
+    if (!challengeToken) {
       throw new Error('No pending MFA verification')
     }
 
-    const tokenResponse = await loginMFAVerify(userId, code, isSetup)
-    pendingMFAUserId.value = null
+    const tokenResponse = await loginMFAVerify(challengeToken, code, isSetup)
+    pendingMFAChallengeToken.value = null
     pendingMFASetup.value = false
-    token.value = tokenResponse.access_token
+    token.value = 'cookie-session'
     user.value = tokenResponse.user
     permissions.value = tokenResponse.user.permissions ?? []
-    localStorage.setItem('token', tokenResponse.access_token)
-    startHeartbeat()
+        startHeartbeat()
     return tokenResponse
   }
 
   function clearPendingMFA() {
-    pendingMFAUserId.value = null
+    pendingMFAChallengeToken.value = null
     pendingMFASetup.value = false
   }
 
   async function forceChangePassword(newPassword: string, confirmPassword: string) {
-    const userId = pendingForceChangeUserId.value
-    if (!userId) {
+    const challengeToken = pendingForceChangeChallengeToken.value
+    if (!challengeToken) {
       throw new Error('No pending force change password')
     }
 
-    const tokenResponse = await forceChangePasswordApi({
-      user_id: userId,
+    const response = await forceChangePasswordApi({
+      challenge_token: challengeToken,
       new_password: newPassword,
       confirm_password: confirmPassword,
     })
-    pendingForceChangeUserId.value = null
-    token.value = tokenResponse.access_token
+    pendingForceChangeChallengeToken.value = null
+
+    if ((response as MFARequiredData).requires_mfa) {
+      const mfaResponse = response as MFARequiredData
+      pendingMFAChallengeToken.value = mfaResponse.challenge_token
+      pendingMFASetup.value = mfaResponse.setup ?? false
+      return response
+    }
+
+    const tokenResponse = response as any
+    token.value = 'cookie-session'
     user.value = tokenResponse.user
     permissions.value = tokenResponse.user.permissions ?? []
-    localStorage.setItem('token', tokenResponse.access_token)
-    startHeartbeat()
+        startHeartbeat()
     return tokenResponse
   }
 
   function clearPendingForceChange() {
-    pendingForceChangeUserId.value = null
+    pendingForceChangeChallengeToken.value = null
   }
 
   async function logout() {
@@ -137,15 +146,16 @@ export const useAuthStore = defineStore('auth', () => {
       token.value = null
       user.value = null
       permissions.value = []
-      pendingForceChangeUserId.value = null
-      localStorage.removeItem('token')
-    }
+      pendingMFAChallengeToken.value = null
+      pendingMFASetup.value = false
+      pendingForceChangeChallengeToken.value = null
+          }
   }
 
   async function fetchUser() {
-    if (!token.value) return null
     try {
       const userData = await getCurrentUser()
+      token.value = 'cookie-session'
       user.value = userData
       permissions.value = userData.permissions ?? []
       // Re-establish presence — Redis key may have expired while away
@@ -171,9 +181,9 @@ export const useAuthStore = defineStore('auth', () => {
     token,
     user,
     permissions,
-    pendingMFAUserId,
+    pendingMFAChallengeToken,
     pendingMFASetup,
-    pendingForceChangeUserId,
+    pendingForceChangeChallengeToken,
     isAuthenticated,
     isSuperuser,
     username,

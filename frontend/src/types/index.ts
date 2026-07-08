@@ -154,7 +154,7 @@ export interface LoginRequest {
 }
 
 export interface TokenResponse {
-  access_token: string
+  access_token?: string | null
   token_type: string
   expires_at: string
   user: UserSimple
@@ -175,19 +175,19 @@ export interface UserSimple {
 // MFA types
 export interface MFARequiredData {
   requires_mfa: true
-  user_id: number
+  challenge_token: string
   setup: boolean  // true = first-time binding (no secret yet)
 }
 
 // Force password change types
 export interface MustChangePasswordData {
   must_change_password: true
-  user_id: number
+  challenge_token: string
 }
 
 export interface MFASetupQRData {
   qr_code: string
-  mfa_secret: string
+  mfa_secret?: string | null
 }
 
 export interface AssetSimple {
