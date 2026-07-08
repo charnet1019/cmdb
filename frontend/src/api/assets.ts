@@ -213,6 +213,7 @@ export async function exportAssets(params: {
   organization_id?: number
   search?: string
   ids?: string  // Comma-separated IDs for selected scope
+  include_passwords?: boolean
 }): Promise<void> {
   const response = await api.get('/assets/export', {
     params,

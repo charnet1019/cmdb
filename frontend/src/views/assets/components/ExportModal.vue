@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { CloseOutlined } from '@ant-design/icons-vue'
 import { exportAssets } from '@/api/assets'
+import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps<{
   visible: boolean
@@ -20,6 +21,7 @@ const emit = defineEmits<{
 const exportFormat = ref<'excel' | 'csv'>('excel')
 const exportScope = ref<'all' | 'selected' | 'filtered'>('all')
 const exporting = ref(false)
+const authStore = useAuthStore()
 
 // Reset state when modal opens
 function resetState() {
@@ -51,7 +53,8 @@ async function handleExport() {
       category: props.category !== 'all' ? props.category : undefined,
       organization_id: props.organizationId || undefined,
       search: props.searchQuery || undefined,
-      ids: exportScope.value === 'selected' ? props.selectedIds.join(',') : undefined
+      ids: exportScope.value === 'selected' ? props.selectedIds.join(',') : undefined,
+      include_passwords: authStore.hasPermission('export_pwd')
     })
     message.success('导出成功')
     emit('update:visible', false)

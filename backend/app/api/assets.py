@@ -971,12 +971,12 @@ async def export_assets(
     can_export_passwords = False
     if include_passwords:
         permissions = await get_user_permissions(current_user, db)
-        if "view_pwd" not in permissions:
+        if "export_pwd" not in permissions:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="导出密码需要 'view_pwd' 权限",
+                detail="导出密码需要 'export_pwd' 权限",
             )
-        password_authorized_ids = await get_authorized_asset_ids(current_user, db, "view_pwd")
+        password_authorized_ids = await get_authorized_asset_ids(current_user, db, "export_pwd")
         if password_authorized_ids is not None and len(password_authorized_ids) == 0:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
