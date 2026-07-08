@@ -19,6 +19,14 @@ export function useCredentials() {
   // Form credentials
   const formCredentials = ref<Array<{ username: string; password: string; id?: number }>>([])
 
+  function formatPasswordDecryptError(error: any): string {
+    const detail = error?.response?.data?.detail
+    if (error?.response?.status === 403 && typeof detail === 'string' && detail.includes('view_pwd')) {
+      return '没有查看密码权限'
+    }
+    return '解密失败'
+  }
+
   // Editing state
   const editingCredentialField = ref<{ index: number; field: 'username' | 'password' } | null>(null)
   const credentialInputRefs = ref<Map<string, HTMLInputElement>>(new Map())
@@ -70,8 +78,8 @@ export function useCredentials() {
       if (data.oob_password) {
         copyToClipboard(data.oob_password)
       }
-    } catch {
-      message.error('解密失败')
+    } catch (error: any) {
+      message.error(formatPasswordDecryptError(error))
     }
   }
 
@@ -89,7 +97,7 @@ export function useCredentials() {
         copyToClipboard(result.password)
       }
     } catch (error: any) {
-      message.error(error.response?.data?.detail || '解密失败')
+      message.error(formatPasswordDecryptError(error))
     }
   }
 
@@ -106,7 +114,7 @@ export function useCredentials() {
         decryptedPasswords.value.set(credential.id, result.password)
       }
     } catch (error: any) {
-      message.error(error.response?.data?.detail || '解密失败')
+      message.error(formatPasswordDecryptError(error))
     }
   }
 
@@ -123,7 +131,7 @@ export function useCredentials() {
           decryptedFormPasswords.value.set(cred.id, result.password)
         }
       } catch (error: any) {
-        message.error(error.response?.data?.detail || '解密失败')
+        message.error(formatPasswordDecryptError(error))
       }
     } else if (index !== undefined) {
       if (visibleNewPasswords.value.has(index)) {
@@ -228,6 +236,7 @@ export function useCredentials() {
     copyUsername,
     copyPassword,
     copyOobPassword,
+    formatPasswordDecryptError,
     viewPassword,
     viewFormCredentialPassword,
     toggleNewPasswordVisibility,

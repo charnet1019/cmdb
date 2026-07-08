@@ -130,6 +130,7 @@ const {
   copyUsername,
   copyPassword,
   copyOobPassword,
+  formatPasswordDecryptError,
   viewPassword,
   viewFormCredentialPassword,
   addCredentialToForm,
@@ -249,7 +250,7 @@ async function showPasswordPopover(cred: { id: number }, event: MouseEvent) {
       decryptedPasswords.value.delete(cred.id)
     }
   } catch (e: any) {
-    message.error(e.response?.data?.detail || '解密失败')
+    message.error(formatPasswordDecryptError(e))
   }
 }
 
@@ -267,8 +268,8 @@ async function showOobPasswordPopover(asset: any, event: MouseEvent) {
     const data = await decryptOobPassword(asset.id)
     const rect = (event.target as HTMLElement).getBoundingClientRect()
     passwordPopover.value = { credId: -asset.id, password: data.oob_password, x: rect.left, y: rect.top }
-  } catch {
-    message.error('解密失败')
+  } catch (e: any) {
+    message.error(formatPasswordDecryptError(e))
   }
 }
 

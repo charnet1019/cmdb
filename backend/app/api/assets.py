@@ -1778,10 +1778,10 @@ async def decrypt_oob_password(
                 encrypted = encrypt_value(oob_password_value)
                 asset.oob_password_encrypted = encrypted
                 await db.flush()
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"解密失败：{str(e)}"
+            detail="解密失败"
         )
 
     return OOBDecryptResponse(oob_password=decrypted_password)
