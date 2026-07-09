@@ -30,7 +30,6 @@ PUBLIC_BRANDING_KEYS = {"site_title", "login_subtitle", "logo_image", "login_bac
 
 SETTING_SCHEMA: Dict[str, tuple[type, int | None]] = {
     "site_title": (str, 100),
-    "site_logo": (str, 500),
     "copyright_text": (str, 500),
     "beian_number": (str, 100),
     "beian_url": (str, 500),
@@ -69,7 +68,7 @@ INT_RANGES = {
     "smtp_port": (1, 65535),
 }
 
-URL_KEYS = {"beian_url", "site_logo", "logo_image", "login_background_image"}
+URL_KEYS = {"beian_url", "logo_image", "login_background_image"}
 EMAIL_KEYS = {"smtp_from_email"}
 SMTP_PASSWORD_MASK = "********"
 SENSITIVE_SETTING_KEY_PARTS = ("secret", "token", "credential", "private_key", "api_key", "smtp_password")
@@ -92,7 +91,7 @@ def _validate_url(key: str, value: str) -> str:
     if not value:
         return value
     parsed = urlparse(value)
-    if key in {"site_logo", "logo_image", "login_background_image"} and value.startswith("/uploads/"):
+    if key in {"logo_image", "login_background_image"} and value.startswith("/uploads/"):
         return value
     if parsed.scheme in {"http", "https"} and parsed.netloc:
         return value

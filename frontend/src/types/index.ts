@@ -204,6 +204,31 @@ export interface StorageLocation {
   created_at: string
 }
 
+// Notification types
+export interface NotificationSender {
+  id: number
+  username: string
+  full_name: string | null
+}
+
+export interface NotificationItem {
+  id: number
+  notification_id: number
+  title: string
+  content: string
+  sender: NotificationSender | null
+  read_at: string | null
+  created_at: string
+}
+
+export interface NotificationCreatePayload {
+  title: string
+  content: string
+  recipient_scope: 'all' | 'users' | 'groups'
+  user_ids?: number[]
+  group_ids?: number[]
+}
+
 // User authorization types
 export interface UserAuthorization {
   id: number

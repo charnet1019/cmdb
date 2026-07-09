@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import settings
-from app.database import init_db, close_db, async_session_maker
+from app.database import init_db, close_db, async_session_maker, run_migrations
 from app.api import api_router
 from app.api.deps import AUTH_COOKIE_NAME
 from app.services.log_cleanup import cleanup_expired_logs
@@ -44,6 +44,7 @@ def _ensure_upload_dir():
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
     # Startup
+    await run_migrations()
     await init_db()
     # Schedule daily log cleanup at 2:00 AM UTC
     scheduler.add_job(

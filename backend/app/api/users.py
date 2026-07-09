@@ -27,11 +27,20 @@ from app.api.deps import get_current_user, PermissionChecker, get_user_permissio
 from app.core.security import get_password_hash, verify_password
 from app.core.password_policy import validate_password_strength_from_settings
 from app.core.session import force_logout_user
+from app.core.events import publish_user_event
 from app.core.encryption import decrypt_value
 from app.config import settings
 
 
 router = APIRouter(prefix="/users", tags=["用户管理"])
+
+
+async def _publish_force_logout_event(user_id: int, reason: str, message: str) -> None:
+    try:
+        await publish_user_event(user_id, "force_logout", {"reason": reason, "message": message})
+    except Exception:
+        # Session invalidation remains authoritative; API 401 handling is the fallback.
+        pass
 
 SMTP_SETTING_KEYS = (
     "smtp_host",
@@ -503,6 +512,7 @@ async def update_user(
     await db.commit()
     if force_logout_after_commit:
         await force_logout_user(user_id)
+        await _publish_force_logout_event(user_id, "user_disabled", "账号已被管理员禁用，请重新登录")
     await db.refresh(user)
 
     if changes:
@@ -618,6 +628,7 @@ async def force_logout_user_sessions(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
 
     terminated_count = await force_logout_user(user_id)
+    await _publish_force_logout_event(user_id, "admin_forced", "账号已被管理员强制离线")
 
     await log_operation(
         db, current_user.id, "update", "user", user_id,

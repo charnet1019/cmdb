@@ -56,9 +56,34 @@ const bgUploading = ref(false)
 // File input refs for resetting after upload/clear
 const logoInput = ref<HTMLInputElement | null>(null)
 const bgInput = ref<HTMLInputElement | null>(null)
+const originalLogoImage = ref<string | null>(null)
+const originalBackgroundImage = ref<string | null>(null)
+const pendingImageDeletes = new Set<string>()
 
 function resetFileInput(inputRef: typeof logoInput) {
   if (inputRef.value) inputRef.value.value = ''
+}
+
+function uploadedFilename(url: string | null): string | null {
+  if (!url || !url.startsWith('/uploads/')) return null
+  return url.split('/').pop() || null
+}
+
+async function deleteUploadedImage(url: string | null) {
+  const filename = uploadedFilename(url)
+  if (!filename) return
+  try { await deleteImage(filename) } catch {}
+}
+
+function queueSavedImageDelete(url: string | null) {
+  const filename = uploadedFilename(url)
+  if (filename) pendingImageDeletes.add(filename)
+}
+
+async function flushPendingImageDeletes() {
+  const filenames = Array.from(pendingImageDeletes)
+  pendingImageDeletes.clear()
+  await Promise.all(filenames.map(filename => deleteImage(filename).catch(() => {})))
 }
 
 // Text entity normalization for settings saved as plain text
@@ -121,6 +146,9 @@ async function fetchSettings() {
     if (response.data.login_subtitle !== undefined) form.value.login_subtitle = response.data.login_subtitle
     if (response.data.logo_image !== undefined) form.value.logo_image = response.data.logo_image
     if (response.data.login_background_image !== undefined) form.value.login_background_image = response.data.login_background_image
+    originalLogoImage.value = form.value.logo_image
+    originalBackgroundImage.value = form.value.login_background_image
+    pendingImageDeletes.clear()
     if (response.data.login_log_retention !== undefined) form.value.login_log_retention = response.data.login_log_retention
     if (response.data.operation_log_retention !== undefined) form.value.operation_log_retention = response.data.operation_log_retention
     if (response.data.password_log_retention !== undefined) form.value.password_log_retention = response.data.password_log_retention
@@ -146,10 +174,6 @@ async function saveSettings() {
     const data: Record<string, any> = {}
 
     if (activeTab.value === 'system') {
-      data.site_title = form.value.site_title
-      data.copyright_text = decodeTextEntities(form.value.copyright_text)
-      data.beian_number = form.value.beian_number
-      data.beian_url = form.value.beian_url
       data.login_log_retention = form.value.login_log_retention
       data.operation_log_retention = form.value.operation_log_retention
       data.password_log_retention = form.value.password_log_retention
@@ -164,7 +188,11 @@ async function saveSettings() {
       data.session_timeout = form.value.session_timeout
       data.otp_issuer_name = form.value.otp_issuer_name
     } else if (activeTab.value === 'branding') {
+      data.site_title = form.value.site_title
       data.login_subtitle = form.value.login_subtitle
+      data.copyright_text = decodeTextEntities(form.value.copyright_text)
+      data.beian_number = form.value.beian_number
+      data.beian_url = form.value.beian_url
       data.logo_image = form.value.logo_image
       data.login_background_image = form.value.login_background_image
     } else if (activeTab.value === 'email') {
@@ -178,6 +206,11 @@ async function saveSettings() {
     }
 
     await updateSettings(data)
+    if (activeTab.value === 'branding') {
+      await flushPendingImageDeletes()
+      originalLogoImage.value = form.value.logo_image
+      originalBackgroundImage.value = form.value.login_background_image
+    }
     message.success('设置已保存')
     window.dispatchEvent(new CustomEvent('settings:updated', { detail: data }))
   } catch (error: any) {
@@ -190,10 +223,6 @@ async function saveSettings() {
 // Reset to defaults
 function resetToDefaults() {
   if (activeTab.value === "system") {
-    form.value.site_title = "CMDB"
-    form.value.copyright_text = ""
-    form.value.beian_number = ""
-    form.value.beian_url = ""
     form.value.login_log_retention = 30
     form.value.operation_log_retention = 30
     form.value.password_log_retention = 30
@@ -208,9 +237,21 @@ function resetToDefaults() {
     form.value.session_timeout = 30
     form.value.otp_issuer_name = "CMDB"
   } else if (activeTab.value === "branding") {
+    const previousLogo = form.value.logo_image
+    const previousBackground = form.value.login_background_image
+    if (previousLogo === originalLogoImage.value) queueSavedImageDelete(previousLogo)
+    else void deleteUploadedImage(previousLogo)
+    if (previousBackground === originalBackgroundImage.value) queueSavedImageDelete(previousBackground)
+    else void deleteUploadedImage(previousBackground)
+    form.value.site_title = "CMDB"
     form.value.login_subtitle = "企业资产配置管理平台"
+    form.value.copyright_text = ""
+    form.value.beian_number = ""
+    form.value.beian_url = ""
     form.value.logo_image = null
     form.value.login_background_image = null
+    resetFileInput(logoInput)
+    resetFileInput(bgInput)
   } else if (activeTab.value === "email") {
     form.value.smtp_host = ""
     form.value.smtp_port = 465
@@ -226,16 +267,14 @@ function resetToDefaults() {
 async function handleLogoUpload(file: File) {
   logoUploading.value = true
   try {
-    // Delete old logo if exists
-    if (form.value.logo_image) {
-      const oldFilename = form.value.logo_image.split('/').pop()
-      if (oldFilename) {
-        try { await deleteImage(oldFilename) } catch {}
-      }
-    }
+    const previous = form.value.logo_image
     const result = await uploadImage(file)
     form.value.logo_image = result.url
-    message.success('Logo 上传成功')
+    if (previous && previous !== result.url) {
+      if (previous === originalLogoImage.value) queueSavedImageDelete(previous)
+      else await deleteUploadedImage(previous)
+    }
+    message.success('Logo 已上传，请保存设置后生效')
   } catch (error: any) {
     message.error(error.response?.data?.detail || '上传失败')
   } finally {
@@ -248,15 +287,14 @@ async function handleLogoUpload(file: File) {
 async function handleBgUpload(file: File) {
   bgUploading.value = true
   try {
-    if (form.value.login_background_image) {
-      const oldFilename = form.value.login_background_image.split('/').pop()
-      if (oldFilename) {
-        try { await deleteImage(oldFilename) } catch {}
-      }
-    }
+    const previous = form.value.login_background_image
     const result = await uploadImage(file)
     form.value.login_background_image = result.url
-    message.success('背景图片上传成功')
+    if (previous && previous !== result.url) {
+      if (previous === originalBackgroundImage.value) queueSavedImageDelete(previous)
+      else await deleteUploadedImage(previous)
+    }
+    message.success('背景图片已上传，请保存设置后生效')
   } catch (error: any) {
     message.error(error.response?.data?.detail || '上传失败')
   } finally {
@@ -267,24 +305,18 @@ async function handleBgUpload(file: File) {
 
 // Clear logo
 async function clearLogo() {
-  if (form.value.logo_image) {
-    const filename = form.value.logo_image.split('/').pop()
-    if (filename) {
-      try { await deleteImage(filename) } catch {}
-    }
-  }
+  const previous = form.value.logo_image
+  if (previous === originalLogoImage.value) queueSavedImageDelete(previous)
+  else await deleteUploadedImage(previous)
   form.value.logo_image = null
   resetFileInput(logoInput)
 }
 
 // Clear background
 async function clearBackground() {
-  if (form.value.login_background_image) {
-    const filename = form.value.login_background_image.split('/').pop()
-    if (filename) {
-      try { await deleteImage(filename) } catch {}
-    }
-  }
+  const previous = form.value.login_background_image
+  if (previous === originalBackgroundImage.value) queueSavedImageDelete(previous)
+  else await deleteUploadedImage(previous)
   form.value.login_background_image = null
   resetFileInput(bgInput)
 }
@@ -345,58 +377,8 @@ onMounted(() => {
       <!-- System Settings Tab -->
       <div v-else-if="activeTab === 'system'" class="p-6 space-y-6">
         <div class="max-w-2xl">
-          <!-- Site Title -->
-          <div class="space-y-4">
-            <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">站点标题</label>
-              <input
-                v-model="form.site_title"
-                type="text"
-                class="input-field"
-                placeholder="CMDB"
-              />
-              <p class="text-xs text-slate-500 mt-1">显示在浏览器标签和页面标题中</p>
-            </div>
-
-            <!-- Copyright -->
-            <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">版权信息</label>
-              <input
-                v-model="form.copyright_text"
-                type="text"
-                class="input-field"
-                placeholder="© 2026 CMDB. All rights reserved."
-              />
-              <p class="text-xs text-slate-500 mt-1">显示在登录页底部，留空则不显示</p>
-            </div>
-
-            <!-- Beian Number -->
-            <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">备案号</label>
-              <input
-                v-model="form.beian_number"
-                type="text"
-                class="input-field"
-                placeholder="京ICP备12345678号"
-              />
-              <p class="text-xs text-slate-500 mt-1">显示在登录页底部，留空则不显示</p>
-            </div>
-
-            <!-- Beian URL -->
-            <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">备案链接</label>
-              <input
-                v-model="form.beian_url"
-                type="text"
-                class="input-field"
-                placeholder="https://beian.miit.gov.cn/"
-              />
-              <p class="text-xs text-slate-500 mt-1">备案号点击后跳转的链接，留空则不设为链接</p>
-            </div>
-          </div>
-
           <!-- Log Retention Section -->
-          <div class="border-t border-slate-100 pt-6 mt-6">
+          <div>
             <h3 class="text-sm font-medium text-slate-700 mb-4">日志保留</h3>
             <div class="space-y-4">
               <div>
@@ -670,6 +652,18 @@ onMounted(() => {
       <!-- Branding Tab -->
       <div v-else-if="activeTab === 'branding'" class="p-6 space-y-6">
         <div class="max-w-2xl space-y-6">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">站点标题</label>
+            <input
+              v-model="form.site_title"
+              type="text"
+              class="input-field"
+              maxlength="100"
+              placeholder="CMDB"
+            />
+            <p class="text-xs text-slate-500 mt-1">用于登录页标题和顶部导航标题</p>
+          </div>
+
           <!-- Login Subtitle -->
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-1">登录页副标题</label>
@@ -677,6 +671,7 @@ onMounted(() => {
               v-model="form.login_subtitle"
               type="text"
               class="input-field"
+              maxlength="200"
               placeholder="企业资产配置管理平台"
             />
             <p class="text-xs text-slate-500 mt-1">显示在登录页 Logo 下方的描述文字</p>
@@ -704,16 +699,16 @@ onMounted(() => {
                   <input
                     ref="logoInput"
                     type="file"
-                    accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                    accept="image/png,image/jpeg,image/gif,image/webp"
                     class="hidden"
                     @change="($event: any) => $event.target.files[0] && handleLogoUpload($event.target.files[0])"
                   />
                 </label>
                 <p v-if="form.logo_image" class="text-xs text-slate-500">
-                  已上传
+                  已选择，保存后生效
                   <button @click="clearLogo" class="text-error hover:underline ml-1">移除</button>
                 </p>
-                <p v-else class="text-xs text-slate-500">支持 PNG、JPG、GIF、WebP、SVG，最大 10MB</p>
+                <p v-else class="text-xs text-slate-500">支持 PNG、JPG、GIF、WebP，最大 10MB。上传后需保存设置才会生效</p>
               </div>
             </div>
           </div>
@@ -748,10 +743,51 @@ onMounted(() => {
                   />
                 </label>
                 <p v-if="form.login_background_image" class="text-xs text-slate-500">
-                  已上传
+                  已选择，保存后生效
                   <button @click="clearBackground" class="text-error hover:underline ml-1">移除</button>
                 </p>
-                <p v-else class="text-xs text-slate-500">支持 PNG、JPG、GIF、WebP，最大 10MB</p>
+                <p v-else class="text-xs text-slate-500">支持 PNG、JPG、GIF、WebP，最大 10MB。上传后需保存设置才会生效</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="border-t border-slate-100 pt-6">
+            <h3 class="text-sm font-medium text-slate-700 mb-4">登录页页脚</h3>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">版权信息</label>
+                <input
+                  v-model="form.copyright_text"
+                  type="text"
+                  class="input-field"
+                  maxlength="500"
+                  placeholder="© 2026 CMDB. All rights reserved."
+                />
+                <p class="text-xs text-slate-500 mt-1">显示在登录页底部，留空则不显示</p>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">备案号</label>
+                <input
+                  v-model="form.beian_number"
+                  type="text"
+                  class="input-field"
+                  maxlength="100"
+                  placeholder="京ICP备12345678号"
+                />
+                <p class="text-xs text-slate-500 mt-1">显示在登录页底部，留空则不显示</p>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">备案链接</label>
+                <input
+                  v-model="form.beian_url"
+                  type="text"
+                  class="input-field"
+                  maxlength="500"
+                  placeholder="https://beian.miit.gov.cn/"
+                />
+                <p class="text-xs text-slate-500 mt-1">备案号点击后跳转的链接，留空则不设为链接</p>
               </div>
             </div>
           </div>
@@ -794,7 +830,7 @@ onMounted(() => {
       </div>
 
       <!-- Email Tab -->
-      <div v-else-if="activeTab === 'email'" class="p-6 space-y-6">
+      <form v-else-if="activeTab === 'email'" class="p-6 space-y-6" @submit.prevent="saveSettings">
         <div class="max-w-2xl space-y-6">
           <div>
             <h3 class="text-sm font-medium text-slate-700 mb-4">SMTP 服务器</h3>
@@ -845,14 +881,14 @@ onMounted(() => {
 
         <!-- Actions -->
         <div class="flex items-center gap-3 pt-4 border-t border-slate-100">
-          <button @click="saveSettings" :disabled="saving" class="btn-primary flex items-center gap-2">
+          <button type="submit" :disabled="saving" class="btn-primary flex items-center gap-2">
             <LoadingOutlined v-if="saving" class="animate-spin text-lg" />
             <SaveOutlined v-else class="text-lg" />
             {{ saving ? '保存中...' : '保存设置' }}
           </button>
-          <button @click="resetToDefaults" class="btn-secondary">恢复默认</button>
+          <button type="button" @click="resetToDefaults" class="btn-secondary">恢复默认</button>
         </div>
-      </div>
+      </form>
     </div>
   </div>
 </template>

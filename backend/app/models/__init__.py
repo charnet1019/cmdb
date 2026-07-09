@@ -298,6 +298,41 @@ class Authorization(Base):
         return f"<Authorization {self.entity_type}:{self.entity_id} -> {self.target_type}:{self.target_ids}>"
 
 
+class Notification(Base):
+    """In-app notification message."""
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    sender_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
+
+    sender: Mapped[Optional["User"]] = relationship("User", foreign_keys=[sender_id])
+
+    def __repr__(self):
+        return f"<Notification {self.id}:{self.title}>"
+
+
+class NotificationReceipt(Base):
+    """Per-user notification delivery and read state."""
+    __tablename__ = "notification_receipts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    notification_id: Mapped[int] = mapped_column(Integer, ForeignKey("notifications.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    read_at: Mapped[Optional[datetime]] = mapped_column(DateTime(False), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
+
+    notification: Mapped["Notification"] = relationship("Notification")
+    user: Mapped["User"] = relationship("User")
+
+    __table_args__ = (
+        Index("idx_notification_receipts_user_read", "user_id", "read_at"),
+        Index("idx_notification_receipts_unique", "notification_id", "user_id", unique=True),
+    )
+
+
 class LoginLog(Base):
     """Login log model"""
     __tablename__ = "login_logs"

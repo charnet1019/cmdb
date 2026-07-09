@@ -11,6 +11,8 @@ from app.api.logs import router as logs_router
 from app.api.authorizations import router as authz_router
 from app.api.preferences import router as preferences_router
 from app.api.upload import router as upload_router
+from app.api.events import router as events_router
+from app.api.notifications import router as notifications_router
 
 api_router = APIRouter()
 
@@ -27,3 +29,5 @@ api_router.include_router(logs_router)
 api_router.include_router(authz_router)
 api_router.include_router(preferences_router)
 api_router.include_router(upload_router)
+api_router.include_router(events_router)
+api_router.include_router(notifications_router)

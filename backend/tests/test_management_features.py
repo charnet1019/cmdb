@@ -45,8 +45,9 @@ from app.api import authorizations as authz_api
 from app.api import deps
 from app.api import dashboard as dashboard_api
 from app.api import settings as settings_api
+from app.api import notifications as notifications_api
 from app.api import users as users_api
-from app.models import Asset, Authorization, Credential, Group, Organization, Setting, User
+from app.models import Asset, Authorization, Credential, Group, Notification, NotificationReceipt, Organization, Setting, User
 from app.schemas import AuthorizationCreate, CredentialCreate, GroupCreate, UserCreate, PasswordResetRequest, UserUpdate
 
 
@@ -1355,3 +1356,101 @@ async def test_reset_user_password_auto_sends_email_and_hides_temp_password(monk
     assert sent[0][0] == "bob@example.com"
     assert sent[0][2] == "reset"
     assert any(getattr(obj, "change_type", None) == "user_password" for obj in db.added)
+
+
+
+@pytest.mark.asyncio
+async def test_notification_send_permission_allows_superuser_and_asset_permissions(monkeypatch):
+    assert await notifications_api._can_send_notifications(user(is_superuser=True), FakeDB()) is True
+
+    async def manage_permissions(current_user, db):
+        return ["view", "manage"]
+
+    async def view_permissions(current_user, db):
+        return ["view"]
+
+    monkeypatch.setattr(notifications_api, "get_user_permissions", manage_permissions)
+    assert await notifications_api._can_send_notifications(user(id=2), FakeDB()) is True
+
+    monkeypatch.setattr(notifications_api, "get_user_permissions", view_permissions)
+    assert await notifications_api._can_send_notifications(user(id=2), FakeDB()) is False
+
+
+@pytest.mark.asyncio
+async def test_create_notification_persists_receipts_and_publishes_events(monkeypatch):
+    published = []
+
+    async def publish(user_id, event_type, data):
+        published.append((user_id, event_type, data))
+        return 1
+
+    monkeypatch.setattr(notifications_api, "publish_user_event", publish)
+    db = FakeDB(FakeResult(all_rows=[(2,), (3,)]))
+
+    response = await notifications_api.create_notification(
+        data=notifications_api.NotificationCreate(
+            title="维护通知",
+            content="今晚 22:00 维护",
+            recipient_scope="users",
+            user_ids=[2, 3],
+        ),
+        db=db,
+        current_user=user(id=1, username="admin", is_superuser=True),
+    )
+
+    assert response["message"] == "站内信已发送"
+    assert response["data"]["recipient_count"] == 2
+    added_notifications = [obj for obj in db.added if isinstance(obj, Notification)]
+    added_receipts = [obj for obj in db.added if isinstance(obj, NotificationReceipt)]
+    assert len(added_notifications) == 1
+    assert {receipt.user_id for receipt in added_receipts} == {2, 3}
+    assert [(user_id, event_type) for user_id, event_type, _ in published] == [(2, "notification"), (3, "notification")]
+    assert all(event_data["receipt_id"] for _, _, event_data in published)
+    assert db.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_notification_unread_count_and_mark_read():
+    receipt = NotificationReceipt(id=7, notification_id=20, user_id=2, read_at=None)
+    count_response = await notifications_api.unread_count(
+        db=FakeDB(FakeResult(scalar=3)),
+        current_user=user(id=2),
+    )
+    assert count_response["data"] == {"count": 3}
+
+    read_response = await notifications_api.mark_notification_read(
+        receipt_id=7,
+        db=FakeDB(FakeResult(scalar_one_or_none=receipt)),
+        current_user=user(id=2),
+    )
+    assert read_response["data"] == {"id": 7}
+    assert receipt.read_at is not None
+
+
+@pytest.mark.asyncio
+async def test_force_logout_user_sessions_publishes_sse_event(monkeypatch):
+    published = []
+
+    async def force_logout(user_id):
+        return 1
+
+    async def publish(user_id, event_type, data):
+        published.append((user_id, event_type, data))
+        return 1
+
+    async def fake_log(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(users_api, "force_logout_user", force_logout)
+    monkeypatch.setattr(users_api, "publish_user_event", publish)
+    monkeypatch.setattr(users_api, "log_operation", fake_log)
+
+    response = await users_api.force_logout_user_sessions(
+        user_id=2,
+        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+        db=FakeDB(FakeResult(scalar_one_or_none=user(id=2, username="bob"))),
+        current_user=user(id=1, is_superuser=True),
+    )
+
+    assert response.data == {"terminated_sessions": 1}
+    assert published == [(2, "force_logout", {"reason": "admin_forced", "message": "账号已被管理员强制离线"})]

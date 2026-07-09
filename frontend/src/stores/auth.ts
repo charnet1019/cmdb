@@ -14,6 +14,7 @@ export const useAuthStore = defineStore('auth', () => {
   const pendingMFASetup = ref(false)  // true = first-time binding flow
   const pendingForceChangeChallengeToken = ref<string | null>(null)
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  let eventSource: EventSource | null = null
 
   function startHeartbeat() {
     stopHeartbeat()
@@ -33,15 +34,68 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+
+  function disconnectEventStream() {
+    if (eventSource) {
+      eventSource.close()
+      eventSource = null
+    }
+  }
+
+  function connectEventStream() {
+    if (eventSource || !token.value) return
+
+    eventSource = new EventSource("/api/v1/events/stream", { withCredentials: true })
+    eventSource.addEventListener("force_logout", (event) => {
+      let message = "账号已被管理员强制离线"
+      try {
+        const data = JSON.parse((event as MessageEvent).data || "{}")
+        message = data.message || message
+      } catch {
+        // Keep default message.
+      }
+      disconnectEventStream()
+      handleTokenCleared()
+      sessionStorage.setItem("auth:logout-message", message)
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login"
+      }
+    })
+    eventSource.addEventListener("notification", (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data || "{}")
+        void import("@/stores/notifications").then(({ useNotificationsStore }) => {
+          useNotificationsStore().handleRealtimeNotification(data)
+        })
+      } catch {
+        // Ignore malformed realtime payloads.
+      }
+    })
+  }
+
+  function initializeAuthenticatedSession() {
+    startHeartbeat()
+    connectEventStream()
+    void import("@/stores/notifications").then(({ useNotificationsStore }) => {
+      const notificationStore = useNotificationsStore()
+      void notificationStore.fetchUnreadCount()
+      void notificationStore.fetchCanSend()
+    }).catch(() => {})
+  }
+
   // Listen for token cleared event from API interceptor
   const handleTokenCleared = () => {
     stopHeartbeat()
+    disconnectEventStream()
     token.value = null
     user.value = null
     permissions.value = []
     pendingMFAChallengeToken.value = null
     pendingMFASetup.value = false
     pendingForceChangeChallengeToken.value = null
+    void import("@/stores/notifications").then(({ useNotificationsStore }) => {
+      useNotificationsStore().reset()
+    }).catch(() => {})
   }
 
   // Remove any existing listener first (prevents accumulation during HMR)
@@ -79,7 +133,7 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = 'cookie-session'
     user.value = tokenResponse.user
     permissions.value = tokenResponse.user.permissions ?? []
-        startHeartbeat()
+    initializeAuthenticatedSession()
     return tokenResponse
   }
 
@@ -95,7 +149,7 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = 'cookie-session'
     user.value = tokenResponse.user
     permissions.value = tokenResponse.user.permissions ?? []
-        startHeartbeat()
+    initializeAuthenticatedSession()
     return tokenResponse
   }
 
@@ -128,7 +182,7 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = 'cookie-session'
     user.value = tokenResponse.user
     permissions.value = tokenResponse.user.permissions ?? []
-        startHeartbeat()
+    initializeAuthenticatedSession()
     return tokenResponse
   }
 
@@ -143,13 +197,8 @@ export const useAuthStore = defineStore('auth', () => {
     } catch (e) {
       // Ignore logout errors
     } finally {
-      token.value = null
-      user.value = null
-      permissions.value = []
-      pendingMFAChallengeToken.value = null
-      pendingMFASetup.value = false
-      pendingForceChangeChallengeToken.value = null
-          }
+      handleTokenCleared()
+    }
   }
 
   async function fetchUser() {
@@ -160,7 +209,7 @@ export const useAuthStore = defineStore('auth', () => {
       permissions.value = userData.permissions ?? []
       // Re-establish presence — Redis key may have expired while away
       await heartbeatApi()
-      startHeartbeat()
+      initializeAuthenticatedSession()
       return userData
     } catch (e) {
       logout()

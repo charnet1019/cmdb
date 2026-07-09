@@ -2,6 +2,11 @@
 Database Connection
 Async SQLAlchemy engine and session management
 """
+import asyncio
+from pathlib import Path
+
+from alembic import command
+from alembic.config import Config
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from app.config import settings
@@ -45,6 +50,19 @@ async def init_db():
     # Seed default admin user and settings (idempotent)
     from app.init_db import seed_default_data
     await seed_default_data()
+
+
+def _run_migrations_sync() -> None:
+    """Run Alembic migrations to head from any application working directory."""
+    backend_dir = Path(__file__).resolve().parents[1]
+    alembic_cfg = Config(str(backend_dir / "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", str(backend_dir / "alembic"))
+    command.upgrade(alembic_cfg, "head")
+
+
+async def run_migrations() -> None:
+    """Run database migrations before application initialization."""
+    await asyncio.to_thread(_run_migrations_sync)
 
 
 async def close_db():

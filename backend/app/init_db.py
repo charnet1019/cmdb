@@ -95,7 +95,9 @@ async def seed_default_data() -> None:
         # Create default settings
         db_settings = [
             Setting(key="site_title", value={"value": "CMDB"}, description="站点标题"),
-            Setting(key="site_logo", value={"value": ""}, description="站点Logo"),
+            Setting(key="login_subtitle", value={"value": "企业资产配置管理平台"}, description="登录页副标题"),
+            Setting(key="logo_image", value={"value": ""}, description="登录页Logo图片"),
+            Setting(key="login_background_image", value={"value": ""}, description="登录页背景图片"),
             Setting(key="password_min_length", value={"value": 8}, description="密码最小长度"),
             Setting(key="password_require_uppercase", value={"value": True}, description="密码要求大写字母"),
             Setting(key="password_require_lowercase", value={"value": True}, description="密码要求小写字母"),
