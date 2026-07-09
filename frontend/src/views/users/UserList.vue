@@ -2,7 +2,7 @@
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
-import { UserAddOutlined, SearchOutlined, SafetyCertificateOutlined, EditOutlined, KeyOutlined, DeleteOutlined, CloseOutlined, EyeOutlined, EyeInvisibleOutlined, ReloadOutlined, LogoutOutlined } from '@ant-design/icons-vue'
+import { UserAddOutlined, SearchOutlined, SafetyCertificateOutlined, SafetyOutlined, EditOutlined, KeyOutlined, DeleteOutlined, CloseOutlined, EyeOutlined, EyeInvisibleOutlined, ReloadOutlined, LogoutOutlined } from '@ant-design/icons-vue'
 import { createUser, updateUser, deleteUser, forceLogoutUser, resetUserPassword, getUserAuthorizations, getGroups } from '@/api/users'
 import { useUsersStore } from '@/stores/users'
 import { formatDateTime } from '@/utils/datetime'
