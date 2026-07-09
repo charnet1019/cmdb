@@ -1061,3 +1061,208 @@ async def test_dashboard_recent_logins_include_date_and_time(monkeypatch):
             "is_online": True,
         }
     ]
+
+
+from datetime import timedelta
+import app.core.session as session_core
+
+
+class FakeRedisSessionStore:
+    def __init__(self):
+        self.values = {}
+        self.sets = {}
+        self.ttls = {}
+
+    async def setex(self, key, ttl, value):
+        self.values[key] = value
+        self.ttls[key] = ttl
+
+    async def get(self, key):
+        return self.values.get(key)
+
+    async def delete(self, *keys):
+        deleted = 0
+        for key in keys:
+            removed = False
+            if key in self.values:
+                del self.values[key]
+                removed = True
+            if key in self.sets:
+                del self.sets[key]
+                removed = True
+            self.ttls.pop(key, None)
+            if removed:
+                deleted += 1
+        return deleted
+
+    async def sadd(self, key, value):
+        self.sets.setdefault(key, set()).add(value)
+        return 1
+
+    async def srem(self, key, value):
+        values = self.sets.get(key)
+        if not values or value not in values:
+            return 0
+        values.remove(value)
+        if not values:
+            self.sets.pop(key, None)
+        return 1
+
+    async def smembers(self, key):
+        return set(self.sets.get(key, set()))
+
+    async def exists(self, key):
+        return key in self.values or key in self.sets
+
+    async def ttl(self, key):
+        return self.ttls.get(key, -1)
+
+    async def expire(self, key, ttl):
+        self.ttls[key] = ttl
+        return True
+
+
+@pytest.mark.asyncio
+async def test_redis_session_create_delete_and_force_logout(monkeypatch):
+    redis_store = FakeRedisSessionStore()
+    monkeypatch.setattr(session_core, "get_redis", lambda: redis_store)
+    request = SimpleNamespace(
+        client=SimpleNamespace(host="10.0.0.10"),
+        headers={"user-agent": "pytest"},
+    )
+
+    session_id_1, expires_at = await session_core.create_user_session(7, request, timedelta(minutes=30))
+    session_id_2, _ = await session_core.create_user_session(7, request, timedelta(minutes=30))
+
+    payload = await session_core.load_user_session(session_id_1)
+    assert payload["user_id"] == 7
+    assert payload["ip_address"] == "10.0.0.10"
+    assert expires_at.tzinfo is not None
+    assert set(await session_core.get_active_user_session_ids(7)) == {session_id_1, session_id_2}
+
+    assert await session_core.delete_user_session(session_id_1, 7) is True
+    assert not await redis_store.exists(f"{session_core.SESSION_KEY_PREFIX}{session_id_1}")
+    assert await redis_store.exists(f"{session_core.ONLINE_KEY_PREFIX}7")
+    assert await session_core.get_active_user_session_ids(7) == [session_id_2]
+
+    assert await session_core.force_logout_user(7) == 1
+    assert await session_core.get_active_user_session_ids(7) == []
+    assert not await redis_store.exists(f"{session_core.ONLINE_KEY_PREFIX}7")
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_loads_redis_session(monkeypatch):
+    async def load_session(session_id):
+        assert session_id == "session-1"
+        return {"session_id": session_id, "user_id": 2}
+
+    monkeypatch.setattr(deps, "load_user_session", load_session)
+    request = SimpleNamespace(cookies={}, state=SimpleNamespace())
+    current = user(id=2, username="bob")
+
+    result = await deps.get_current_user(
+        request=request,
+        credentials=SimpleNamespace(credentials="session-1"),
+        db=FakeDB(FakeResult(scalar_one_or_none=current)),
+    )
+
+    assert result is current
+    assert request.state.session_id == "session-1"
+    assert request.state.session["user_id"] == 2
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_forces_logout_when_user_disabled(monkeypatch):
+    force_calls = []
+
+    async def load_session(session_id):
+        return {"session_id": session_id, "user_id": 2}
+
+    async def force_logout(user_id):
+        force_calls.append(user_id)
+        return 2
+
+    monkeypatch.setattr(deps, "load_user_session", load_session)
+    monkeypatch.setattr(deps, "force_logout_user", force_logout)
+
+    with pytest.raises(HTTPException) as exc:
+        await deps.get_current_user(
+            request=SimpleNamespace(cookies={}, state=SimpleNamespace()),
+            credentials=SimpleNamespace(credentials="session-1"),
+            db=FakeDB(FakeResult(scalar_one_or_none=user(id=2, is_active=False))),
+        )
+
+    assert exc.value.status_code == 403
+    assert exc.value.detail == "用户已被禁用"
+    assert force_calls == [2]
+
+
+@pytest.mark.asyncio
+async def test_update_user_disabling_active_user_forces_logout(monkeypatch):
+    force_calls = []
+
+    async def force_logout(user_id):
+        force_calls.append(user_id)
+        return 2
+
+    async def fake_log(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(users_api, "force_logout_user", force_logout)
+    monkeypatch.setattr(users_api, "log_operation", fake_log)
+    target = user(id=2, username="bob", is_active=True)
+    db = FakeDB(FakeResult(scalar_one_or_none=target), FakeResult(scalars=[]))
+
+    response = await users_api.update_user(
+        user_id=2,
+        data=UserUpdate(is_active=False),
+        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+        db=db,
+        current_user=user(id=1, is_superuser=True),
+    )
+
+    assert response.data.is_active is False
+    assert force_calls == [2]
+    assert db.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_force_logout_user_sessions_endpoint(monkeypatch):
+    force_calls = []
+    audit_calls = []
+
+    async def force_logout(user_id):
+        force_calls.append(user_id)
+        return 3
+
+    async def fake_log(*args, **kwargs):
+        audit_calls.append((args, kwargs))
+
+    monkeypatch.setattr(users_api, "force_logout_user", force_logout)
+    monkeypatch.setattr(users_api, "log_operation", fake_log)
+
+    response = await users_api.force_logout_user_sessions(
+        user_id=2,
+        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+        db=FakeDB(FakeResult(scalar_one_or_none=user(id=2, username="bob"))),
+        current_user=user(id=1, is_superuser=True),
+    )
+
+    assert response.message == "用户已强制离线"
+    assert response.data == {"terminated_sessions": 3}
+    assert force_calls == [2]
+    assert audit_calls
+
+
+@pytest.mark.asyncio
+async def test_force_logout_user_sessions_rejects_self():
+    with pytest.raises(HTTPException) as exc:
+        await users_api.force_logout_user_sessions(
+            user_id=1,
+            request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+            db=FakeDB(),
+            current_user=user(id=1, is_superuser=True),
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "不能强制离线自己"

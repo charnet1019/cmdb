@@ -20,6 +20,7 @@ from app.schemas import (
 from app.api.deps import get_current_user, PermissionChecker, get_user_permissions
 from app.core.security import get_password_hash, verify_password
 from app.core.password_policy import validate_password_strength_from_settings
+from app.core.session import force_logout_user
 
 
 router = APIRouter(prefix="/users", tags=["用户管理"])
@@ -322,6 +323,7 @@ async def update_user(
 
     # Track what changed
     changes = {}
+    force_logout_after_commit = False
     if data.email is not None and data.email != user.email:
         # Check email uniqueness
         existing = await db.execute(
@@ -349,6 +351,7 @@ async def update_user(
 
     if data.is_active is not None and data.is_active != user.is_active:
         changes["is_active"] = [user.is_active, data.is_active]
+        force_logout_after_commit = user.is_active and not data.is_active
         user.is_active = data.is_active
 
     if data.mfa_enabled is not None and data.mfa_enabled != user.mfa_enabled:
@@ -375,6 +378,8 @@ async def update_user(
             db.add(user_group)
 
     await db.commit()
+    if force_logout_after_commit:
+        await force_logout_user(user_id)
     await db.refresh(user)
 
     if changes:
@@ -459,6 +464,7 @@ async def delete_user(
     # FK references to other tables are handled by ON DELETE SET NULL
     await db.delete(user)
     await db.commit()
+    await force_logout_user(user_id)
 
     await log_operation(
         db, current_user.id, "delete", "user", user_id,
@@ -467,6 +473,43 @@ async def delete_user(
     )
 
     return ResponseBase(message="用户已删除")
+
+
+@router.post("/{user_id}/force-logout", response_model=ResponseBase)
+async def force_logout_user_sessions(
+    user_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(PermissionChecker("user_mgmt")),
+):
+    """Admin: invalidate all active sessions for a user."""
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="不能强制离线自己",
+        )
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    target_user = result.scalar_one_or_none()
+    if not target_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
+
+    terminated_count = await force_logout_user(user_id)
+
+    await log_operation(
+        db, current_user.id, "update", "user", user_id,
+        details={
+            "action": "force_logout",
+            "username": target_user.username,
+            "terminated_sessions": terminated_count,
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
+    return ResponseBase(
+        message="用户已强制离线",
+        data={"terminated_sessions": terminated_count},
+    )
 
 
 @router.post("/{user_id}/reset-password", response_model=ResponseBase)

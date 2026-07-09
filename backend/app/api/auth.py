@@ -24,10 +24,11 @@ from app.schemas import (
     MustChangePasswordResponse, MustChangePasswordData,
 )
 from app.core.security import (
-    verify_password, create_access_token, get_password_hash,
+    verify_password, get_password_hash,
     generate_totp_secret, verify_totp, generate_totp_qr
 )
-from app.core.redis_client import get_redis, ONLINE_KEY_PREFIX, ONLINE_TTL_SECONDS
+from app.core.redis_client import get_redis
+from app.core.session import create_user_session, delete_user_session, refresh_user_session
 from app.core.password_policy import validate_password_strength_from_settings
 from app.api.deps import AUTH_COOKIE_NAME, get_current_user, get_user_permissions, PermissionChecker
 from app.config import settings
@@ -202,18 +203,10 @@ async def _complete_login(
     await db.commit()
     await db.refresh(user)
 
-    redis_client = get_redis()
-    await redis_client.setex(
-        f"{ONLINE_KEY_PREFIX}{user.id}",
-        ONLINE_TTL_SECONDS,
-        "1",
-    )
-
     session_minutes = await _get_int_setting(db, "session_timeout", 30, 1, 10080)
     expires_delta = timedelta(days=7) if remember else timedelta(minutes=session_minutes)
-    access_token = create_access_token(subject=user.id, expires_delta=expires_delta)
-    _set_auth_cookie(response, request, access_token, expires_delta)
-    expires_at = datetime.utcnow() + expires_delta
+    session_id, expires_at = await create_user_session(user.id, request, expires_delta)
+    _set_auth_cookie(response, request, session_id, expires_delta)
     user_permissions = await get_user_permissions(user, db)
 
     return LoginResponse(
@@ -329,8 +322,7 @@ async def logout(
     User logout endpoint — remove online presence
     """
     ip = request.client.host if request and request.client else None
-    redis_client = get_redis()
-    await redis_client.delete(f"{ONLINE_KEY_PREFIX}{current_user.id}")
+    await delete_user_session(getattr(request.state, "session_id", None), current_user.id)
     _clear_auth_cookie(response)
 
     # Audit log
@@ -348,17 +340,15 @@ async def logout(
 
 @router.post("/heartbeat", response_model=ResponseBase)
 async def heartbeat(
+    request: Request,
     current_user: User = Depends(get_current_user),
 ):
     """
     Heartbeat — refresh online presence TTL (creates key if missing)
     """
-    redis_client = get_redis()
-    await redis_client.setex(
-        f"{ONLINE_KEY_PREFIX}{current_user.id}",
-        ONLINE_TTL_SECONDS,
-        "1",
-    )
+    refreshed = await refresh_user_session(getattr(request.state, "session_id", None))
+    if not refreshed:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="会话已失效")
     return ResponseBase(message="ok")
 
 

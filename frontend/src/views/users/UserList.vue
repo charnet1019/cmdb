@@ -2,8 +2,8 @@
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
-import { UserAddOutlined, SearchOutlined, SafetyCertificateOutlined, EditOutlined, LockOutlined, DeleteOutlined, CloseOutlined, EyeOutlined, EyeInvisibleOutlined, ReloadOutlined } from '@ant-design/icons-vue'
-import { createUser, updateUser, deleteUser, resetUserPassword, getUserAuthorizations, getGroups } from '@/api/users'
+import { UserAddOutlined, SearchOutlined, SafetyCertificateOutlined, EditOutlined, KeyOutlined, DeleteOutlined, CloseOutlined, EyeOutlined, EyeInvisibleOutlined, ReloadOutlined, LogoutOutlined } from '@ant-design/icons-vue'
+import { createUser, updateUser, deleteUser, forceLogoutUser, resetUserPassword, getUserAuthorizations, getGroups } from '@/api/users'
 import { useUsersStore } from '@/stores/users'
 import { formatDateTime } from '@/utils/datetime'
 import { resetUserMFA } from '@/api/auth'
@@ -348,6 +348,24 @@ async function handleResetMFA(user: User) {
   })
 }
 
+async function handleForceLogout(user: User) {
+  Modal.confirm({
+    title: '强制离线用户',
+    content: `确定要强制 ${user.full_name || user.username} 离线吗？该用户所有登录会话将立即失效。`,
+    okText: '强制离线',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        const result = await forceLogoutUser(user.id)
+        message.success(`用户已强制离线，终止 ${result.terminated_sessions} 个会话`)
+      } catch (e: any) {
+        message.error(getErrorMessage(e))
+      }
+    },
+  })
+}
+
 // Open reset password modal
 function openResetPasswordModal(user: User) {
   resetPasswordUser.value = user
@@ -650,8 +668,14 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
                 <button v-if="canManageUsers" @click="openEditModal(user)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="编辑">
                   <EditOutlined class="text-lg" />
                 </button>
-                <button v-if="canManageUsers" @click="openResetPasswordModal(user)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="重置密码">
-                  <LockOutlined class="text-lg" />
+                <button v-if="canManageUsers" @click="openResetPasswordModal(user)" class="p-1.5 hover:bg-green-50 rounded text-slate-400 hover:text-green-600" title="重置密码">
+                  <span class="relative inline-flex w-5 h-5 items-center justify-center text-green-600">
+                    <KeyOutlined class="text-lg" />
+                    <ReloadOutlined class="absolute -right-1 -top-1 text-[10px] bg-white rounded-full" />
+                  </span>
+                </button>
+                <button v-if="canManageUsers && user.id !== authStore.user?.id" @click="handleForceLogout(user)" class="p-1.5 hover:bg-amber-50 rounded text-slate-400 hover:text-amber-600" title="强制离线">
+                  <LogoutOutlined class="text-lg" />
                 </button>
                 <button v-if="canManageUsers" @click="handleDelete(user)" class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600" title="删除">
                   <DeleteOutlined class="text-lg" />

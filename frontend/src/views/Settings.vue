@@ -53,6 +53,13 @@ function resetFileInput(inputRef: typeof logoInput) {
   if (inputRef.value) inputRef.value.value = ''
 }
 
+// Text entity normalization for settings saved as plain text
+function decodeTextEntities(value: string): string {
+  const textarea = document.createElement('textarea')
+  textarea.innerHTML = value
+  return textarea.value
+}
+
 // Active tab
 const route = useRoute()
 const router = useRouter()
@@ -93,7 +100,7 @@ async function fetchSettings() {
     // Populate form with settings
     if (response.data.site_title !== undefined) form.value.site_title = response.data.site_title
     if (response.data.session_timeout !== undefined) form.value.session_timeout = response.data.session_timeout
-    if (response.data.copyright_text !== undefined) form.value.copyright_text = response.data.copyright_text
+    if (response.data.copyright_text !== undefined) form.value.copyright_text = decodeTextEntities(response.data.copyright_text)
     if (response.data.beian_number !== undefined) form.value.beian_number = response.data.beian_number
     if (response.data.beian_url !== undefined) form.value.beian_url = response.data.beian_url
     if (response.data.password_min_length !== undefined) form.value.password_min_length = response.data.password_min_length
@@ -125,7 +132,7 @@ async function saveSettings() {
 
     if (activeTab.value === 'system') {
       data.site_title = form.value.site_title
-      data.copyright_text = form.value.copyright_text
+      data.copyright_text = decodeTextEntities(form.value.copyright_text)
       data.beian_number = form.value.beian_number
       data.beian_url = form.value.beian_url
       data.login_log_retention = form.value.login_log_retention

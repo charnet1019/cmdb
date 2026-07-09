@@ -18,7 +18,11 @@ api.interceptors.response.use(
     return response
   },
   (error) => {
-    if (error.response?.status === 401) {
+    const detail = error.response?.data?.detail
+    const shouldClearAuth = error.response?.status === 401
+      || (error.response?.status === 403 && detail === '用户已被禁用')
+
+    if (shouldClearAuth) {
       // Don't redirect if already on login page — MFA verification errors
       // also return 401 and we want to stay on the MFA input form.
       if (window.location.pathname === '/login') {

@@ -39,6 +39,11 @@ export async function deleteUser(id: number): Promise<void> {
   await api.delete(`/users/${id}`)
 }
 
+export async function forceLogoutUser(id: number): Promise<{ terminated_sessions: number }> {
+  const response = await api.post(`/users/${id}/force-logout`)
+  return response.data.data
+}
+
 export async function resetUserPassword(id: number, data: {
   method?: 'auto' | 'manual'
   new_password?: string

@@ -59,6 +59,12 @@ function togglePasswordVisibility() {
   showPassword.value = !showPassword.value
 }
 
+function decodeTextEntities(value: string): string {
+  const textarea = document.createElement('textarea')
+  textarea.innerHTML = value
+  return textarea.value
+}
+
 // Fetch public branding settings
 async function fetchBranding() {
   try {
@@ -67,7 +73,7 @@ async function fetchBranding() {
     if (data.login_subtitle !== undefined) branding.value.login_subtitle = data.login_subtitle
     if (data.logo_image !== undefined) branding.value.logo_image = data.logo_image
     if (data.login_background_image !== undefined) branding.value.login_background_image = data.login_background_image
-    if (data.copyright_text !== undefined) branding.value.copyright_text = data.copyright_text
+    if (data.copyright_text !== undefined) branding.value.copyright_text = decodeTextEntities(data.copyright_text)
     if (data.beian_number !== undefined) branding.value.beian_number = data.beian_number
     if (data.beian_url !== undefined) branding.value.beian_url = data.beian_url
   } catch {

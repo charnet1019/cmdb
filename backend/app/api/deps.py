@@ -10,11 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, cast, String
 
 from app.database import get_db
-from app.core.security import decode_access_token
+from app.core.session import load_user_session, delete_user_session, force_logout_user
 from app.models import User, Authorization, Group, UserGroup, Organization, Asset
 
 
-# HTTP Bearer security scheme
+# HTTP Bearer security scheme. The credential/cookie value is a Redis session id.
 AUTH_COOKIE_NAME = "cmdb_access_token"
 
 # Keep Bearer optional so browser clients can authenticate with HttpOnly cookies.
@@ -27,7 +27,7 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """
-    Get current authenticated user from JWT token
+    Get current authenticated user from Redis-backed session.
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -35,17 +35,17 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    token = credentials.credentials if credentials else request.cookies.get(AUTH_COOKIE_NAME)
-    if not token:
+    session_id = credentials.credentials if credentials else request.cookies.get(AUTH_COOKIE_NAME)
+    if not session_id:
         raise credentials_exception
 
-    payload = decode_access_token(token)
-
-    if payload is None:
+    session_payload = await load_user_session(session_id)
+    if session_payload is None:
         raise credentials_exception
 
-    user_id: Optional[int] = payload.get("sub")
+    user_id: Optional[int] = session_payload.get("user_id")
     if user_id is None:
+        await delete_user_session(session_id)
         raise credentials_exception
 
     # Query user from database
@@ -55,9 +55,11 @@ async def get_current_user(
     user = result.scalar_one_or_none()
 
     if user is None:
+        await delete_user_session(session_id, int(user_id))
         raise credentials_exception
 
     if not user.is_active:
+        await force_logout_user(user.id)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="用户已被禁用"
@@ -69,6 +71,8 @@ async def get_current_user(
             detail="请先修改密码"
         )
 
+    request.state.session_id = session_id
+    request.state.session = session_payload
     return user
 
 
