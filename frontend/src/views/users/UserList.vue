@@ -55,6 +55,8 @@ const userForm = ref({
   phone: '',
   password: '',
   confirm_password: '',
+  password_method: 'manual' as 'manual' | 'auto',
+  send_email: true,
   group_ids: [] as number[],
   is_active: true,
   mfa_enabled: false
@@ -205,6 +207,8 @@ function openCreateModal() {
     phone: '',
     password: '',
     confirm_password: '',
+    password_method: 'manual',
+    send_email: true,
     group_ids: [],
     is_active: true,
     mfa_enabled: false
@@ -230,6 +234,8 @@ function openEditModal(user: User) {
     phone: user.phone || '',
     password: '',
     confirm_password: '',
+    password_method: 'manual',
+    send_email: true,
     group_ids: user.groups?.map(g => g.id) || [],
     is_active: user.is_active,
     mfa_enabled: user.mfa_enabled
@@ -259,7 +265,7 @@ async function handleSubmit() {
     return
   }
 
-  if (!editingUser.value) {
+  if (!editingUser.value && userForm.value.password_method === 'manual') {
     if (!userForm.value.password) {
       message.error('请输入密码')
       return
@@ -291,7 +297,9 @@ async function handleSubmit() {
       await createUser({
         username: userForm.value.username,
         email: userForm.value.email,
-        password: userForm.value.password,
+        password: userForm.value.password_method === 'manual' ? userForm.value.password : undefined,
+        password_method: userForm.value.password_method,
+        send_email: userForm.value.password_method === 'auto',
         full_name: userForm.value.full_name,
         phone: userForm.value.phone,
         group_ids: userForm.value.group_ids,
@@ -401,11 +409,14 @@ async function handleResetPassword() {
     const result = await resetUserPassword(resetPasswordUser.value.id, {
       method: resetPasswordForm.value.method,
       new_password: resetPasswordForm.value.method === 'manual' ? resetPasswordForm.value.new_password : undefined,
-      force_change: resetPasswordForm.value.force_change
+      force_change: resetPasswordForm.value.force_change,
+      send_email: resetPasswordForm.value.method === 'auto'
     })
 
     showResetPasswordModal.value = false
-    if (resetPasswordForm.value.method === 'auto' && result.temp_password) {
+    if (resetPasswordForm.value.method === 'auto' && result.email_sent) {
+      message.success('密码已重置并发送到用户邮箱')
+    } else if (resetPasswordForm.value.method === 'auto' && result.temp_password) {
       Modal.success({
         title: "密码重置成功",
         content: `临时密码：${result.temp_password}。该密码仅在本次重置后显示，请通过安全渠道发送给用户。`,
@@ -823,7 +834,25 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
 
             <!-- Password (only for create) -->
             <template v-if="!editingUser">
-              <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">密码设置</label>
+                <div class="space-y-2 mt-2">
+                  <label class="flex items-start gap-3 cursor-pointer p-3 border rounded-lg" :class="userForm.password_method === 'manual' ? 'border-primary bg-primary/5' : 'border-slate-200'">
+                    <input type="radio" v-model="userForm.password_method" value="manual" class="mt-0.5" />
+                    <div>
+                      <span class="text-sm font-medium text-slate-700">手动设置密码</span>
+                    </div>
+                  </label>
+                  <label class="flex items-start gap-3 cursor-pointer p-3 border rounded-lg" :class="userForm.password_method === 'auto' ? 'border-primary bg-primary/5' : 'border-slate-200'">
+                    <input type="radio" v-model="userForm.password_method" value="auto" class="mt-0.5" />
+                    <div>
+                      <span class="text-sm font-medium text-slate-700">自动生成密码并发送邮件</span>
+                      <p class="text-xs text-slate-500 mt-1">系统将生成随机密码并发送到用户邮箱</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+              <div v-if="userForm.password_method === 'manual'" class="grid grid-cols-2 gap-4">
                 <div>
                   <label class="block text-sm font-medium text-slate-700 mb-1">密码 <span class="text-red-500">*</span></label>
                   <div class="relative">

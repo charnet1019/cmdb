@@ -36,7 +36,9 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     """User creation schema"""
-    password: str = Field(..., min_length=8, max_length=32)
+    password: Optional[str] = Field(None, min_length=8, max_length=32)
+    password_method: str = "manual"  # manual, auto
+    send_email: bool = False
     group_ids: Optional[List[int]] = []
     is_active: bool = True
     mfa_enabled: bool = False

@@ -4,12 +4,18 @@ CRUD operations for users and user groups
 """
 from typing import Optional, List
 from datetime import datetime
+from email.message import EmailMessage
+from email.utils import formataddr
+import asyncio
+import secrets
+import smtplib
+import string
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
 from app.database import get_db
-from app.models import User, Group, UserGroup, Authorization, Asset, PasswordChangeLog
+from app.models import User, Group, UserGroup, Authorization, Asset, PasswordChangeLog, Setting
 from app.utils.audit import log_operation
 from app.schemas import (
     UserCreate, UserUpdate, UserResponse, UserSimple, UserDetailResponse,
@@ -21,9 +27,110 @@ from app.api.deps import get_current_user, PermissionChecker, get_user_permissio
 from app.core.security import get_password_hash, verify_password
 from app.core.password_policy import validate_password_strength_from_settings
 from app.core.session import force_logout_user
+from app.core.encryption import decrypt_value
+from app.config import settings
 
 
 router = APIRouter(prefix="/users", tags=["用户管理"])
+
+SMTP_SETTING_KEYS = (
+    "smtp_host",
+    "smtp_port",
+    "smtp_use_ssl",
+    "smtp_username",
+    "smtp_password",
+    "smtp_from_email",
+    "smtp_from_name",
+)
+
+
+def _setting_plain_value(setting: Setting | None, default=None):
+    if not setting or not isinstance(setting.value, dict):
+        return default
+    return setting.value.get("value", default)
+
+
+async def _get_setting_value(db: AsyncSession, key: str, default=None):
+    result = await db.execute(select(Setting).where(Setting.key == key))
+    return _setting_plain_value(result.scalar_one_or_none(), default)
+
+
+async def generate_temporary_password(db: AsyncSession) -> str:
+    min_length = int(await _get_setting_value(db, "password_min_length", settings.PASSWORD_MIN_LENGTH) or settings.PASSWORD_MIN_LENGTH)
+    length = max(16, min(min_length, settings.PASSWORD_MAX_LENGTH))
+    special_chars = "!_-+=*"
+    required = [
+        secrets.choice(string.ascii_lowercase),
+        secrets.choice(string.ascii_uppercase),
+        secrets.choice(string.digits),
+        secrets.choice(special_chars),
+    ]
+    alphabet = string.ascii_letters + string.digits + special_chars
+    chars = required + [secrets.choice(alphabet) for _ in range(length - len(required))]
+    secrets.SystemRandom().shuffle(chars)
+    return "".join(chars)
+
+
+def _decrypt_smtp_password(value: str | None) -> str:
+    if not value:
+        return ""
+    if isinstance(value, str) and value.startswith("gAAAA"):
+        return decrypt_value(value)
+    return str(value)
+
+
+async def _load_smtp_config(db: AsyncSession) -> dict:
+    result = await db.execute(select(Setting).where(Setting.key.in_(SMTP_SETTING_KEYS)))
+    setting_map = {setting.key: _setting_plain_value(setting, "") for setting in result.scalars().all()}
+    return {
+        "host": str(setting_map.get("smtp_host") or "").strip(),
+        "port": int(setting_map.get("smtp_port") or 465),
+        "use_ssl": bool(setting_map.get("smtp_use_ssl", True)),
+        "username": str(setting_map.get("smtp_username") or "").strip(),
+        "password": _decrypt_smtp_password(setting_map.get("smtp_password")),
+        "from_email": str(setting_map.get("smtp_from_email") or "").strip(),
+        "from_name": str(setting_map.get("smtp_from_name") or "CMDB").strip() or "CMDB",
+    }
+
+
+def _send_password_email_sync(config: dict, recipient_email: str, username: str, temp_password: str, action: str) -> None:
+    action_label = "创建" if action == "create" else "重置"
+    msg = EmailMessage()
+    msg["Subject"] = f"CMDB 账号密码已{action_label}"
+    msg["From"] = formataddr((config["from_name"], config["from_email"]))
+    msg["To"] = recipient_email
+    msg.set_content(
+        f"您好，\n\n"
+        f"您的 CMDB 账号密码已{action_label}。\n\n"
+        f"用户名：{username}\n"
+        f"临时密码：{temp_password}\n\n"
+        f"请登录后立即修改密码。\n"
+    )
+
+    smtp_cls = smtplib.SMTP_SSL if config["use_ssl"] else smtplib.SMTP
+    with smtp_cls(config["host"], config["port"], timeout=10) as server:
+        if config["username"]:
+            server.login(config["username"], config["password"])
+        server.send_message(msg)
+
+
+async def send_user_password_email(db: AsyncSession, target_user: User, temp_password: str, action: str) -> None:
+    config = await _load_smtp_config(db)
+    if not config["host"] or not config["from_email"]:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="邮件服务器未配置完整，请先在系统设置中配置 SMTP 服务器和发件人邮箱")
+    try:
+        await asyncio.to_thread(
+            _send_password_email_sync,
+            config,
+            target_user.email,
+            target_user.username,
+            temp_password,
+            action,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"邮件发送失败: {exc}") from exc
 
 
 # ============== User APIs ==============
@@ -135,8 +242,20 @@ async def create_user(
                 detail="邮箱已被使用"
             )
 
-        # Validate password
-        is_valid, errors = await validate_password_strength_from_settings(data.password, db)
+        if data.password_method not in {"manual", "auto"}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不支持的密码设置方式")
+
+        temp_password = None
+        initial_password = data.password
+        if data.password_method == "auto":
+            if not data.send_email:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="自动生成密码必须发送邮件给用户")
+            temp_password = await generate_temporary_password(db)
+            initial_password = temp_password
+        elif not initial_password:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请输入密码")
+
+        is_valid, errors = await validate_password_strength_from_settings(initial_password, db)
         if not is_valid:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -149,7 +268,7 @@ async def create_user(
             email=data.email,
             full_name=data.full_name,
             phone=data.phone,
-            password_hash=get_password_hash(data.password),
+            password_hash=get_password_hash(initial_password),
             is_active=data.is_active,
             mfa_enabled=data.mfa_enabled,
             must_change_password=True,
@@ -163,6 +282,9 @@ async def create_user(
             for group_id in data.group_ids:
                 user_group = UserGroup(user_id=user.id, group_id=group_id)
                 db.add(user_group)
+
+        if temp_password and data.send_email:
+            await send_user_password_email(db, user, temp_password, "create")
 
         await db.commit()
         await db.refresh(user)
@@ -196,6 +318,7 @@ async def create_user(
             )
         )
     except HTTPException:
+        await db.rollback()
         raise
     except Exception as e:
         await db.rollback()
@@ -549,17 +672,20 @@ async def reset_user_password(
         user.password_hash = get_password_hash(data.new_password)
         temp_password = None
     else:
-        # Auto-generate password
-        import secrets
-        import string
-        chars = string.ascii_letters + string.digits + "!@#$%^&*"
-        temp_password = ''.join(secrets.choice(chars) for _ in range(16))
+        temp_password = await generate_temporary_password(db)
         user.password_hash = get_password_hash(temp_password)
-        # Note: In production, send email to user with temp password
-        # For now, return it in response for admin to communicate
 
     if data.force_change:
         user.must_change_password = True
+
+    email_sent = False
+    if temp_password and data.send_email:
+        try:
+            await send_user_password_email(db, user, temp_password, "reset")
+        except HTTPException:
+            await db.rollback()
+            raise
+        email_sent = True
 
     await db.commit()
 
@@ -575,7 +701,7 @@ async def reset_user_password(
 
     return ResponseBase(
         message="密码重置成功",
-        data={"temp_password": temp_password} if temp_password else None,
+        data={"email_sent": email_sent, "temp_password": None if email_sent else temp_password} if temp_password else None,
     )
 
 

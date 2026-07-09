@@ -106,6 +106,13 @@ async def seed_default_data() -> None:
             Setting(key="login_log_retention", value={"value": 30}, description="登录日志保留天数"),
             Setting(key="operation_log_retention", value={"value": 30}, description="操作日志保留天数"),
             Setting(key="password_log_retention", value={"value": 30}, description="改密日志保留天数"),
+            Setting(key="smtp_host", value={"value": ""}, description="SMTP服务器地址"),
+            Setting(key="smtp_port", value={"value": 465}, description="SMTP服务器端口"),
+            Setting(key="smtp_use_ssl", value={"value": True}, description="SMTP是否使用SSL"),
+            Setting(key="smtp_username", value={"value": ""}, description="SMTP用户名"),
+            Setting(key="smtp_password", value={"value": ""}, description="SMTP密码"),
+            Setting(key="smtp_from_email", value={"value": ""}, description="发件人邮箱"),
+            Setting(key="smtp_from_name", value={"value": "CMDB"}, description="发件人名称"),
         ]
         for setting in db_settings:
             session.add(setting)

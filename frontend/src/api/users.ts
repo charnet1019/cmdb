@@ -19,12 +19,14 @@ export async function getUser(id: number): Promise<User> {
 export async function createUser(data: {
   username: string
   email: string
-  password: string
+  password?: string
   full_name?: string
   phone?: string
   group_ids?: number[]
   is_active?: boolean
   mfa_enabled?: boolean
+  password_method?: 'manual' | 'auto'
+  send_email?: boolean
 }): Promise<User> {
   const response = await api.post('/users', data)
   return response.data.data
@@ -49,7 +51,7 @@ export async function resetUserPassword(id: number, data: {
   new_password?: string
   force_change?: boolean
   send_email?: boolean
-}): Promise<{ temp_password?: string }> {
+}): Promise<{ temp_password?: string | null; email_sent?: boolean }> {
   const response = await api.post(`/users/${id}/reset-password`, data)
   return response.data.data
 }

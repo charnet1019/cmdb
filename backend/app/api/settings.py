@@ -3,6 +3,7 @@ Settings API Routes
 """
 from datetime import datetime, timezone
 from typing import Dict, Any
+from email.utils import parseaddr
 from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,7 @@ from app.database import get_db
 from app.api.deps import PermissionChecker
 from app.utils.audit import log_operation
 from app.models import Setting, User
+from app.core.encryption import encrypt_value
 
 
 def format_datetime_utc(dt: datetime | None) -> str | None:
@@ -47,6 +49,13 @@ SETTING_SCHEMA: Dict[str, tuple[type, int | None]] = {
     "login_subtitle": (str, 200),
     "logo_image": (str, 500),
     "login_background_image": (str, 500),
+    "smtp_host": (str, 255),
+    "smtp_port": (int, None),
+    "smtp_use_ssl": (bool, None),
+    "smtp_username": (str, 255),
+    "smtp_password": (str, 500),
+    "smtp_from_email": (str, 255),
+    "smtp_from_name": (str, 100),
 }
 
 INT_RANGES = {
@@ -57,9 +66,12 @@ INT_RANGES = {
     "max_login_attempts": (1, 50),
     "lockout_duration": (1, 1440),
     "session_timeout": (1, 10080),
+    "smtp_port": (1, 65535),
 }
 
 URL_KEYS = {"beian_url", "site_logo", "logo_image", "login_background_image"}
+EMAIL_KEYS = {"smtp_from_email"}
+SMTP_PASSWORD_MASK = "********"
 SENSITIVE_SETTING_KEY_PARTS = ("secret", "token", "credential", "private_key", "api_key", "smtp_password")
 
 
@@ -67,6 +79,12 @@ def _audit_setting_value(key: str, value: Any) -> Any:
     lowered = key.lower()
     if any(part in lowered for part in SENSITIVE_SETTING_KEY_PARTS):
         return "<redacted>"
+    return value
+
+
+def _response_setting_value(key: str, value: Any) -> Any:
+    if key == "smtp_password":
+        return SMTP_PASSWORD_MASK if value else ""
     return value
 
 
@@ -84,7 +102,7 @@ def _validate_url(key: str, value: str) -> str:
     )
 
 
-def _normalize_setting(key: str, value: Any) -> Any:
+def _normalize_setting(key: str, value: Any, existing_value: Any = None) -> Any:
     if key not in SETTING_SCHEMA:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -92,6 +110,11 @@ def _normalize_setting(key: str, value: Any) -> Any:
         )
 
     expected_type, max_length = SETTING_SCHEMA[key]
+    if key == "smtp_password":
+        if value in (None, "", SMTP_PASSWORD_MASK):
+            return existing_value if value == SMTP_PASSWORD_MASK and existing_value else ""
+        return encrypt_value(str(value))
+
     if value is None:
         return "" if expected_type is str else value
 
@@ -121,6 +144,11 @@ def _normalize_setting(key: str, value: Any) -> Any:
         )
     if key in URL_KEYS:
         normalized = _validate_url(key, normalized)
+    if key in EMAIL_KEYS and normalized:
+        _, parsed_email = parseaddr(normalized)
+        if not parsed_email or "@" not in parsed_email:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="设置项 smtp_from_email 必须是有效邮箱地址")
+        normalized = parsed_email
     return normalized
 
 
@@ -139,13 +167,14 @@ async def get_settings(
     # Convert to dictionary format
     settings_dict = {}
     for setting in settings_list:
-        settings_dict[setting.key] = setting.value.get("value") if setting.value else None
+        stored_value = setting.value.get("value") if setting.value else None
+        settings_dict[setting.key] = _response_setting_value(setting.key, stored_value)
 
     return {
         "code": 0,
         "message": "success",
         "data": settings_dict,
-        "raw": [{"id": s.id, "key": s.key, "value": s.value, "description": s.description, "updated_at": format_datetime_utc(s.updated_at)} for s in settings_list]
+        "raw": [{"id": s.id, "key": s.key, "value": {"value": _response_setting_value(s.key, s.value.get("value") if s.value else None)}, "description": s.description, "updated_at": format_datetime_utc(s.updated_at)} for s in settings_list]
     }
 
 
@@ -195,7 +224,7 @@ async def get_setting(
         "data": {
             "id": setting.id,
             "key": setting.key,
-            "value": setting.value,
+            "value": {"value": _response_setting_value(setting.key, setting.value.get("value") if setting.value else None)},
             "description": setting.description,
             "updated_at": format_datetime_utc(setting.updated_at)
         }
@@ -219,11 +248,11 @@ async def update_setting(
     setting = result.scalar_one_or_none()
 
     if not setting:
-        normalized_value = _normalize_setting(key, value.get("value") if isinstance(value, dict) and "value" in value else value)
+        normalized_value = _normalize_setting(key, value.get("value") if isinstance(value, dict) and "value" in value else value, setting.value.get("value") if setting and setting.value else None)
         setting = Setting(key=key, value={"value": normalized_value})
         db.add(setting)
     else:
-        normalized_value = _normalize_setting(key, value.get("value") if isinstance(value, dict) and "value" in value else value)
+        normalized_value = _normalize_setting(key, value.get("value") if isinstance(value, dict) and "value" in value else value, setting.value.get("value") if setting and setting.value else None)
         setting.value = {"value": normalized_value}
 
     await db.commit()
@@ -243,7 +272,7 @@ async def update_setting(
         "data": {
             "id": setting.id,
             "key": setting.key,
-            "value": setting.value,
+            "value": {"value": _response_setting_value(setting.key, setting.value.get("value") if setting.value else None)},
             "description": setting.description,
             "updated_at": format_datetime_utc(setting.updated_at)
         }
@@ -268,7 +297,7 @@ async def update_settings(
         result = await db.execute(select(Setting).where(Setting.key == key))
         setting = result.scalar_one_or_none()
 
-        normalized_value = _normalize_setting(key, value)
+        normalized_value = _normalize_setting(key, value, setting.value.get("value") if setting and setting.value else None)
         if setting:
             setting.value = {"value": normalized_value}
         else:

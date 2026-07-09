@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { SettingOutlined, SafetyCertificateOutlined, LoadingOutlined, SaveOutlined, InfoCircleOutlined, PictureOutlined, DatabaseOutlined } from '@ant-design/icons-vue'
+import { SettingOutlined, SafetyCertificateOutlined, LoadingOutlined, SaveOutlined, InfoCircleOutlined, PictureOutlined, DatabaseOutlined, MailOutlined } from '@ant-design/icons-vue'
 import { getSettings, updateSettings, uploadImage, deleteImage } from '@/api/settings'
 
 // Loading states
@@ -39,6 +39,14 @@ const form = ref({
   login_subtitle: '企业资产配置管理平台',
   logo_image: null as string | null,
   login_background_image: null as string | null,
+  // 邮件设置
+  smtp_host: '',
+  smtp_port: 465,
+  smtp_use_ssl: true,
+  smtp_username: '',
+  smtp_password: '',
+  smtp_from_email: '',
+  smtp_from_name: 'CMDB',
 })
 
 // Upload states
@@ -66,8 +74,8 @@ const router = useRouter()
 
 // Active tab — persisted in URL query so refreshing keeps the tab
 const activeTab = computed({
-  get: () => (route.query.tab as 'system' | 'security' | 'branding') || 'system',
-  set: (value: 'system' | 'security' | 'branding') => {
+  get: () => (route.query.tab as 'system' | 'security' | 'branding' | 'email') || 'system',
+  set: (value: 'system' | 'security' | 'branding' | 'email') => {
     router.push({ query: { ...route.query, tab: value } })
   },
 })
@@ -117,6 +125,13 @@ async function fetchSettings() {
     if (response.data.operation_log_retention !== undefined) form.value.operation_log_retention = response.data.operation_log_retention
     if (response.data.password_log_retention !== undefined) form.value.password_log_retention = response.data.password_log_retention
     if (response.data.otp_issuer_name !== undefined) form.value.otp_issuer_name = response.data.otp_issuer_name
+    if (response.data.smtp_host !== undefined) form.value.smtp_host = response.data.smtp_host
+    if (response.data.smtp_port !== undefined) form.value.smtp_port = response.data.smtp_port
+    if (response.data.smtp_use_ssl !== undefined) form.value.smtp_use_ssl = response.data.smtp_use_ssl
+    if (response.data.smtp_username !== undefined) form.value.smtp_username = response.data.smtp_username
+    if (response.data.smtp_password !== undefined) form.value.smtp_password = response.data.smtp_password
+    if (response.data.smtp_from_email !== undefined) form.value.smtp_from_email = response.data.smtp_from_email
+    if (response.data.smtp_from_name !== undefined) form.value.smtp_from_name = response.data.smtp_from_name
   } catch (error) {
     message.error('获取设置失败')
   } finally {
@@ -152,6 +167,14 @@ async function saveSettings() {
       data.login_subtitle = form.value.login_subtitle
       data.logo_image = form.value.logo_image
       data.login_background_image = form.value.login_background_image
+    } else if (activeTab.value === 'email') {
+      data.smtp_host = form.value.smtp_host
+      data.smtp_port = form.value.smtp_port
+      data.smtp_use_ssl = form.value.smtp_use_ssl
+      data.smtp_username = form.value.smtp_username
+      data.smtp_password = form.value.smtp_password
+      data.smtp_from_email = form.value.smtp_from_email
+      data.smtp_from_name = form.value.smtp_from_name
     }
 
     await updateSettings(data)
@@ -166,15 +189,15 @@ async function saveSettings() {
 
 // Reset to defaults
 function resetToDefaults() {
-  if (activeTab.value === 'system') {
-    form.value.site_title = 'CMDB'
-    form.value.copyright_text = ''
-    form.value.beian_number = ''
-    form.value.beian_url = ''
+  if (activeTab.value === "system") {
+    form.value.site_title = "CMDB"
+    form.value.copyright_text = ""
+    form.value.beian_number = ""
+    form.value.beian_url = ""
     form.value.login_log_retention = 30
     form.value.operation_log_retention = 30
     form.value.password_log_retention = 30
-  } else if (activeTab.value === 'security') {
+  } else if (activeTab.value === "security") {
     form.value.password_min_length = 8
     form.value.password_require_uppercase = true
     form.value.password_require_lowercase = true
@@ -183,11 +206,19 @@ function resetToDefaults() {
     form.value.max_login_attempts = 5
     form.value.lockout_duration = 30
     form.value.session_timeout = 30
-    form.value.otp_issuer_name = 'CMDB'
-  } else if (activeTab.value === 'branding') {
-    form.value.login_subtitle = '企业资产配置管理平台'
+    form.value.otp_issuer_name = "CMDB"
+  } else if (activeTab.value === "branding") {
+    form.value.login_subtitle = "企业资产配置管理平台"
     form.value.logo_image = null
     form.value.login_background_image = null
+  } else if (activeTab.value === "email") {
+    form.value.smtp_host = ""
+    form.value.smtp_port = 465
+    form.value.smtp_use_ssl = true
+    form.value.smtp_username = ""
+    form.value.smtp_password = ""
+    form.value.smtp_from_email = ""
+    form.value.smtp_from_name = "CMDB"
   }
 }
 
@@ -293,6 +324,14 @@ onMounted(() => {
           >
             <PictureOutlined class="text-lg align-middle mr-1" />
             品牌设置
+          </button>
+          <button
+            @click="activeTab = 'email'"
+            :class="activeTab === 'email' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'"
+            class="px-6 py-4 text-sm font-medium border-b-2 -mb-px transition-colors"
+          >
+            <MailOutlined class="text-lg align-middle mr-1" />
+            邮件
           </button>
         </nav>
       </div>
@@ -738,6 +777,67 @@ onMounted(() => {
                 </div>
                 <span v-if="form.site_title" class="text-white font-bold text-sm">{{ form.site_title }}</span>
                 <span v-if="form.login_subtitle" class="text-white/80 text-xs">{{ form.login_subtitle }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center gap-3 pt-4 border-t border-slate-100">
+          <button @click="saveSettings" :disabled="saving" class="btn-primary flex items-center gap-2">
+            <LoadingOutlined v-if="saving" class="animate-spin text-lg" />
+            <SaveOutlined v-else class="text-lg" />
+            {{ saving ? '保存中...' : '保存设置' }}
+          </button>
+          <button @click="resetToDefaults" class="btn-secondary">恢复默认</button>
+        </div>
+      </div>
+
+      <!-- Email Tab -->
+      <div v-else-if="activeTab === 'email'" class="p-6 space-y-6">
+        <div class="max-w-2xl space-y-6">
+          <div>
+            <h3 class="text-sm font-medium text-slate-700 mb-4">SMTP 服务器</h3>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">SMTP 服务器地址</label>
+                <input v-model="form.smtp_host" type="text" class="input-field" placeholder="smtp.example.com" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">端口</label>
+                <input v-model.number="form.smtp_port" type="number" min="1" max="65535" class="input-field" placeholder="465" />
+              </div>
+            </div>
+            <label class="flex items-center gap-2 cursor-pointer mt-4">
+              <input v-model="form.smtp_use_ssl" type="checkbox" class="w-4 h-4 text-primary rounded focus:ring-primary" />
+              <span class="text-sm text-slate-700">开启 SSL 安全连接</span>
+            </label>
+          </div>
+
+          <div class="border-t border-slate-100 pt-6">
+            <h3 class="text-sm font-medium text-slate-700 mb-4">认证信息</h3>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">SMTP 用户名</label>
+                <input v-model="form.smtp_username" type="text" class="input-field" autocomplete="username" placeholder="SMTP 用户名" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">SMTP 密码</label>
+                <input v-model="form.smtp_password" type="password" class="input-field" autocomplete="new-password" placeholder="留空则清除，保持 ******** 则不修改" />
+              </div>
+            </div>
+          </div>
+
+          <div class="border-t border-slate-100 pt-6">
+            <h3 class="text-sm font-medium text-slate-700 mb-4">发件人</h3>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">发件人邮箱</label>
+                <input v-model="form.smtp_from_email" type="email" class="input-field" placeholder="noreply@example.com" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">发件人名称</label>
+                <input v-model="form.smtp_from_name" type="text" class="input-field" placeholder="CMDB" />
               </div>
             </div>
           </div>

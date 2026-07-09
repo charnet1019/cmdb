@@ -44,9 +44,10 @@ from app.api import assets as asset_api
 from app.api import authorizations as authz_api
 from app.api import deps
 from app.api import dashboard as dashboard_api
+from app.api import settings as settings_api
 from app.api import users as users_api
-from app.models import Asset, Authorization, Credential, Group, Organization, User
-from app.schemas import AuthorizationCreate, CredentialCreate, GroupCreate, UserUpdate
+from app.models import Asset, Authorization, Credential, Group, Organization, Setting, User
+from app.schemas import AuthorizationCreate, CredentialCreate, GroupCreate, UserCreate, PasswordResetRequest, UserUpdate
 
 
 class ScalarList:
@@ -1266,3 +1267,91 @@ async def test_force_logout_user_sessions_rejects_self():
 
     assert exc.value.status_code == 400
     assert exc.value.detail == "不能强制离线自己"
+
+
+def setting(key, value):
+    return Setting(key=key, value={"value": value})
+
+
+def test_smtp_password_setting_is_encrypted_and_masked():
+    encrypted = settings_api._normalize_setting("smtp_password", "mail-secret")
+
+    assert encrypted != "mail-secret"
+    assert encrypted.startswith("gAAAA")
+    assert settings_api._response_setting_value("smtp_password", encrypted) == settings_api.SMTP_PASSWORD_MASK
+    assert settings_api._normalize_setting("smtp_password", settings_api.SMTP_PASSWORD_MASK, encrypted) == encrypted
+    assert settings_api._normalize_setting("smtp_password", "", encrypted) == ""
+
+
+@pytest.mark.asyncio
+async def test_create_user_auto_password_sends_email_before_commit(monkeypatch):
+    sent = []
+
+    async def fake_send(db, target_user, temp_password, action):
+        sent.append((target_user.email, target_user.username, temp_password, action))
+
+    async def fake_log(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(users_api, "send_user_password_email", fake_send)
+    monkeypatch.setattr(users_api, "log_operation", fake_log)
+
+    db = FakeDB(
+        FakeResult(scalar_one_or_none=None),
+        FakeResult(scalar_one_or_none=None),
+        FakeResult(scalar_one_or_none=setting("password_min_length", 12)),
+        FakeResult(scalar_one_or_none=setting("password_min_length", 12)),
+        FakeResult(scalar_one_or_none=setting("password_require_uppercase", True)),
+        FakeResult(scalar_one_or_none=setting("password_require_lowercase", True)),
+        FakeResult(scalar_one_or_none=setting("password_require_digit", True)),
+        FakeResult(scalar_one_or_none=setting("password_require_special", False)),
+        FakeResult(scalars=[]),
+    )
+
+    response = await users_api.create_user(
+        data=UserCreate(
+            username="new-user",
+            email="new-user@example.com",
+            password_method="auto",
+            send_email=True,
+        ),
+        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+        db=db,
+        current_user=user(is_superuser=True),
+    )
+
+    created = next(obj for obj in db.added if isinstance(obj, User))
+    assert response.data.username == "new-user"
+    assert created.password_hash != sent[0][2]
+    assert sent[0][0] == "new-user@example.com"
+    assert sent[0][3] == "create"
+    assert db.commits >= 1
+
+
+@pytest.mark.asyncio
+async def test_reset_user_password_auto_sends_email_and_hides_temp_password(monkeypatch):
+    sent = []
+
+    async def fake_send(db, target_user, temp_password, action):
+        sent.append((target_user.email, temp_password, action))
+
+    monkeypatch.setattr(users_api, "send_user_password_email", fake_send)
+    target = user(id=2, username="bob", email="bob@example.com", password_hash="old-hash")
+    db = FakeDB(
+        FakeResult(scalar_one_or_none=target),
+        FakeResult(scalar_one_or_none=setting("password_min_length", 12)),
+    )
+
+    response = await users_api.reset_user_password(
+        user_id=2,
+        data=PasswordResetRequest(method="auto", force_change=True, send_email=True),
+        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+        db=db,
+        current_user=user(id=1, is_superuser=True),
+    )
+
+    assert response.data == {"email_sent": True, "temp_password": None}
+    assert target.must_change_password is True
+    assert sent[0][0] == "bob@example.com"
+    assert sent[0][2] == "reset"
+    assert any(getattr(obj, "change_type", None) == "user_password" for obj in db.added)
