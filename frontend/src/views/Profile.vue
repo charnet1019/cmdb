@@ -451,7 +451,18 @@ onMounted(() => {
 
       <!-- Change Password Tab -->
       <div v-else-if="activeTab === 'password'" class="p-6">
-        <div class="max-w-md space-y-5">
+        <form class="max-w-md space-y-5" @submit.prevent="changePwd">
+          <label for="profile-password-username" class="sr-only">用户名</label>
+          <input
+            id="profile-password-username"
+            name="username"
+            type="text"
+            class="sr-only"
+            autocomplete="username"
+            :value="userDetails?.username || authStore.user?.username || ''"
+            readonly
+            tabindex="-1"
+          />
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-1">原密码</label>
             <div class="relative">
@@ -519,10 +530,10 @@ onMounted(() => {
               </button>
             </div>
           </div>
-          <button @click="changePwd" :disabled="changingPassword" class="btn-primary">
+          <button type="submit" :disabled="changingPassword" class="btn-primary">
             {{ changingPassword ? '修改中...' : '修改密码' }}
           </button>
-        </div>
+        </form>
       </div>
     </div>
   </div>
