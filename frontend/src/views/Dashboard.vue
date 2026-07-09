@@ -17,6 +17,52 @@ import { formatDateTime } from '@/utils/datetime'
 
 use([CanvasRenderer, PieChart, TooltipComponent, LegendComponent])
 
+const passiveWheelChartSelector = '[data-passive-wheel-chart="true"]'
+const passiveWheelEvents = new Set(['wheel', 'mousewheel', 'touchstart', 'touchmove'])
+let passiveWheelPatchInstalled = false
+
+function isPassiveWheelChartTarget(target: EventTarget): target is Element {
+  return typeof Element !== 'undefined'
+    && target instanceof Element
+    && Boolean(target.closest(passiveWheelChartSelector))
+}
+
+function withPassiveOption(options?: boolean | AddEventListenerOptions): boolean | AddEventListenerOptions {
+  if (options === undefined) return { passive: true }
+  if (typeof options === 'boolean') return { capture: options, passive: true }
+  if (options.passive !== undefined) return options
+  return { ...options, passive: true }
+}
+
+function installPassiveWheelPatch() {
+  if (passiveWheelPatchInstalled || typeof window === 'undefined' || typeof EventTarget === 'undefined') return
+
+  const windowWithPatch = window as Window & { __cmdbPassiveWheelPatchInstalled?: boolean }
+  if (windowWithPatch.__cmdbPassiveWheelPatchInstalled) {
+    passiveWheelPatchInstalled = true
+    return
+  }
+
+  passiveWheelPatchInstalled = true
+  windowWithPatch.__cmdbPassiveWheelPatchInstalled = true
+  const addEventListener = EventTarget.prototype.addEventListener
+
+  EventTarget.prototype.addEventListener = function (
+    this: EventTarget,
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions
+  ) {
+    const patchedOptions = passiveWheelEvents.has(type) && isPassiveWheelChartTarget(this)
+      ? withPassiveOption(options)
+      : options
+
+    return addEventListener.call(this, type, listener, patchedOptions)
+  } as typeof EventTarget.prototype.addEventListener
+}
+
+installPassiveWheelPatch()
+
 // Stats
 const stats = ref<DashboardStats>({
   total_assets: 0,
@@ -304,11 +350,11 @@ onMounted(() => {
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <div class="card">
         <h3 class="text-lg font-semibold text-slate-900 mb-4">资产类型分布</h3>
-        <v-chart class="h-80" :option="mainPieOption" autoresize />
+        <v-chart class="h-80" :option="mainPieOption" data-passive-wheel-chart="true" autoresize />
       </div>
       <div class="card">
         <h3 class="text-lg font-semibold text-slate-900 mb-4">资产状态分布</h3>
-        <v-chart class="h-80" :option="statusPieOption" autoresize />
+        <v-chart class="h-80" :option="statusPieOption" data-passive-wheel-chart="true" autoresize />
       </div>
     </div>
 
@@ -320,7 +366,7 @@ onMounted(() => {
         class="card"
       >
         <h4 class="text-sm font-semibold text-slate-900 mb-2">{{ assetLabels[category] || category }}</h4>
-        <v-chart class="h-56" :option="subPieOptions[category]" autoresize />
+        <v-chart class="h-56" :option="subPieOptions[category]" data-passive-wheel-chart="true" autoresize />
       </div>
     </div>
 
