@@ -669,9 +669,9 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
                   <EditOutlined class="text-lg" />
                 </button>
                 <button v-if="canManageUsers" @click="openResetPasswordModal(user)" class="p-1.5 hover:bg-green-50 rounded text-slate-400 hover:text-green-600" title="重置密码">
-                  <span class="relative inline-flex w-5 h-5 items-center justify-center text-green-600">
-                    <KeyOutlined class="text-lg" />
-                    <ReloadOutlined class="absolute -right-1 -top-1 text-[10px] bg-white rounded-full" />
+                  <span class="relative inline-flex h-5 w-5 items-center justify-center" aria-hidden="true">
+                    <ReloadOutlined class="absolute inset-0 flex items-center justify-center text-[20px] leading-none" />
+                    <KeyOutlined class="relative text-[10px] leading-none" />
                   </span>
                 </button>
                 <button v-if="canManageUsers && user.id !== authStore.user?.id" @click="handleForceLogout(user)" class="p-1.5 hover:bg-amber-50 rounded text-slate-400 hover:text-amber-600" title="强制离线">
