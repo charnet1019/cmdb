@@ -43,6 +43,7 @@ if importlib.util.find_spec("qrcode") is None:
 from app.api import assets as asset_api
 from app.api import authorizations as authz_api
 from app.api import deps
+from app.api import dashboard as dashboard_api
 from app.api import users as users_api
 from app.models import Asset, Authorization, Credential, Group, Organization, User
 from app.schemas import AuthorizationCreate, CredentialCreate, GroupCreate, UserUpdate
@@ -995,3 +996,68 @@ async def test_get_authorized_asset_ids_group_asset_all_sentinel_grants_full_acc
     )
 
     assert await deps.get_authorized_asset_ids(user(), db, "manage") is None
+
+
+@pytest.mark.asyncio
+async def test_dashboard_recent_logins_include_date_and_time(monkeypatch):
+    class Row:
+        def __init__(self, value, count):
+            self.value = value
+            self.category = value
+            self.count = count
+
+        def __getitem__(self, index):
+            if index == 0:
+                return self.value
+            if index == 1:
+                return self.count
+            raise IndexError(index)
+
+    class FakeRedis:
+        async def keys(self, pattern):
+            return ["cmdb:online:1"]
+
+    async def all_assets(current_user, db, permission="view"):
+        return None
+
+    async def view_users(current_user, db):
+        return ["view_users"]
+
+    monkeypatch.setattr(dashboard_api, "get_authorized_asset_ids", all_assets)
+    monkeypatch.setattr(dashboard_api, "get_user_permissions", view_users)
+    monkeypatch.setattr(dashboard_api, "get_redis", lambda: FakeRedis())
+
+    login_log = SimpleNamespace(
+        created_at=datetime(2026, 7, 8, 9, 5, 30),
+        ip_address="10.0.0.1",
+        user_id=1,
+        username="alice",
+    )
+    login_user = SimpleNamespace(username="alice", full_name="Alice")
+    db = FakeDB(
+        FakeResult(scalar=12),
+        FakeResult(all_rows=[Row("host", 7)]),
+        FakeResult(all_rows=[Row("running", 5)]),
+        FakeResult(all_rows=[]),
+        FakeResult(all_rows=[]),
+        FakeResult(all_rows=[]),
+        FakeResult(all_rows=[]),
+        FakeResult(all_rows=[]),
+        FakeResult(all_rows=[]),
+        FakeResult(scalar=3),
+        FakeResult(scalar=2),
+        FakeResult(all_rows=[(login_log, login_user)]),
+    )
+
+    response = await dashboard_api.get_dashboard_stats(db=db, current_user=user())
+
+    assert any("row_number" in str(statement) and "PARTITION BY" in str(statement) for statement in db.executed)
+    assert response["data"]["recent_logins"] == [
+        {
+            "user": "Alice",
+            "time": "2026-07-08T09:05:30Z",
+            "ip": "10.0.0.1",
+            "user_id": 1,
+            "is_online": True,
+        }
+    ]

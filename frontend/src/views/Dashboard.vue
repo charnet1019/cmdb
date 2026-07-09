@@ -13,6 +13,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { PieChart } from 'echarts/charts'
 import { TooltipComponent, LegendComponent } from 'echarts/components'
 import type { EChartsOption } from 'echarts'
+import { formatDateTime } from '@/utils/datetime'
 
 use([CanvasRenderer, PieChart, TooltipComponent, LegendComponent])
 
@@ -340,7 +341,7 @@ onMounted(() => {
             <p class="text-xs text-slate-500">{{ login.ip }}</p>
           </div>
           <div class="text-right">
-            <p class="text-sm text-slate-600">{{ login.time }}</p>
+            <p class="text-sm text-slate-600">{{ formatDateTime(login.time) }}</p>
             <span
               v-if="login.is_online"
               class="inline-flex items-center gap-1 text-xs text-success"

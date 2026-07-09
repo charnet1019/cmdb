@@ -2,7 +2,7 @@
 Dashboard API
 Statistics and overview data for dashboard page
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -109,11 +109,22 @@ async def get_dashboard_stats(
         online_user_ids = {int(k.split(":online:")[1]) for k in keys}
         online_users = len(online_user_ids)
 
-        # Recent successful logins (last 5)
+        # Recent successful login users (latest successful login per user, last 5 users)
+        latest_login_rank = func.row_number().over(
+            partition_by=LoginLog.user_id,
+            order_by=LoginLog.created_at.desc(),
+        ).label("login_rank")
+        latest_login_subquery = (
+            select(LoginLog.id.label("login_id"), latest_login_rank)
+            .where(LoginLog.status == "success")
+            .where(LoginLog.user_id.isnot(None))
+            .subquery()
+        )
         recent_logins_result = await db.execute(
             select(LoginLog, User)
+            .join(latest_login_subquery, LoginLog.id == latest_login_subquery.c.login_id)
             .join(User, LoginLog.user_id == User.id, isouter=True)
-            .where(LoginLog.status == "success")
+            .where(latest_login_subquery.c.login_rank == 1)
             .order_by(LoginLog.created_at.desc())
             .limit(5)
         )
@@ -121,7 +132,7 @@ async def get_dashboard_stats(
         for login_log, user in recent_logins_result.all():
             recent_logins.append({
                 "user": user.full_name if user and user.full_name else (user.username if user else login_log.username),
-                "time": login_log.created_at.strftime("%H:%M"),
+                "time": login_log.created_at.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z"),
                 "ip": login_log.ip_address,
                 "user_id": login_log.user_id,
                 "is_online": login_log.user_id in online_user_ids,
