@@ -22,14 +22,15 @@ import {
   ExportOutlined,
   ReloadOutlined,
   ImportOutlined,
-  SearchOutlined
+  SearchOutlined,
+  DownloadOutlined
 } from '@ant-design/icons-vue'
 import { useAssets } from './composables/useAssets'
 import { useOrganizations } from './composables/useOrganizations'
 import { useCredentials } from './composables/useCredentials'
 import { useTypeTree, categories, platformOptions, categoryOptions, dbTypeOptions } from './composables/useTypeTree'
 import { useColumnConfig } from './composables/useColumnConfig'
-import { createAsset, updateAsset, createCredential, updateCredential, getAssets, decryptOobPassword } from '@/api/assets'
+import { createAsset, updateAsset, createCredential, updateCredential, getAssets, decryptOobPassword, downloadAssetConfig } from '@/api/assets'
 import { getUsersForAuth } from '@/api/authorizations'
 import { useAuthStore } from '@/stores/auth'
 import ColumnCustomizer from './components/ColumnCustomizer.vue'
@@ -290,6 +291,7 @@ const editingAsset = ref<Asset | null>(null)
 const formSelectedOrgId = ref<number | null>(null)
 const configModalAsset = ref<Asset | null>(null)
 const showConfigModal = ref(false)
+const downloadingConfigAssetIds = ref<Set<string>>(new Set())
 
 // Device type options for network
 const localDeviceTypeOptions = ['交换机', '路由器', '防火墙', '负载均衡', '无线控制器']
@@ -441,6 +443,32 @@ function openConfigModal(asset: Asset) {
 function closeConfigModal() {
   showConfigModal.value = false
   configModalAsset.value = null
+}
+
+function isDownloadingConfig(assetId: string) {
+  return downloadingConfigAssetIds.value.has(assetId)
+}
+
+async function handleDownloadConfig(asset: Asset) {
+  if (asset.category !== 'network' || !asset.config_file?.filename) return
+  downloadingConfigAssetIds.value = new Set(downloadingConfigAssetIds.value).add(asset.id)
+  try {
+    await downloadAssetConfig(asset.id)
+  } catch (error: any) {
+    let detail = error.response?.data?.detail
+    if (!detail && error.response?.data instanceof Blob) {
+      try {
+        detail = JSON.parse(await error.response.data.text()).detail
+      } catch {
+        // Use the fallback message below.
+      }
+    }
+    message.error(detail || '下载配置文件失败')
+  } finally {
+    const next = new Set(downloadingConfigAssetIds.value)
+    next.delete(asset.id)
+    downloadingConfigAssetIds.value = next
+  }
 }
 
 function onStatusFilterChange() {
@@ -1129,15 +1157,25 @@ onMounted(async () => {
                         <template v-else-if="key === 'applicant'">{{ asset.applicant || '' }}</template>
                         <template v-else-if="key === 'owner'"><span class="text-sm text-slate-600">{{ asset.owner_name || '' }}</span></template>
                         <template v-else-if="key === 'config_file'">
-                          <button
-                            v-if="asset.category === 'network'"
-                            class="min-w-[120px] h-7 text-left text-sm rounded px-2 hover:bg-slate-100"
-                            :class="asset.config_file?.filename ? 'text-primary font-medium' : 'text-slate-300 border border-dashed border-transparent hover:border-slate-300'"
-                            :title="asset.config_file?.filename || '点击上传配置文件'"
-                            @click.stop="openConfigModal(asset)"
-                          >
-                            {{ asset.config_file?.filename || '' }}
-                          </button>
+                          <div v-if="asset.category === 'network'" class="min-w-[140px] h-7 flex items-center gap-1.5">
+                            <button
+                              class="min-w-0 h-7 text-left text-sm rounded px-2 hover:bg-slate-100"
+                              :class="asset.config_file?.filename ? 'text-primary font-medium truncate' : 'text-slate-300 border border-dashed border-transparent hover:border-slate-300 min-w-[120px]'"
+                              :title="asset.config_file?.filename || '点击上传配置文件'"
+                              @click.stop="openConfigModal(asset)"
+                            >
+                              {{ asset.config_file?.filename || '' }}
+                            </button>
+                            <button
+                              v-if="asset.config_file?.filename"
+                              class="shrink-0 p-1.5 text-slate-400 hover:text-primary hover:bg-slate-100 rounded disabled:text-slate-300 disabled:hover:bg-transparent"
+                              :disabled="isDownloadingConfig(asset.id)"
+                              :title="isDownloadingConfig(asset.id) ? '下载中...' : '下载配置文件'"
+                              @click.stop="handleDownloadConfig(asset)"
+                            >
+                              <DownloadOutlined class="text-sm" />
+                            </button>
+                          </div>
                         </template>
                         <template v-else-if="key === 'credentials'">
                           <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">

@@ -7,6 +7,7 @@ import {
   getAssetConfigContent,
   getAssetConfigVersions,
   getAssetConfigVersionContent,
+  downloadAssetConfig,
   uploadAssetConfig,
   saveAssetConfigContent,
   rollbackAssetConfig,
@@ -27,6 +28,7 @@ const emit = defineEmits<{
 const loading = ref(false)
 const saving = ref(false)
 const uploading = ref(false)
+const downloading = ref(false)
 const versionsLoading = ref(false)
 const meta = ref<AssetConfigFileSummary | null>(null)
 const versions = ref<AssetConfigVersion[]>([])
@@ -175,6 +177,26 @@ async function loadConfig() {
 
 function openFilePicker() {
   fileInput.value?.click()
+}
+
+async function handleDownloadConfig() {
+  if (!props.asset || !meta.value?.filename || !meta.value.can_view) return
+  downloading.value = true
+  try {
+    await downloadAssetConfig(props.asset.id)
+  } catch (error: any) {
+    let detail = error.response?.data?.detail
+    if (!detail && error.response?.data instanceof Blob) {
+      try {
+        detail = JSON.parse(await error.response.data.text()).detail
+      } catch {
+        // Use the fallback message below.
+      }
+    }
+    message.error(detail || '下载配置文件失败')
+  } finally {
+    downloading.value = false
+  }
 }
 
 async function handleUpload(event: Event) {
@@ -328,11 +350,19 @@ onBeforeUnmount(() => {
     <div class="absolute inset-0 bg-slate-900/60" @click="close"></div>
     <div class="relative bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden">
       <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-        <div>
+        <div class="min-w-0">
           <h3 class="text-base font-semibold text-slate-900">配置文件 - {{ asset.name }}</h3>
-          <p class="text-xs text-slate-500 mt-1">
-            {{ meta?.filename || '未上传配置文件' }}
-            <span v-if="meta?.version_no" class="ml-2">v{{ meta.version_no }}</span>
+          <p class="text-xs text-slate-500 mt-1 flex items-center gap-2 min-w-0">
+            <span class="truncate" :title="meta?.filename || '未上传配置文件'">{{ meta?.filename || '未上传配置文件' }}</span>
+            <span v-if="meta?.version_no" class="shrink-0">v{{ meta.version_no }}</span>
+            <button
+              v-if="meta?.filename && meta?.can_view"
+              class="shrink-0 text-primary hover:underline disabled:text-slate-300 disabled:no-underline"
+              :disabled="downloading"
+              @click="handleDownloadConfig"
+            >
+              {{ downloading ? '下载中...' : '下载' }}
+            </button>
           </p>
         </div>
         <button class="text-slate-400 hover:text-slate-700" @click="close">关闭</button>

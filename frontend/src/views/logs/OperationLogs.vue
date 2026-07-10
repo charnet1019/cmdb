@@ -28,7 +28,9 @@ const actionColors: Record<string, string> = {
   'create': 'bg-green-100 text-green-700',
   'update': 'bg-blue-100 text-blue-700',
   'delete': 'bg-red-100 text-red-700',
-  'authorize': 'bg-yellow-100 text-yellow-700'
+  'authorize': 'bg-yellow-100 text-yellow-700',
+  'download': 'bg-cyan-100 text-cyan-700',
+  'export': 'bg-indigo-100 text-indigo-700'
 }
 
 // Action labels
@@ -36,7 +38,9 @@ const actionLabels: Record<string, string> = {
   'create': '创建',
   'update': '更新',
   'delete': '删除',
-  'authorize': '授权'
+  'authorize': '授权',
+  'download': '下载',
+  'export': '导出'
 }
 
 // Force open date picker on click
@@ -174,6 +178,8 @@ watch([page, searchQuery, actionFilter, dateFrom, dateTo], () => {
           <option value="update">更新</option>
           <option value="delete">删除</option>
           <option value="authorize">授权</option>
+          <option value="download">下载</option>
+          <option value="export">导出</option>
         </select>
         <button @click="handleSearch" class="btn-secondary">筛选</button>
       </div>

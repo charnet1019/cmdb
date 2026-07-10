@@ -98,6 +98,36 @@ export async function deleteAssetConfig(assetId: string): Promise<{ deleted: boo
   return response.data.data
 }
 
+export async function downloadAssetConfig(assetId: string): Promise<void> {
+  const response = await api.get(`/assets/${assetId}/config/download`, {
+    responseType: 'blob',
+  })
+
+  const contentDisposition = response.headers['content-disposition']
+  let filename = 'network-config.cfg'
+  if (contentDisposition) {
+    const match = contentDisposition.match(/filename="?([^";]+)"?/i)
+    if (match?.[1]) {
+      try {
+        filename = decodeURIComponent(match[1])
+      } catch {
+        filename = match[1]
+      }
+    }
+  }
+
+  const blob = new Blob([response.data], { type: 'text/plain;charset=utf-8' })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', filename)
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(url)
+}
+
+
 // Bulk operations
 export async function bulkUpdateAssets(ids: string[], data: Partial<Asset>): Promise<void> {
   await api.put('/assets/bulk', { ids, data })

@@ -675,6 +675,47 @@ async def get_asset_config_content(
     }
 
 
+@router.get("/{asset_id}/config/download")
+async def download_asset_config(
+    asset_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(PermissionChecker("view")),
+):
+    asset = await _get_network_asset_or_404(db, asset_id, current_user, "view")
+    if not await _can_view_config_content(current_user, asset, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="缺少查看配置文件权限")
+    config_file = await _get_config_file(db, asset_id)
+    if not config_file:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="配置文件不存在")
+    version = await _get_current_config_version(db, config_file)
+    if not version:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="配置版本不存在")
+
+    filename = version.filename or config_file.filename
+    content = decrypt_value(version.content_encrypted)
+    await log_operation(
+        db, current_user.id, "download", "asset", 0,
+        details={
+            "name": f"{asset.name} / {filename}",
+            "action": "download_config",
+            "asset_id": asset_id,
+            "asset_name": asset.name,
+            "filename": filename,
+            "version_no": version.version_no,
+            "checksum": version.checksum,
+            "size": version.size,
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
+    return StreamingResponse(
+        BytesIO(content.encode("utf-8")),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{quote(filename)}"'},
+    )
+
+
 @router.get("/{asset_id}/config/versions")
 async def list_asset_config_versions(
     asset_id: str,
@@ -771,8 +812,10 @@ async def upload_asset_config_file(
     await log_operation(
         db, current_user.id, "update", "asset", 0,
         details={
+            "name": f"{asset.name} / {filename}",
             "action": "upload_config",
             "asset_id": asset_id,
+            "asset_name": asset.name,
             "filename": filename,
             "version_no": version.version_no,
             "checksum": version.checksum,
@@ -806,8 +849,10 @@ async def save_asset_config_content(
     await log_operation(
         db, current_user.id, "update", "asset", 0,
         details={
+            "name": f"{asset.name} / {filename}",
             "action": "save_config",
             "asset_id": asset_id,
+            "asset_name": asset.name,
             "filename": filename,
             "version_no": version.version_no,
             "checksum": version.checksum,
@@ -854,8 +899,10 @@ async def rollback_asset_config(
     await log_operation(
         db, current_user.id, "update", "asset", 0,
         details={
+            "name": f"{asset.name} / {version.filename}",
             "action": "rollback_config",
             "asset_id": asset_id,
+            "asset_name": asset.name,
             "filename": version.filename,
             "from_version_no": target.version_no,
             "version_no": version.version_no,
@@ -875,7 +922,7 @@ async def delete_asset_config(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("manage")),
 ):
-    await _get_network_asset_or_404(db, asset_id, current_user, "manage")
+    asset = await _get_network_asset_or_404(db, asset_id, current_user, "manage")
     config_file = await _get_config_file(db, asset_id)
     if not config_file:
         return {"code": 0, "message": "配置文件不存在", "data": {"deleted": False}}
@@ -884,7 +931,13 @@ async def delete_asset_config(
     await db.commit()
     await log_operation(
         db, current_user.id, "delete", "asset", 0,
-        details={"action": "delete_config", "asset_id": asset_id, "filename": filename},
+        details={
+            "name": f"{asset.name} / {filename}",
+            "action": "delete_config",
+            "asset_id": asset_id,
+            "asset_name": asset.name,
+            "filename": filename,
+        },
         ip_address=request.client.host if request.client else None,
     )
     return {"code": 0, "message": "配置文件已删除", "data": {"deleted": True}}

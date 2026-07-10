@@ -408,7 +408,7 @@ class OperationLog(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)
-    action: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # create, update, delete, authorize
+    action: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # create, update, delete, authorize, download, export
     resource_type: Mapped[Optional[str]] = mapped_column(String(50))
     resource_id: Mapped[Optional[int]] = mapped_column(Integer)
     details: Mapped[Optional[dict]] = mapped_column(JSONB)
