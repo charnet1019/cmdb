@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
+import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import {
   getAssetConfig,
   getAssetConfigContent,
@@ -42,9 +43,28 @@ const fileInput = ref<HTMLInputElement | null>(null)
 let monacoApi: any = null
 let editor: any = null
 let diffEditor: any = null
+let diffOriginalModel: any = null
+let diffModifiedModel: any = null
+
+function setupMonacoEnvironment() {
+  const globalScope = globalThis as typeof globalThis & {
+    MonacoEnvironment?: {
+      getWorker?: (_moduleId: string, _label: string) => Worker
+    }
+  }
+
+  if (globalScope.MonacoEnvironment?.getWorker) return
+
+  globalScope.MonacoEnvironment = {
+    getWorker() {
+      return new EditorWorker()
+    },
+  }
+}
 
 async function loadMonaco() {
   if (!monacoApi) {
+    setupMonacoEnvironment()
     monacoApi = await import('monaco-editor')
   }
   return monacoApi
@@ -61,6 +81,14 @@ function disposeDiffEditor() {
   if (diffEditor) {
     diffEditor.dispose()
     diffEditor = null
+  }
+  if (diffOriginalModel) {
+    diffOriginalModel.dispose()
+    diffOriginalModel = null
+  }
+  if (diffModifiedModel) {
+    diffModifiedModel.dispose()
+    diffModifiedModel = null
   }
 }
 
@@ -96,9 +124,11 @@ async function mountDiff(original: string, modified: string) {
     readOnly: true,
     renderSideBySide: true,
   })
+  diffOriginalModel = monaco.editor.createModel(original, 'plaintext')
+  diffModifiedModel = monaco.editor.createModel(modified, 'plaintext')
   diffEditor.setModel({
-    original: monaco.editor.createModel(original, 'plaintext'),
-    modified: monaco.editor.createModel(modified, 'plaintext'),
+    original: diffOriginalModel,
+    modified: diffModifiedModel,
   })
 }
 
