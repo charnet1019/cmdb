@@ -753,6 +753,9 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
               <input
                 v-model="userForm.username"
                 type="text"
+                autocomplete="username"
+                id="user-form-username"
+                name="username"
                 :disabled="!!editingUser"
                 class="input-field"
                 :class="editingUser ? 'bg-slate-50 text-slate-500' : ''"
@@ -764,19 +767,19 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">邮箱 <span class="text-red-500">*</span></label>
-                <input v-model="userForm.email" type="email" class="input-field" :class="{ 'border-red-400': emailError }" placeholder="请输入邮箱" @blur="onEmailBlur" />
+                <input v-model="userForm.email" type="email" autocomplete="email" class="input-field" :class="{ 'border-red-400': emailError }" placeholder="请输入邮箱" @blur="onEmailBlur" />
                 <p v-if="emailError" class="text-xs text-red-500 mt-1">{{ emailError }}</p>
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">姓名</label>
-                <input v-model="userForm.full_name" type="text" class="input-field" placeholder="请输入姓名" />
+                <input v-model="userForm.full_name" type="text" autocomplete="name" class="input-field" placeholder="请输入姓名" />
               </div>
             </div>
 
             <!-- Phone -->
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-1">手机号</label>
-              <input v-model="userForm.phone" type="text" class="input-field" :class="{ 'border-red-400': phoneError }" placeholder="请输入手机号" @blur="onPhoneBlur" />
+              <input v-model="userForm.phone" type="text" autocomplete="tel" class="input-field" :class="{ 'border-red-400': phoneError }" placeholder="请输入手机号" @blur="onPhoneBlur" />
               <p v-if="phoneError" class="text-xs text-red-500 mt-1">{{ phoneError }}</p>
             </div>
 
@@ -853,10 +856,22 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
                 </div>
               </div>
               <div v-if="userForm.password_method === 'manual'" class="grid grid-cols-2 gap-4">
+                <label for="user-password-username" class="sr-only">用户名</label>
+                <input
+                  id="user-password-username"
+                  type="text"
+                  name="username"
+                  autocomplete="username"
+                  class="sr-only"
+                  tabindex="-1"
+                  :value="userForm.username"
+                  readonly
+                  aria-hidden="true"
+                />
                 <div>
-                  <label class="block text-sm font-medium text-slate-700 mb-1">密码 <span class="text-red-500">*</span></label>
+                  <label for="user-form-password" class="block text-sm font-medium text-slate-700 mb-1">密码 <span class="text-red-500">*</span></label>
                   <div class="relative">
-                    <input v-model="userForm.password" :type="showPassword ? 'text' : 'password'" autocomplete="new-password" class="input-field pr-10" placeholder="请输入密码" @input="onPasswordInput" />
+                    <input id="user-form-password" name="new-password" v-model="userForm.password" :type="showPassword ? 'text' : 'password'" autocomplete="new-password" class="input-field pr-10" placeholder="请输入密码" @input="onPasswordInput" />
                     <button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors" @click="showPassword = !showPassword" :title="showPassword ? '隐藏密码' : '显示密码'">
                       <EyeOutlined v-if="showPassword" />
                       <EyeInvisibleOutlined v-else />
@@ -873,9 +888,9 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
                   </p>
                 </div>
                 <div>
-                  <label class="block text-sm font-medium text-slate-700 mb-1">确认密码 <span class="text-red-500">*</span></label>
+                  <label for="user-form-confirm-password" class="block text-sm font-medium text-slate-700 mb-1">确认密码 <span class="text-red-500">*</span></label>
                   <div class="relative">
-                    <input v-model="userForm.confirm_password" :type="showConfirmPassword ? 'text' : 'password'" autocomplete="new-password" class="input-field pr-10" placeholder="请再次输入密码" />
+                    <input id="user-form-confirm-password" name="confirm-password" v-model="userForm.confirm_password" :type="showConfirmPassword ? 'text' : 'password'" autocomplete="new-password" class="input-field pr-10" placeholder="请再次输入密码" />
                     <button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors" @click="showConfirmPassword = !showConfirmPassword" :title="showConfirmPassword ? '隐藏密码' : '显示密码'">
                       <EyeOutlined v-if="showConfirmPassword" />
                       <EyeInvisibleOutlined v-else />

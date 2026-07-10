@@ -684,6 +684,7 @@ async def test_update_asset_success_updates_fields_encrypts_oob_and_checks_manag
         "organization_id": 7,
     }
     assert audit_calls
+    assert audit_calls[0][0][2] == "update"
 
 
 @pytest.mark.asyncio
@@ -752,11 +753,14 @@ async def test_import_assets_create_mode_dispatches_batch_and_audits(monkeypatch
     assert response.data.failed_count == 1
     assert response.data.errors == [{"row": 3, "error": "bad"}]
     assert audit_calls
+    assert audit_calls[0][1]["action"] == "import"
+    assert audit_calls[0][1]["resource_type"] == "asset"
 
 
 @pytest.mark.asyncio
 async def test_import_assets_update_mode_filters_by_type_and_manage_permission(monkeypatch):
     allowed_records_seen = []
+    audit_calls = []
 
     async def fake_parse(content, category, mode, db):
         return ([{"id": "asset-1"}, {"id": "asset-2"}, {"id": "missing"}], [])
@@ -774,10 +778,8 @@ async def test_import_assets_update_mode_filters_by_type_and_manage_permission(m
     monkeypatch.setattr(asset_api, "check_resource_permission", allow)
     monkeypatch.setattr(asset_api, "batch_update_assets", fake_batch)
     monkeypatch.setattr(asset_api, "get_created_orgs", lambda: set())
-    monkeypatch.setattr(asset_api, "log_operation", lambda *args, **kwargs: None)
-
     async def fake_log(*args, **kwargs):
-        return None
+        audit_calls.append((args, kwargs))
 
     monkeypatch.setattr(asset_api, "log_operation", fake_log)
     db = FakeDB(
@@ -798,6 +800,9 @@ async def test_import_assets_update_mode_filters_by_type_and_manage_permission(m
     assert response.data.success_count == 2
     assert response.data.failed_count == 1
     assert response.data.errors == [{"id": "asset-2", "error": "资产类型不匹配"}]
+    assert audit_calls
+    assert audit_calls[0][1]["action"] == "import"
+    assert audit_calls[0][1]["details"]["mode"] == "update"
 
 
 @pytest.mark.asyncio
@@ -818,6 +823,7 @@ async def test_import_assets_rejects_invalid_file_magic_bytes():
 @pytest.mark.asyncio
 async def test_export_assets_selected_csv_includes_passwords_when_authorized(monkeypatch):
     exported_rows = []
+    audit_calls = []
 
     async def fake_authorized_ids(current_user, db, permission="view"):
         assert permission in {"view", "export_pwd"}
@@ -832,7 +838,7 @@ async def test_export_assets_selected_csv_includes_passwords_when_authorized(mon
         return BytesIO(b"csv"), len(exported_rows)
 
     async def fake_log(*args, **kwargs):
-        return None
+        audit_calls.append((args, kwargs))
 
     item = asset_with_credentials(category="host", created_by_id=1)
     item.oob_password_encrypted = asset_api.encrypt_value("oob-secret")
@@ -872,6 +878,9 @@ async def test_export_assets_selected_csv_includes_passwords_when_authorized(mon
     assert exported_rows[0]["credentials"] == [{"username": "root", "password": "cred-secret"}]
     assert exported_rows[0]["oob_password"] == "oob-secret"
     assert exported_rows[0]["creator_name"] == "alice"
+    assert audit_calls
+    assert audit_calls[0][1]["action"] == "export"
+    assert audit_calls[0][1]["resource_type"] == "asset"
 
 
 @pytest.mark.asyncio

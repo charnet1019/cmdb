@@ -30,6 +30,7 @@ const actionColors: Record<string, string> = {
   'delete': 'bg-red-100 text-red-700',
   'authorize': 'bg-yellow-100 text-yellow-700',
   'download': 'bg-cyan-100 text-cyan-700',
+  'import': 'bg-purple-100 text-purple-700',
   'export': 'bg-indigo-100 text-indigo-700'
 }
 
@@ -40,6 +41,7 @@ const actionLabels: Record<string, string> = {
   'delete': '删除',
   'authorize': '授权',
   'download': '下载',
+  'import': '导入',
   'export': '导出'
 }
 
@@ -179,6 +181,7 @@ watch([page, searchQuery, actionFilter, dateFrom, dateTo], () => {
           <option value="delete">删除</option>
           <option value="authorize">授权</option>
           <option value="download">下载</option>
+          <option value="import">导入</option>
           <option value="export">导出</option>
         </select>
         <button @click="handleSearch" class="btn-secondary">筛选</button>
