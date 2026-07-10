@@ -1,5 +1,5 @@
 import { getPaginated, api } from './index'
-import type { Asset, AssetCategory, Credential, Organization } from '@/types'
+import type { Asset, AssetCategory, Credential, Organization, AssetConfigContent, AssetConfigFileSummary, AssetConfigVersion } from '@/types'
 
 // Asset statistics type
 export interface AssetStats {
@@ -51,6 +51,51 @@ export async function updateAsset(id: string, data: Partial<Asset>): Promise<Ass
 
 export async function deleteAsset(id: string): Promise<void> {
   await api.delete(`/assets/${id}`)
+}
+
+// Network device config APIs
+export async function getAssetConfig(assetId: string): Promise<AssetConfigFileSummary> {
+  const response = await api.get(`/assets/${assetId}/config`)
+  return response.data.data
+}
+
+export async function getAssetConfigContent(assetId: string): Promise<AssetConfigContent> {
+  const response = await api.get(`/assets/${assetId}/config/content`)
+  return response.data.data
+}
+
+export async function getAssetConfigVersions(assetId: string): Promise<AssetConfigVersion[]> {
+  const response = await api.get(`/assets/${assetId}/config/versions`)
+  return response.data.data || []
+}
+
+export async function getAssetConfigVersionContent(assetId: string, versionId: number): Promise<AssetConfigContent & AssetConfigVersion> {
+  const response = await api.get(`/assets/${assetId}/config/versions/${versionId}`)
+  return response.data.data
+}
+
+export async function uploadAssetConfig(assetId: string, file: File): Promise<AssetConfigFileSummary> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const response = await api.post(`/assets/${assetId}/config/upload`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return response.data.data
+}
+
+export async function saveAssetConfigContent(assetId: string, data: { filename?: string; content: string; change_summary?: string }): Promise<AssetConfigFileSummary> {
+  const response = await api.put(`/assets/${assetId}/config/content`, data)
+  return response.data.data
+}
+
+export async function rollbackAssetConfig(assetId: string, versionId: number, changeSummary?: string): Promise<AssetConfigFileSummary> {
+  const response = await api.post(`/assets/${assetId}/config/rollback`, { version_id: versionId, change_summary: changeSummary })
+  return response.data.data
+}
+
+export async function deleteAssetConfig(assetId: string): Promise<{ deleted: boolean }> {
+  const response = await api.delete(`/assets/${assetId}/config`)
+  return response.data.data
 }
 
 // Bulk operations

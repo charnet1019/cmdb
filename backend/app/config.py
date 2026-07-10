@@ -34,6 +34,8 @@ class Settings(BaseSettings):
 
     # Redis - required, no hardcoded defaults
     REDIS_URL: str
+    REDIS_CONNECT_TIMEOUT_SECONDS: float = 2.0
+    REDIS_SOCKET_TIMEOUT_SECONDS: float = 2.0
 
     # JWT - required for security, no hardcoded defaults
     JWT_SECRET_KEY: str

@@ -126,7 +126,8 @@ async function handleLogin() {
     const redirect = route.query.redirect as string || '/dashboard'
     router.push(redirect)
   } catch (error: any) {
-    message.error(error.response?.data?.detail || '登录失败，请检查用户名和密码')
+    const timeout = error.code === 'ECONNABORTED' || error.message?.includes('timeout')
+    message.error(timeout ? '登录服务响应超时，请检查后端或 Redis 状态' : (error.response?.data?.detail || '登录失败，请检查用户名和密码'))
   } finally {
     loading.value = false
   }

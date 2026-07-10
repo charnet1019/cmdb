@@ -11,6 +11,7 @@ import uuid
 from io import BytesIO
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, UploadFile, File
+from redis.exceptions import RedisError
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -236,6 +237,21 @@ async def login(
     """
     User login endpoint — two phase: password check, then MFA if enabled
     """
+    try:
+        return await _login_impl(request, response, data, db)
+    except RedisError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="会话服务暂不可用，请检查 Redis 连接后重试",
+        ) from exc
+
+
+async def _login_impl(
+    request: Request,
+    response: Response,
+    data: LoginRequest,
+    db: AsyncSession,
+):
     if await _is_login_locked(data.username, request):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,

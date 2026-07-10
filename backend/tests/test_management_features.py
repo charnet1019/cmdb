@@ -47,7 +47,7 @@ from app.api import dashboard as dashboard_api
 from app.api import settings as settings_api
 from app.api import notifications as notifications_api
 from app.api import users as users_api
-from app.models import Asset, Authorization, Credential, Group, Notification, NotificationReceipt, Organization, Setting, User
+from app.models import Asset, AssetConfigFile, AssetConfigVersion, Authorization, Credential, Group, Notification, NotificationReceipt, Organization, Setting, User
 from app.schemas import AuthorizationCreate, CredentialCreate, GroupCreate, UserCreate, PasswordResetRequest, UserUpdate
 
 
@@ -1454,3 +1454,74 @@ async def test_force_logout_user_sessions_publishes_sse_event(monkeypatch):
 
     assert response.data == {"terminated_sessions": 1}
     assert published == [(2, "force_logout", {"reason": "admin_forced", "message": "账号已被管理员强制离线"})]
+
+
+def test_config_filename_rejects_paths_and_invalid_extensions():
+    assert asset_api._config_filename("running.cfg") == "running.cfg"
+    with pytest.raises(HTTPException):
+        asset_api._config_filename("../running.cfg")
+    with pytest.raises(HTTPException):
+        asset_api._config_filename("running.txt")
+
+
+def test_decode_config_content_accepts_utf8_and_gbk():
+    assert asset_api._decode_config_content("interface Gi0/1".encode("utf-8")) == "interface Gi0/1"
+    assert asset_api._decode_config_content("接口配置".encode("gbk")) == "接口配置"
+    with pytest.raises(HTTPException):
+        asset_api._decode_config_content(b"\xff\xfe\xfa")
+
+
+@pytest.mark.asyncio
+async def test_create_config_version_skips_unchanged_current_content():
+    checksum = asset_api._content_checksum("same")
+    config_file = AssetConfigFile(id=3, asset_id="asset-1", filename="running.cfg", current_version_id=11)
+    current = AssetConfigVersion(
+        id=11,
+        config_file_id=3,
+        version_no=2,
+        filename="running.cfg",
+        content_encrypted="encrypted",
+        size=4,
+        checksum=checksum,
+        created_by=1,
+    )
+    db = FakeDB(FakeResult(scalar_one_or_none=current))
+
+    version, created = await asset_api._create_config_version(
+        db, config_file, "running.cfg", "same", 1, "编辑保存"
+    )
+
+    assert version is current
+    assert created is False
+    assert db.added == []
+    assert config_file.current_version_id == 11
+
+
+@pytest.mark.asyncio
+async def test_create_config_version_force_new_creates_rollback_version():
+    checksum = asset_api._content_checksum("same")
+    config_file = AssetConfigFile(id=3, asset_id="asset-1", filename="running.cfg", current_version_id=11)
+    current = AssetConfigVersion(
+        id=11,
+        config_file_id=3,
+        version_no=2,
+        filename="running.cfg",
+        content_encrypted="encrypted",
+        size=4,
+        checksum=checksum,
+        created_by=1,
+    )
+    db = FakeDB(FakeResult(scalar_one_or_none=current), FakeResult(scalar=2))
+
+    version, created = await asset_api._create_config_version(
+        db, config_file, "running.cfg", "same", 7, "回滚到版本 2", force_new=True
+    )
+
+    assert created is True
+    assert version.version_no == 3
+    assert version.checksum == checksum
+    assert version.size == 4
+    assert version.created_by == 7
+    assert config_file.current_version_id == version.id
+    assert config_file.updated_by == 7
+

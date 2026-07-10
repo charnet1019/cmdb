@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional, List
 from uuid import uuid4
 from sqlalchemy import (
-    String, Text, Boolean, Integer, DateTime, ForeignKey, Index, Enum as SQLEnum
+    String, Text, Boolean, Integer, DateTime, ForeignKey, Index, Enum as SQLEnum, UniqueConstraint
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
@@ -239,6 +239,9 @@ class Asset(Base):
     storage_locations: Mapped[List["StorageLocation"]] = relationship(
         "StorageLocation", back_populates="asset", cascade="all, delete-orphan"
     )
+    config_file: Mapped[Optional["AssetConfigFile"]] = relationship(
+        "AssetConfigFile", back_populates="asset", cascade="all, delete-orphan", uselist=False
+    )
 
     __table_args__ = (
         Index("idx_assets_category", "category"),
@@ -248,6 +251,52 @@ class Asset(Base):
 
     def __repr__(self):
         return f"<Asset {self.name}>"
+
+
+class AssetConfigFile(Base):
+    """Current network device configuration file metadata."""
+    __tablename__ = "asset_config_files"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    asset_id: Mapped[str] = mapped_column(String(36), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    current_version_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("asset_config_versions.id", ondelete="SET NULL", use_alter=True), index=True)
+    created_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    updated_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    asset: Mapped["Asset"] = relationship("Asset", back_populates="config_file")
+    versions: Mapped[List["AssetConfigVersion"]] = relationship(
+        "AssetConfigVersion", back_populates="config_file", cascade="all, delete-orphan", foreign_keys="AssetConfigVersion.config_file_id"
+    )
+
+    __table_args__ = (
+        Index("idx_asset_config_files_asset_id", "asset_id"),
+    )
+
+
+class AssetConfigVersion(Base):
+    """Versioned encrypted network device configuration content."""
+    __tablename__ = "asset_config_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    config_file_id: Mapped[int] = mapped_column(Integer, ForeignKey("asset_config_files.id", ondelete="CASCADE"), nullable=False, index=True)
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    size: Mapped[int] = mapped_column(Integer, nullable=False)
+    checksum: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    change_summary: Mapped[Optional[str]] = mapped_column(String(255))
+    created_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
+
+    config_file: Mapped["AssetConfigFile"] = relationship("AssetConfigFile", back_populates="versions", foreign_keys=[config_file_id])
+
+    __table_args__ = (
+        UniqueConstraint("config_file_id", "version_no", name="uq_asset_config_versions_file_version"),
+        Index("idx_asset_config_versions_file_created", "config_file_id", "created_at"),
+    )
 
 
 class Credential(Base):

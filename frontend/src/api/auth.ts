@@ -2,7 +2,7 @@ import api from './index'
 import type { LoginRequest, TokenResponse, UserSimple, ApiResponse, MFARequiredData, MFASetupQRData, MustChangePasswordData } from '@/types'
 
 export async function login(data: LoginRequest): Promise<TokenResponse | MFARequiredData | MustChangePasswordData> {
-  const response = await api.post<ApiResponse<TokenResponse | MFARequiredData | MustChangePasswordData>>('/auth/login', data)
+  const response = await api.post<ApiResponse<TokenResponse | MFARequiredData | MustChangePasswordData>>('/auth/login', data, { timeout: 10000 })
   return response.data.data
 }
 

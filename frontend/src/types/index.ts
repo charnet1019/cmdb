@@ -59,6 +59,36 @@ export interface Asset {
   credentials: CredentialSimple[]
   runs_on_hosts: AssetSimple[]
   storage_locations: StorageLocation[]
+  config_file?: AssetConfigFileSummary | null
+}
+
+export interface AssetConfigFileSummary {
+  id: number | null
+  filename: string | null
+  current_version_id: number | null
+  version_no?: number | null
+  size?: number | null
+  checksum?: string | null
+  updated_at: string | null
+  can_view?: boolean
+  can_edit?: boolean
+}
+
+export interface AssetConfigContent extends AssetConfigFileSummary {
+  content: string
+}
+
+export interface AssetConfigVersion {
+  id: number
+  version_no: number
+  filename: string
+  size: number
+  checksum: string
+  change_summary: string | null
+  created_by: number | null
+  created_by_username: string | null
+  created_at: string | null
+  is_current: boolean
 }
 
 export type AssetCategory = 'host' | 'network' | 'database' | 'cloud' | 'web' | 'gpt'

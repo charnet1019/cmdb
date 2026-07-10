@@ -16,16 +16,25 @@ export async function deleteImage(filename: string): Promise<void> {
 }
 
 // Public API client (no auth token required)
+const PUBLIC_REQUEST_TIMEOUT_MS = 10000
+
 const publicApi = {
   async get(path: string): Promise<any> {
-    const response = await fetch(`/api/v1${path}`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    })
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`)
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(() => controller.abort(), PUBLIC_REQUEST_TIMEOUT_MS)
+    try {
+      const response = await fetch(`/api/v1${path}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+      })
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      return response.json()
+    } finally {
+      window.clearTimeout(timeoutId)
     }
-    return response.json()
   },
 }
 

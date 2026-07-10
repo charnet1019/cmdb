@@ -36,6 +36,7 @@ import ColumnCustomizer from './components/ColumnCustomizer.vue'
 import { formatDateTime } from '@/utils/datetime'
 import ImportModal from './components/ImportModal.vue'
 import ExportModal from './components/ExportModal.vue'
+import AssetConfigModal from './components/AssetConfigModal.vue'
 import type { Asset, AssetCategory } from '@/types'
 
 // Router for URL state persistence
@@ -287,6 +288,8 @@ const showOobPassword = ref(false)
 const modalLoading = ref(false)
 const editingAsset = ref<Asset | null>(null)
 const formSelectedOrgId = ref<number | null>(null)
+const configModalAsset = ref<Asset | null>(null)
+const showConfigModal = ref(false)
 
 // Device type options for network
 const localDeviceTypeOptions = ['交换机', '路由器', '防火墙', '负载均衡', '无线控制器']
@@ -427,6 +430,17 @@ function fetchData() {
 function handleSearch() {
   page.value = 1
   fetchData()
+}
+
+function openConfigModal(asset: Asset) {
+  if (asset.category !== 'network') return
+  configModalAsset.value = asset
+  showConfigModal.value = true
+}
+
+function closeConfigModal() {
+  showConfigModal.value = false
+  configModalAsset.value = null
 }
 
 function onStatusFilterChange() {
@@ -1114,6 +1128,17 @@ onMounted(async () => {
                         </template>
                         <template v-else-if="key === 'applicant'">{{ asset.applicant || '' }}</template>
                         <template v-else-if="key === 'owner'"><span class="text-sm text-slate-600">{{ asset.owner_name || '' }}</span></template>
+                        <template v-else-if="key === 'config_file'">
+                          <button
+                            v-if="asset.category === 'network'"
+                            class="min-w-[120px] h-7 text-left text-sm rounded px-2 hover:bg-slate-100"
+                            :class="asset.config_file?.filename ? 'text-primary font-medium' : 'text-slate-300 border border-dashed border-transparent hover:border-slate-300'"
+                            :title="asset.config_file?.filename || '点击上传配置文件'"
+                            @click.stop="openConfigModal(asset)"
+                          >
+                            {{ asset.config_file?.filename || '' }}
+                          </button>
+                        </template>
                         <template v-else-if="key === 'credentials'">
                           <div v-for="cred in asset.credentials || []" :key="cred.id" class="flex items-center gap-1.5 text-slate-600 py-1">
                             <span class="font-medium shrink-0">{{ cred.username }}</span>
@@ -1713,5 +1738,12 @@ onMounted(async () => {
         </div>
       </div>
     </div>
+
+    <AssetConfigModal
+      :open="showConfigModal"
+      :asset="configModalAsset"
+      @close="closeConfigModal"
+      @saved="fetchData"
+    />
   </div>
 </template>

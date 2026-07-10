@@ -75,6 +75,7 @@ const categoryColumnDefs: Record<AssetCategory | 'all', ColumnDefinition[]> = {
     { key: 'organization', label: '节点', defaultVisible: true },
     { key: 'status', label: '状态', defaultVisible: true },
     { key: 'credentials', label: '用户名密码', defaultVisible: true },
+    { key: 'config_file', label: '配置文件', defaultVisible: true },
     { key: 'owner', label: '负责人', defaultVisible: false },
     { key: 'notes', label: '描述', defaultVisible: true },
     { key: 'creator', label: '创建者', defaultVisible: false },
