@@ -36,6 +36,10 @@ const editorContent = ref('')
 const changeSummary = ref('')
 const showDiff = ref(false)
 const diffTitle = ref('保存前对比')
+const diffOriginalTitle = ref('当前版本')
+const diffModifiedTitle = ref('编辑内容')
+const rollbackTarget = ref<AssetConfigVersion | null>(null)
+const showRollbackConfirm = ref(false)
 const editorEl = ref<HTMLElement | null>(null)
 const diffEl = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -191,6 +195,17 @@ async function handleUpload(event: Event) {
   }
 }
 
+function formatVersionTitle(prefix: string, versionNo?: number | null, file?: string | null) {
+  const version = versionNo ? ` v${versionNo}` : ''
+  const filenamePart = file ? ` - ${file}` : ''
+  return `${prefix}${version}${filenamePart}`
+}
+
+function closeDiff() {
+  showDiff.value = false
+  disposeDiffEditor()
+}
+
 async function previewSaveDiff() {
   if (!props.asset || !meta.value?.can_edit) return
   if (!filename.value.trim()) {
@@ -203,6 +218,8 @@ async function previewSaveDiff() {
   }
   showDiff.value = true
   diffTitle.value = '保存前对比'
+  diffOriginalTitle.value = formatVersionTitle('当前版本', meta.value?.version_no, meta.value?.filename || filename.value)
+  diffModifiedTitle.value = formatVersionTitle('待保存内容', null, filename.value)
   await mountDiff(originalContent.value, editorContent.value)
 }
 
@@ -215,7 +232,7 @@ async function confirmSave() {
       content: editorContent.value,
       change_summary: changeSummary.value,
     })
-    showDiff.value = false
+    closeDiff()
     changeSummary.value = ''
     message.success('配置已保存')
     await loadConfig()
@@ -231,17 +248,32 @@ async function compareVersion(version: AssetConfigVersion) {
   if (!props.asset) return
   const versionContent = await getAssetConfigVersionContent(props.asset.id, version.id)
   showDiff.value = true
-  diffTitle.value = `当前版本 / v${version.version_no}`
+  diffTitle.value = '版本对比'
+  diffOriginalTitle.value = formatVersionTitle('当前版本', meta.value?.version_no, meta.value?.filename || filename.value)
+  diffModifiedTitle.value = formatVersionTitle('历史版本', version.version_no, versionContent.filename || version.filename)
   await mountDiff(originalContent.value, versionContent.content)
 }
 
-async function rollbackVersion(version: AssetConfigVersion) {
-  if (!props.asset) return
-  if (!window.confirm(`确认回滚到版本 v${version.version_no}？回滚会生成一个新版本。`)) return
+function openRollbackConfirm(version: AssetConfigVersion) {
+  rollbackTarget.value = version
+  showRollbackConfirm.value = true
+}
+
+function closeRollbackConfirm() {
+  if (saving.value) return
+  showRollbackConfirm.value = false
+  rollbackTarget.value = null
+}
+
+async function confirmRollback() {
+  if (!props.asset || !rollbackTarget.value) return
+  const version = rollbackTarget.value
   saving.value = true
   try {
     meta.value = await rollbackAssetConfig(props.asset.id, version.id, `回滚到版本 ${version.version_no}`)
     message.success('已回滚配置')
+    showRollbackConfirm.value = false
+    rollbackTarget.value = null
     await loadConfig()
     emit('saved')
   } catch (error: any) {
@@ -268,7 +300,9 @@ async function handleDelete() {
 }
 
 function close() {
-  showDiff.value = false
+  closeDiff()
+  showRollbackConfirm.value = false
+  rollbackTarget.value = null
   emit('close')
 }
 
@@ -276,6 +310,8 @@ watch(() => props.open, async (open) => {
   if (open) {
     await loadConfig()
   } else {
+    showRollbackConfirm.value = false
+    rollbackTarget.value = null
     disposeEditor()
     disposeDiffEditor()
   }
@@ -345,7 +381,7 @@ onBeforeUnmount(() => {
               <div v-if="version.change_summary" class="text-xs text-slate-500 mt-1">{{ version.change_summary }}</div>
               <div class="flex gap-2 mt-2">
                 <button class="text-xs text-primary hover:underline" @click="compareVersion(version)">对比</button>
-                <button v-if="meta?.can_edit && !version.is_current" class="text-xs text-slate-600 hover:underline" @click="rollbackVersion(version)">回滚</button>
+                <button v-if="meta?.can_edit && !version.is_current" class="text-xs text-slate-600 hover:underline disabled:text-slate-300 disabled:no-underline" :disabled="saving" @click="openRollbackConfirm(version)">回滚</button>
               </div>
             </div>
           </div>
@@ -353,17 +389,49 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+
+    <div v-if="showRollbackConfirm && rollbackTarget" class="fixed inset-0 z-[90] flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="closeRollbackConfirm"></div>
+      <div class="relative bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden">
+        <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+          <h3 class="text-base font-semibold text-slate-900">确认回滚配置</h3>
+          <button class="text-slate-400 hover:text-slate-700 disabled:text-slate-300" :disabled="saving" @click="closeRollbackConfirm">关闭</button>
+        </div>
+        <div class="px-5 py-4 space-y-3">
+          <p class="text-sm text-slate-700">
+            确认将当前配置回滚到历史版本 <span class="font-semibold text-slate-900">v{{ rollbackTarget.version_no }}</span>？
+          </p>
+          <div class="rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 space-y-1">
+            <div class="truncate" :title="rollbackTarget.filename">文件：{{ rollbackTarget.filename }}</div>
+            <div>创建人：{{ rollbackTarget.created_by_username || '-' }}</div>
+            <div>创建时间：{{ rollbackTarget.created_at ? new Date(rollbackTarget.created_at).toLocaleString('zh-CN') : '-' }}</div>
+          </div>
+          <p class="text-xs text-slate-500">回滚会基于该历史内容生成一个新的当前版本，不会删除历史记录。</p>
+        </div>
+        <div class="px-5 py-3 border-t border-slate-200 flex items-center justify-end gap-2">
+          <button class="btn-secondary" :disabled="saving" @click="closeRollbackConfirm">取消</button>
+          <button class="bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white px-3 py-1.5 rounded text-sm" :disabled="saving" @click="confirmRollback">
+            {{ saving ? '回滚中...' : '确认回滚' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="showDiff" class="fixed inset-0 z-[80] flex items-center justify-center p-4">
-      <div class="absolute inset-0 bg-slate-900/70" @click="showDiff = false"></div>
+      <div class="absolute inset-0 bg-slate-900/70" @click="closeDiff"></div>
       <div class="relative bg-white rounded-lg shadow-xl w-full max-w-6xl h-[82vh] flex flex-col overflow-hidden">
         <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
           <h3 class="text-base font-semibold text-slate-900">{{ diffTitle }}</h3>
-          <button class="text-slate-400 hover:text-slate-700" @click="showDiff = false">关闭</button>
+          <button class="text-slate-400 hover:text-slate-700" @click="closeDiff">关闭</button>
+        </div>
+        <div class="grid grid-cols-2 border-b border-slate-200 bg-slate-50 text-xs font-medium text-slate-600">
+          <div class="min-w-0 px-4 py-2 border-r border-slate-200 truncate" :title="diffOriginalTitle">{{ diffOriginalTitle }}</div>
+          <div class="min-w-0 px-4 py-2 truncate" :title="diffModifiedTitle">{{ diffModifiedTitle }}</div>
         </div>
         <div ref="diffEl" class="flex-1"></div>
         <div v-if="diffTitle === '保存前对比'" class="px-5 py-3 border-t border-slate-200 flex items-center gap-3">
           <input v-model="changeSummary" class="input-field flex-1" placeholder="变更说明（可选）" />
-          <button class="btn-secondary" @click="showDiff = false">取消</button>
+          <button class="btn-secondary" @click="closeDiff">取消</button>
           <button class="btn-primary" :disabled="saving" @click="confirmSave">确认保存</button>
         </div>
       </div>
