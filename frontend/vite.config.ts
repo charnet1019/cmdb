@@ -41,6 +41,12 @@ export default defineConfig({
     host: '0.0.0.0',  // 监听所有网络接口，允许WSL外部访问
     port: 5173,
     proxy: {
+      '/api/v1/events/stream': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+        timeout: 0,
+        proxyTimeout: 0,
+      },
       '/api': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,

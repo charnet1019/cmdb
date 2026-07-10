@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
+from contextlib import suppress
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
+from redis.exceptions import RedisError
 
 from app.api.deps import get_current_user
 from app.core.events import user_event_channel
@@ -22,40 +25,64 @@ def _sse(event: str, data: dict[str, Any] | None = None) -> str:
 
 
 @router.get("/stream")
-async def stream_user_events(current_user: User = Depends(get_current_user)):
+async def stream_user_events(request: Request, current_user: User = Depends(get_current_user)):
     channel = user_event_channel(current_user.id)
 
     async def event_generator():
         redis_client = get_redis()
         pubsub = redis_client.pubsub()
-        await pubsub.subscribe(channel)
+        subscribed = False
+        last_ping_at = time.monotonic()
+        yield _sse("connected", {"user_id": current_user.id})
         try:
-            yield _sse("connected", {"user_id": current_user.id})
-            while True:
-                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=20)
-                if not message:
-                    yield _sse("ping")
-                    continue
+            try:
+                await asyncio.wait_for(pubsub.subscribe(channel), timeout=2)
+                subscribed = True
+            except (asyncio.TimeoutError, RedisError):
+                yield _sse("error", {"message": "实时事件服务暂不可用"})
+                return
 
-                raw = message.get("data")
+            while not await request.is_disconnected():
                 try:
-                    payload = json.loads(raw)
-                except (TypeError, json.JSONDecodeError):
+                    message = await asyncio.wait_for(
+                        pubsub.get_message(ignore_subscribe_messages=True, timeout=1),
+                        timeout=2,
+                    )
+                except (asyncio.TimeoutError, RedisError):
+                    yield _sse("error", {"message": "实时事件服务暂不可用"})
+                    break
+
+                if message:
+                    raw = message.get("data")
+                    try:
+                        payload = json.loads(raw)
+                    except (TypeError, json.JSONDecodeError):
+                        continue
+
+                    event_type = payload.get("type") or "message"
+                    event_data = payload.get("data") or {}
+                    yield _sse(str(event_type), event_data)
+                    await asyncio.sleep(0)
                     continue
 
-                event_type = payload.get("type") or "message"
-                event_data = payload.get("data") or {}
-                yield _sse(str(event_type), event_data)
-                await asyncio.sleep(0)
+                if time.monotonic() - last_ping_at >= 15:
+                    yield _sse("ping")
+                    last_ping_at = time.monotonic()
+        except asyncio.CancelledError:
+            raise
         finally:
-            await pubsub.unsubscribe(channel)
-            await pubsub.close()
+            if subscribed:
+                with suppress(Exception):
+                    await pubsub.unsubscribe(channel)
+            with suppress(Exception):
+                await pubsub.close()
 
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
     )
