@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, nextTick, onMounted } from 'vue'
 import { getDashboardStats } from '@/api/dashboard'
 import type { DashboardStats } from '@/api/dashboard'
 import {
@@ -76,6 +76,7 @@ const stats = ref<DashboardStats>({
 })
 
 const loading = ref(false)
+const chartsReady = ref(false)
 
 // Asset type colors
 const assetColors: Record<string, string> = {
@@ -303,7 +304,11 @@ async function fetchDashboardData() {
 }
 
 // Initial load
-onMounted(() => {
+onMounted(async () => {
+  await nextTick()
+  requestAnimationFrame(() => {
+    chartsReady.value = true
+  })
   fetchDashboardData()
 })
 </script>
@@ -348,13 +353,17 @@ onMounted(() => {
 
     <!-- Asset Type Distribution + Status Distribution -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <div class="card">
+      <div class="card min-w-0">
         <h3 class="text-lg font-semibold text-slate-900 mb-4">资产类型分布</h3>
-        <v-chart class="h-80" :option="mainPieOption" data-passive-wheel-chart="true" autoresize />
+        <div class="h-80 w-full min-w-0">
+          <v-chart v-if="chartsReady" class="h-full w-full" :option="mainPieOption" data-passive-wheel-chart="true" autoresize />
+        </div>
       </div>
-      <div class="card">
+      <div class="card min-w-0">
         <h3 class="text-lg font-semibold text-slate-900 mb-4">资产状态分布</h3>
-        <v-chart class="h-80" :option="statusPieOption" data-passive-wheel-chart="true" autoresize />
+        <div class="h-80 w-full min-w-0">
+          <v-chart v-if="chartsReady" class="h-full w-full" :option="statusPieOption" data-passive-wheel-chart="true" autoresize />
+        </div>
       </div>
     </div>
 
@@ -366,7 +375,9 @@ onMounted(() => {
         class="card"
       >
         <h4 class="text-sm font-semibold text-slate-900 mb-2">{{ assetLabels[category] || category }}</h4>
-        <v-chart class="h-56" :option="subPieOptions[category]" data-passive-wheel-chart="true" autoresize />
+        <div class="h-56 w-full min-w-0">
+          <v-chart v-if="chartsReady" class="h-full w-full" :option="subPieOptions[category]" data-passive-wheel-chart="true" autoresize />
+        </div>
       </div>
     </div>
 
