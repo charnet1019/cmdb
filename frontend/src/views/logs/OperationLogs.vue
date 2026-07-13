@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { getOperationLogs } from '@/api/logs'
+import { getOperationLogs, type OperationLog } from '@/api/logs'
 import { formatDateTime } from '@/utils/datetime'
 import { SearchOutlined, CloseOutlined } from '@ant-design/icons-vue'
 
@@ -21,7 +21,7 @@ const dateFrom = ref('')
 const dateTo = ref('')
 
 // Logs data
-const logs = ref<any[]>([])
+const logs = ref<OperationLog[]>([])
 
 // Action colors
 const actionColors: Record<string, string> = {
@@ -31,7 +31,9 @@ const actionColors: Record<string, string> = {
   'authorize': 'bg-yellow-100 text-yellow-700',
   'download': 'bg-cyan-100 text-cyan-700',
   'import': 'bg-purple-100 text-purple-700',
-  'export': 'bg-indigo-100 text-indigo-700'
+  'export': 'bg-indigo-100 text-indigo-700',
+  'add_group_members': 'bg-emerald-100 text-emerald-700',
+  'remove_group_member': 'bg-orange-100 text-orange-700'
 }
 
 // Action labels
@@ -42,7 +44,9 @@ const actionLabels: Record<string, string> = {
   'authorize': '授权',
   'download': '下载',
   'import': '导入',
-  'export': '导出'
+  'export': '导出',
+  'add_group_members': '添加组成员',
+  'remove_group_member': '移除组成员'
 }
 
 // Force open date picker on click
@@ -125,8 +129,20 @@ function getPageNumbers(): (number | string)[] {
 }
 
 // Get action label
-function getActionLabel(action: string): string {
-  return actionLabels[action] || action
+function getActionLabel(log: OperationLog): string {
+  return log.action_label || actionLabels[log.action] || log.action
+}
+
+function getResourceTypeLabel(log: OperationLog): string {
+  return log.resource_type_label || log.resource_type || '-'
+}
+
+function getResourceNameText(log: OperationLog): string {
+  return log.resource_name ? String(log.resource_name) : ''
+}
+
+function getOperationSummary(log: OperationLog): string {
+  return log.operation_summary || `${getActionLabel(log)} ${getResourceTypeLabel(log)} ${log.resource_name || ''}`.trim()
 }
 
 // Initial load
@@ -183,6 +199,8 @@ watch([page, searchQuery, actionFilter, dateFrom, dateTo], () => {
           <option value="download">下载</option>
           <option value="import">导入</option>
           <option value="export">导出</option>
+          <option value="add_group_members">添加组成员</option>
+          <option value="remove_group_member">移除组成员</option>
         </select>
         <button @click="handleSearch" class="btn-secondary">筛选</button>
       </div>
@@ -190,24 +208,36 @@ watch([page, searchQuery, actionFilter, dateFrom, dateTo], () => {
 
     <!-- Logs Table -->
     <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>时间</th>
-            <th>操作者</th>
-            <th>操作类型</th>
-            <th>资源类型</th>
-            <th>资源名称</th>
-            <th>状态</th>
-            <th>IP</th>
-          </tr>
-        </thead>
+      <div class="overflow-x-auto">
+        <table class="data-table table-fixed">
+          <colgroup>
+            <col class="w-[180px]" />
+            <col class="w-[160px]" />
+            <col class="w-[120px]" />
+            <col class="w-[360px]" />
+            <col class="w-[120px]" />
+            <col class="w-[180px]" />
+            <col class="w-[100px]" />
+            <col class="w-[160px]" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>操作者</th>
+              <th>操作类型</th>
+              <th>操作说明</th>
+              <th>资源类型</th>
+              <th>资源名称</th>
+              <th>状态</th>
+              <th>IP</th>
+            </tr>
+          </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="7" class="text-center py-8 text-slate-500">加载中...</td>
+            <td colspan="8" class="text-center py-8 text-slate-500">加载中...</td>
           </tr>
           <tr v-else-if="logs.length === 0">
-            <td colspan="7" class="text-center py-8 text-slate-500">暂无数据</td>
+            <td colspan="8" class="text-center py-8 text-slate-500">暂无数据</td>
           </tr>
           <tr v-for="log in logs" :key="log.id" :class="log.status === 'failed' ? 'bg-red-50/50' : ''">
             <td>
@@ -222,15 +252,18 @@ watch([page, searchQuery, actionFilter, dateFrom, dateTo], () => {
               </div>
             </td>
             <td>
-              <span class="px-2 py-0.5 rounded text-xs font-bold uppercase" :class="actionColors[log.action] || 'bg-slate-100 text-slate-700'">
-                {{ getActionLabel(log.action) }}
+              <span class="px-2 py-0.5 rounded text-xs font-bold" :class="actionColors[log.action] || 'bg-slate-100 text-slate-700'">
+                {{ getActionLabel(log) }}
               </span>
             </td>
             <td>
-              <span class="text-sm text-slate-600">{{ log.resource_type }}</span>
+              <div class="truncate text-sm text-slate-900 leading-5" :title="getOperationSummary(log)">{{ getOperationSummary(log) }}</div>
             </td>
             <td>
-              <span class="text-sm text-slate-600">{{ log.resource_name }}</span>
+              <span class="block truncate text-sm text-slate-600" :title="getResourceTypeLabel(log)">{{ getResourceTypeLabel(log) }}</span>
+            </td>
+            <td>
+              <span class="block truncate text-sm text-slate-600" :title="getResourceNameText(log)">{{ getResourceNameText(log) }}</span>
             </td>
             <td>
               <span v-if="log.status === 'success'" class="badge badge-success">
@@ -246,8 +279,9 @@ watch([page, searchQuery, actionFilter, dateFrom, dateTo], () => {
               <span class="text-sm text-slate-600 font-mono">{{ log.ip_address }}</span>
             </td>
           </tr>
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </div>
 
       <!-- Pagination -->
       <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-between">

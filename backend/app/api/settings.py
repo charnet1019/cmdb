@@ -246,26 +246,33 @@ async def update_setting(
     result = await db.execute(select(Setting).where(Setting.key == key))
     setting = result.scalar_one_or_none()
 
+    incoming_value = value.get("value") if isinstance(value, dict) and "value" in value else value
+    previous_value = setting.value.get("value") if setting and setting.value else None
+    normalized_value = _normalize_setting(key, incoming_value, previous_value)
+    changes = {}
+    if previous_value != normalized_value:
+        changes[key] = [_audit_setting_value(key, previous_value), _audit_setting_value(key, normalized_value)]
+
     if not setting:
-        normalized_value = _normalize_setting(key, value.get("value") if isinstance(value, dict) and "value" in value else value, setting.value.get("value") if setting and setting.value else None)
         setting = Setting(key=key, value={"value": normalized_value})
         db.add(setting)
     else:
-        normalized_value = _normalize_setting(key, value.get("value") if isinstance(value, dict) and "value" in value else value, setting.value.get("value") if setting and setting.value else None)
         setting.value = {"value": normalized_value}
 
     await db.commit()
     await db.refresh(setting)
 
     # Audit log
-    await log_operation(
-        db, current_user.id, "update", "setting", 0,
-        details={
-            "name": key,
-            "value": _audit_setting_value(key, value),
-        },
-        ip_address=ip,
-    )
+    if changes:
+        await log_operation(
+            db, current_user.id, "update", "setting", 0,
+            details={
+                "name": key,
+                "value": _audit_setting_value(key, normalized_value),
+                "changes": changes,
+            },
+            ip_address=ip,
+        )
 
     return {
         "data": {
@@ -291,12 +298,16 @@ async def update_settings(
     """
     ip = request.client.host if request and request.client else None
     updated = []
+    changes = {}
 
     for key, value in settings_data.items():
         result = await db.execute(select(Setting).where(Setting.key == key))
         setting = result.scalar_one_or_none()
 
-        normalized_value = _normalize_setting(key, value, setting.value.get("value") if setting and setting.value else None)
+        previous_value = setting.value.get("value") if setting and setting.value else None
+        normalized_value = _normalize_setting(key, value, previous_value)
+        if previous_value != normalized_value:
+            changes[key] = [_audit_setting_value(key, previous_value), _audit_setting_value(key, normalized_value)]
         if setting:
             setting.value = {"value": normalized_value}
         else:
@@ -307,14 +318,16 @@ async def update_settings(
     await db.commit()
 
     # Audit log
-    await log_operation(
-        db, current_user.id, "update", "setting", 0,
-        details={
-            "name": "batch_update",
-            "keys": updated,
-        },
-        ip_address=ip,
-    )
+    if changes:
+        await log_operation(
+            db, current_user.id, "update", "setting", 0,
+            details={
+                "name": "batch_update",
+                "keys": list(changes.keys()),
+                "changes": changes,
+            },
+            ip_address=ip,
+        )
 
     return {
         "data": {

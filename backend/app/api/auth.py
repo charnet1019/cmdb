@@ -687,12 +687,26 @@ async def login_mfa_verify(
             detail="MFA 验证码错误",
         )
 
+    mfa_bound_before = bool(user.mfa_secret)
     if data.setup:
         user.mfa_secret = secret
         redis_client = get_redis()
         await redis_client.delete(f"{MFA_SETUP_KEY_PREFIX}{data.challenge_token}")
 
     await _delete_login_challenge(data.challenge_token)
+    if data.setup:
+        await log_operation(
+            db, user.id, "update", "user", user.id,
+            details={
+                "name": "bind_mfa",
+                "action": "mfa_bind",
+                "username": user.username,
+                "changes": {
+                    "mfa_bound": [mfa_bound_before, bool(user.mfa_secret)],
+                },
+            },
+            ip_address=_request_ip(request),
+        )
     return await _complete_login(request, response, user, db, remember=bool(payload.get("remember")))
 
 
@@ -714,12 +728,21 @@ async def reset_mfa(
     if not user.mfa_enabled:
         return ResponseBase(message="该用户未启用 MFA")
 
+    mfa_bound_before = bool(user.mfa_secret)
     user.mfa_secret = None
     await db.commit()
 
     await log_operation(
         db, current_user.id, "update", "user", user.id,
-        details={"name": "reset_mfa", "action": "mfa_reset"},
+        details={
+            "name": "reset_mfa",
+            "action": "mfa_reset",
+            "username": user.username,
+            "changes": {
+                "mfa_bound": [mfa_bound_before, False],
+                "mfa_enabled": [True, True],
+            },
+        },
         ip_address=ip,
     )
 
@@ -744,13 +767,23 @@ async def disable_mfa(
     if not user.mfa_enabled:
         return ResponseBase(message="该用户未启用 MFA")
 
+    mfa_bound_before = bool(user.mfa_secret)
+    mfa_enabled_before = user.mfa_enabled
     user.mfa_secret = None
     user.mfa_enabled = False
     await db.commit()
 
     await log_operation(
         db, current_user.id, "update", "user", user.id,
-        details={"name": "disable_mfa", "action": "mfa_disable"},
+        details={
+            "name": "disable_mfa",
+            "action": "mfa_disable",
+            "username": user.username,
+            "changes": {
+                "mfa_enabled": [mfa_enabled_before, False],
+                "mfa_bound": [mfa_bound_before, False],
+            },
+        },
         ip_address=ip,
     )
 

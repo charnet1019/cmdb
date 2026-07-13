@@ -330,36 +330,52 @@ async def update_authorization(
     if not auth:
         raise HTTPException(status_code=404, detail="授权不存在")
 
+    changes = {}
+
+    def audit_datetime(value):
+        return value.isoformat() if value else None
+
+    def record_change(field: str, before, after) -> None:
+        if before != after:
+            changes[field] = [before, after]
+
     if data.permissions is not None:
+        record_change("permissions", list(auth.permissions or []), data.permissions)
         auth.permissions = data.permissions
 
     if data.target_ids is not None and len(data.target_ids) > 0:
+        record_change("target_ids", list(auth.target_ids or []), data.target_ids)
         auth.target_ids = data.target_ids
 
     if data.valid_from is not None:
+        record_change("valid_from", audit_datetime(auth.valid_from), audit_datetime(data.valid_from))
         auth.valid_from = data.valid_from
 
     if data.valid_until is not None:
+        record_change("valid_until", audit_datetime(auth.valid_until), audit_datetime(data.valid_until))
         auth.valid_until = data.valid_until
 
     if data.is_active is not None:
+        record_change("is_active", auth.is_active, data.is_active)
         auth.is_active = data.is_active
 
     await db.commit()
     await db.refresh(auth)
 
-    await log_operation(
-        db, current_user.id, "update", "authorization", auth.id,
-        details={
-            "name": f"{await _resolve_entity_name(db, auth.entity_type, auth.entity_id)} -> {await _resolve_target_names(db, auth.target_type, auth.target_ids)}",
-            "entity_type": auth.entity_type,
-            "entity_id": auth.entity_id,
-            "target_type": auth.target_type,
-            "permissions": auth.permissions,
-            "is_active": auth.is_active,
-        },
-        ip_address=ip,
-    )
+    if changes:
+        await log_operation(
+            db, current_user.id, "update", "authorization", auth.id,
+            details={
+                "name": f"{await _resolve_entity_name(db, auth.entity_type, auth.entity_id)} -> {await _resolve_target_names(db, auth.target_type, auth.target_ids)}",
+                "entity_type": auth.entity_type,
+                "entity_id": auth.entity_id,
+                "target_type": auth.target_type,
+                "permissions": auth.permissions,
+                "is_active": auth.is_active,
+                "changes": changes,
+            },
+            ip_address=ip,
+        )
 
     return {
         "code": 0,

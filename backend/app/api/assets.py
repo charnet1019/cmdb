@@ -1691,6 +1691,11 @@ async def update_asset(
 
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
+    changes = {}
+
+    def record_change(field: str, before, after) -> None:
+        if before != after:
+            changes[field] = [before, after]
  
     # Handle owner validation
     if "owner_id" in update_data or "owner_name" in update_data:
@@ -1720,8 +1725,11 @@ async def update_asset(
                     detail="负责人不存在"
                 )
 
-    # Handle OOB password encryption
+    # Handle OOB password encryption. Never write the password value into audit logs.
     if "oob_password" in update_data and update_data["oob_password"] is not None:
+        before_password_state = "已设置" if asset.oob_password_encrypted else "未设置"
+        after_password_state = "已设置" if update_data["oob_password"] else "未设置"
+        record_change("oob_password", before_password_state, after_password_state)
         if update_data["oob_password"]:
             asset.oob_password_encrypted = encrypt_value(update_data["oob_password"])
         else:
@@ -1734,10 +1742,9 @@ async def update_asset(
 
     for field, value in update_data.items():
         # Map schema 'extra_data' to model 'extra_data'
-        if field == "extra_data":
-            setattr(asset, "extra_data", value)
-        else:
-            setattr(asset, field, value)
+        model_field = "extra_data" if field == "extra_data" else field
+        record_change(field, getattr(asset, model_field, None), value)
+        setattr(asset, model_field, value)
  
     await db.commit()
 
@@ -1785,15 +1792,17 @@ async def update_asset(
         await db.commit()
 
     # Audit log
-    await log_operation(
-        db, current_user.id, "update", "asset", 0,
-        details={
-            "name": asset.name,
-            "category": asset.category,
-            "asset_code": asset.asset_code,
-        },
-        ip_address=ip,
-    )
+    if changes:
+        await log_operation(
+            db, current_user.id, "update", "asset", 0,
+            details={
+                "name": asset.name,
+                "category": asset.category,
+                "asset_code": asset.asset_code,
+                "changes": changes,
+            },
+            ip_address=ip,
+        )
 
     await db.refresh(asset)
 

@@ -306,7 +306,14 @@ async def create_user(
 
         await log_operation(
             db, current_user.id, "create", "user", user.id,
-            details={"username": user.username, "email": user.email},
+            details={
+                "username": user.username,
+                "email": user.email,
+                "is_active": user.is_active,
+                "mfa_enabled": user.mfa_enabled,
+                "mfa_bound": bool(user.mfa_secret),
+                "group_ids": data.group_ids or [],
+            },
             ip_address=ip,
         )
 
@@ -487,27 +494,34 @@ async def update_user(
         user.is_active = data.is_active
 
     if data.mfa_enabled is not None and data.mfa_enabled != user.mfa_enabled:
+        mfa_bound_before = bool(user.mfa_secret)
         changes["mfa_enabled"] = [user.mfa_enabled, data.mfa_enabled]
         user.mfa_enabled = data.mfa_enabled
         if not data.mfa_enabled:
             # Clear secret when disabling MFA
             user.mfa_secret = None
+        changes["mfa_bound"] = [mfa_bound_before, bool(user.mfa_secret)]
 
     if data.is_superuser is not None and data.is_superuser != user.is_superuser:
         changes["is_superuser"] = [user.is_superuser, data.is_superuser]
         user.is_superuser = data.is_superuser
 
-    # Update groups
+    # Update groups only when membership actually changes. The edit form may
+    # submit the existing group_ids together with unrelated profile fields.
     if data.group_ids is not None:
-        changes["group_ids"] = data.group_ids
-        # Remove existing groups
-        for ug in (await db.execute(select(UserGroup).where(UserGroup.user_id == user_id))).scalars().all():
-            await db.delete(ug)
+        current_user_groups = (await db.execute(select(UserGroup).where(UserGroup.user_id == user_id))).scalars().all()
+        current_group_ids = sorted(ug.group_id for ug in current_user_groups)
+        new_group_ids = sorted(data.group_ids)
+        if current_group_ids != new_group_ids:
+            changes["group_ids"] = [current_group_ids, new_group_ids]
+            # Remove existing groups
+            for ug in current_user_groups:
+                await db.delete(ug)
 
-        # Add new groups
-        for group_id in data.group_ids:
-            user_group = UserGroup(user_id=user.id, group_id=group_id)
-            db.add(user_group)
+            # Add new groups
+            for group_id in data.group_ids:
+                user_group = UserGroup(user_id=user.id, group_id=group_id)
+                db.add(user_group)
 
     await db.commit()
     if force_logout_after_commit:
@@ -1064,7 +1078,7 @@ async def update_group(
         raise HTTPException(status_code=404, detail="用户组不存在")
 
     changes = {}
-    if data.name is not None:
+    if data.name is not None and data.name != group.name:
         # Check name uniqueness
         existing = await db.execute(
             select(Group).where(Group.name == data.name, Group.id != group_id)

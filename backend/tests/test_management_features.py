@@ -41,13 +41,15 @@ if importlib.util.find_spec("qrcode") is None:
     sys.modules["qrcode"] = qrcode_module
 
 from app.api import assets as asset_api
+from app.api import auth as auth_api
 from app.api import authorizations as authz_api
 from app.api import deps
 from app.api import dashboard as dashboard_api
+from app.api import logs as logs_api
 from app.api import settings as settings_api
 from app.api import notifications as notifications_api
 from app.api import users as users_api
-from app.models import Asset, AssetConfigFile, AssetConfigVersion, Authorization, Credential, Group, Notification, NotificationReceipt, Organization, Setting, User
+from app.models import Asset, AssetConfigFile, AssetConfigVersion, Authorization, Credential, Group, Notification, NotificationReceipt, OperationLog, Organization, Setting, User
 from app.schemas import AuthorizationCreate, CredentialCreate, GroupCreate, UserCreate, PasswordResetRequest, UserUpdate
 
 
@@ -543,6 +545,314 @@ async def test_update_authorization_changes_permissions_and_active_state(monkeyp
 def test_authorization_datetime_format_uses_utc_z_suffix():
     assert authz_api.format_datetime_utc(datetime(2026, 1, 1, 12, 30, 0)) == "2026-01-01T12:30:00Z"
     assert authz_api.format_datetime_utc(None) is None
+
+
+def test_operation_log_formatter_uses_concise_mfa_action_summary():
+    log = OperationLog(
+        id=1,
+        user_id=1,
+        action="update",
+        resource_type="user",
+        resource_id=2,
+        details={
+            "action": "mfa_disable",
+            "username": "bob",
+            "changes": {
+                "mfa_enabled": [True, False],
+                "mfa_bound": [True, False],
+            },
+        },
+        ip_address="127.0.0.1",
+        status="success",
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+    )
+
+    formatted = logs_api._format_operation_log(log, "admin")
+
+    assert formatted["action_label"] == "更新"
+    assert formatted["resource_type_label"] == "用户"
+    assert formatted["detail_action_label"] == "禁用MFA"
+    assert formatted["operation_summary"] == "禁用MFA"
+    assert formatted["change_items"] == []
+
+
+def test_operation_log_formatter_promotes_user_enable_disable_summary():
+    log = OperationLog(
+        id=3,
+        user_id=1,
+        action="update",
+        resource_type="user",
+        resource_id=2,
+        details={
+            "username": "test",
+            "changes": {
+                "group_ids": [None, [6]],
+                "is_active": [False, True],
+            },
+        },
+        ip_address="127.0.0.1",
+        status="success",
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+    )
+
+    formatted = logs_api._format_operation_log(log, "admin")
+
+    assert formatted["operation_summary"] == "启用用户"
+    assert formatted["change_items"] == []
+
+
+def test_operation_log_formatter_promotes_user_disable_summary():
+    log = OperationLog(
+        id=8,
+        user_id=1,
+        action="update",
+        resource_type="user",
+        resource_id=2,
+        details={
+            "username": "test",
+            "changes": {"is_active": [True, False]},
+        },
+        ip_address="127.0.0.1",
+        status="success",
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+    )
+
+    formatted = logs_api._format_operation_log(log, "admin")
+
+    assert formatted["operation_summary"] == "禁用用户"
+    assert formatted["change_items"] == []
+
+
+def test_operation_log_formatter_promotes_mfa_enable_summary():
+    log = OperationLog(
+        id=9,
+        user_id=1,
+        action="update",
+        resource_type="user",
+        resource_id=2,
+        details={
+            "username": "test",
+            "changes": {"mfa_enabled": [False, True]},
+        },
+        ip_address="127.0.0.1",
+        status="success",
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+    )
+
+    formatted = logs_api._format_operation_log(log, "admin")
+
+    assert formatted["operation_summary"] == "启用MFA"
+    assert formatted["change_items"] == []
+
+
+def test_operation_log_formatter_names_logout_cleanly():
+    log = OperationLog(
+        id=4,
+        user_id=1,
+        action="update",
+        resource_type="auth",
+        resource_id=0,
+        details={"name": "logout", "action": "logout"},
+        ip_address="127.0.0.1",
+        status="success",
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+    )
+
+    formatted = logs_api._format_operation_log(log, "alice")
+
+    assert formatted["resource_type_label"] == "认证"
+    assert formatted["detail_action_label"] == "用户登出"
+    assert formatted["operation_summary"] == "用户登出"
+
+
+def test_operation_log_formatter_omits_group_target_from_summary():
+    log = OperationLog(
+        id=5,
+        user_id=1,
+        action="add_group_members",
+        resource_type="group",
+        resource_id=6,
+        details={"name": "ops", "user_ids": [2, 3], "added": 2},
+        ip_address="127.0.0.1",
+        status="success",
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+    )
+
+    formatted = logs_api._format_operation_log(log, "admin")
+
+    assert formatted["resource_name"] == "ops"
+    assert formatted["operation_summary"] == "添加组成员: 2 名"
+
+
+def test_operation_log_formatter_omits_config_target_and_resolves_resource_name():
+    log = OperationLog(
+        id=6,
+        user_id=1,
+        action="update",
+        resource_type="asset",
+        resource_id=0,
+        details={
+            "action": "upload_config",
+            "asset_name": "network-1",
+            "filename": "network.cfg",
+        },
+        ip_address="127.0.0.1",
+        status="success",
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+    )
+
+    formatted = logs_api._format_operation_log(log, "admin")
+
+    assert formatted["resource_name"] == "network-1 / network.cfg"
+    assert formatted["operation_summary"] == "上传配置文件 network.cfg"
+
+
+def test_operation_log_formatter_describes_group_description_change_naturally():
+    log = OperationLog(
+        id=7,
+        user_id=1,
+        action="update",
+        resource_type="group",
+        resource_id=6,
+        details={
+            "name": "rd",
+            "changes": {"description": ["测试qq", "测试qq55"]},
+        },
+        ip_address="127.0.0.1",
+        status="success",
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+    )
+
+    formatted = logs_api._format_operation_log(log, "admin")
+
+    assert formatted["resource_name"] == "rd"
+    assert formatted["operation_summary"] == "将描述从测试qq修改为测试qq55"
+
+
+def test_operation_log_formatter_summarizes_setting_changes():
+    log = OperationLog(
+        id=2,
+        user_id=1,
+        action="update",
+        resource_type="setting",
+        resource_id=0,
+        details={
+            "name": "batch_update",
+            "keys": ["session_timeout"],
+            "changes": {"session_timeout": [30, 120]},
+        },
+        ip_address="127.0.0.1",
+        status="success",
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+    )
+
+    formatted = logs_api._format_operation_log(log, "admin")
+
+    assert formatted["resource_type_label"] == "系统设置"
+    assert formatted["resource_name"] == "会话超时时间"
+    assert formatted["operation_summary"] == "将会话超时时间从30修改为120"
+    assert formatted["change_items"] == [
+        {
+            "field": "session_timeout",
+            "label": "会话超时时间",
+            "before": "30",
+            "after": "120",
+            "summary": "会话超时时间: 30 -> 120",
+        }
+    ]
+
+
+def test_operation_log_formatter_uses_setting_labels_for_login_log_retention():
+    log = OperationLog(
+        id=10,
+        user_id=1,
+        action="update",
+        resource_type="setting",
+        resource_id=0,
+        details={
+            "name": "login_log_retention",
+            "changes": {"login_log_retention": [30, 29]},
+        },
+        ip_address="127.0.0.1",
+        status="success",
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+    )
+
+    formatted = logs_api._format_operation_log(log, "admin")
+
+    assert formatted["resource_name"] == "登录日志保留天数"
+    assert formatted["operation_summary"] == "将登录日志保留天数从30修改为29"
+
+
+def test_operation_log_formatter_uses_setting_labels_for_password_complexity():
+    log = OperationLog(
+        id=11,
+        user_id=1,
+        action="update",
+        resource_type="setting",
+        resource_id=0,
+        details={
+            "name": "password_require_special",
+            "changes": {"password_require_special": [False, True]},
+        },
+        ip_address="127.0.0.1",
+        status="success",
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+    )
+
+    formatted = logs_api._format_operation_log(log, "admin")
+
+    assert formatted["resource_name"] == "密码至少包含特殊字符"
+    assert formatted["operation_summary"] == "将密码至少包含特殊字符从否修改为是"
+
+
+def test_operation_log_formatter_uses_setting_labels_for_otp_issuer_name():
+    log = OperationLog(
+        id=12,
+        user_id=1,
+        action="update",
+        resource_type="setting",
+        resource_id=0,
+        details={
+            "name": "otp_issuer_name",
+            "changes": {"otp_issuer_name": ["CMDB智昌", "CMDB"]},
+        },
+        ip_address="127.0.0.1",
+        status="success",
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+    )
+
+    formatted = logs_api._format_operation_log(log, "admin")
+
+    assert formatted["resource_name"] == "OTP 验证器名称"
+    assert formatted["operation_summary"] == "将OTP 验证器名称从CMDB智昌修改为CMDB"
+
+
+def test_operation_log_formatter_groups_brand_settings_batch_updates():
+    log = OperationLog(
+        id=13,
+        user_id=1,
+        action="update",
+        resource_type="setting",
+        resource_id=0,
+        details={
+            "name": "batch_update",
+            "keys": ["site_title", "login_subtitle", "logo_image"],
+            "changes": {
+                "site_title": ["CMDB智昌", "CMDB"],
+                "login_subtitle": ["企业资产配置管理平台", "资产管理平台"],
+                "logo_image": ["/uploads/old.png", "/uploads/new.png"],
+            },
+        },
+        ip_address="127.0.0.1",
+        status="success",
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+    )
+
+    formatted = logs_api._format_operation_log(log, "admin")
+
+    assert formatted["resource_name"] == "品牌设置"
+    assert formatted["operation_summary"] == "更新品牌设置"
 
 
 def test_permission_variant_helpers_include_transitive_implied_permissions():
@@ -1238,6 +1548,162 @@ async def test_update_user_disabling_active_user_forces_logout(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_update_user_ignores_unchanged_group_ids_in_audit(monkeypatch):
+    audit_calls = []
+
+    async def fake_log(*args, **kwargs):
+        audit_calls.append((args, kwargs))
+
+    monkeypatch.setattr(users_api, "log_operation", fake_log)
+    target = user(id=2, username="bob", full_name="test66")
+    existing_membership = SimpleNamespace(group_id=6)
+    db = FakeDB(
+        FakeResult(scalar_one_or_none=target),
+        FakeResult(scalars=[existing_membership]),
+        FakeResult(scalars=[group(id=6, name="rd")]),
+    )
+
+    response = await users_api.update_user(
+        user_id=2,
+        data=UserUpdate(full_name="test77", group_ids=[6]),
+        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+        db=db,
+        current_user=user(id=1, is_superuser=True),
+    )
+
+    assert response.data.full_name == "test77"
+    assert db.deleted == []
+    assert db.added == []
+    changes = audit_calls[0][1]["details"]["changes"]
+    assert changes == {"full_name": ["test66", "test77"]}
+
+
+@pytest.mark.asyncio
+async def test_update_user_disabling_mfa_logs_bound_state(monkeypatch):
+    audit_calls = []
+
+    async def fake_log(*args, **kwargs):
+        audit_calls.append((args, kwargs))
+
+    monkeypatch.setattr(users_api, "log_operation", fake_log)
+    target = user(id=2, username="bob", mfa_enabled=True, mfa_secret="secret")
+    db = FakeDB(FakeResult(scalar_one_or_none=target), FakeResult(scalars=[]))
+
+    response = await users_api.update_user(
+        user_id=2,
+        data=UserUpdate(mfa_enabled=False),
+        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+        db=db,
+        current_user=user(id=1, is_superuser=True),
+    )
+
+    assert response.data.mfa_enabled is False
+    assert response.data.mfa_bound is False
+    changes = audit_calls[0][1]["details"]["changes"]
+    assert changes["mfa_enabled"] == [True, False]
+    assert changes["mfa_bound"] == [True, False]
+
+
+@pytest.mark.asyncio
+async def test_reset_mfa_logs_target_and_state(monkeypatch):
+    audit_calls = []
+
+    async def fake_log(*args, **kwargs):
+        audit_calls.append((args, kwargs))
+
+    monkeypatch.setattr(auth_api, "log_operation", fake_log)
+    target = user(id=2, username="bob", mfa_enabled=True, mfa_secret="secret")
+
+    response = await auth_api.reset_mfa(
+        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+        user_id=2,
+        db=FakeDB(FakeResult(scalar_one_or_none=target)),
+        current_user=user(id=1, is_superuser=True),
+    )
+
+    assert response.message == "MFA 已重置，用户下次登录需重新绑定"
+    details = audit_calls[0][1]["details"]
+    assert details["username"] == "bob"
+    assert details["changes"]["mfa_bound"] == [True, False]
+    assert details["changes"]["mfa_enabled"] == [True, True]
+
+
+@pytest.mark.asyncio
+async def test_disable_mfa_logs_target_and_state(monkeypatch):
+    audit_calls = []
+
+    async def fake_log(*args, **kwargs):
+        audit_calls.append((args, kwargs))
+
+    monkeypatch.setattr(auth_api, "log_operation", fake_log)
+    target = user(id=2, username="bob", mfa_enabled=True, mfa_secret="secret")
+
+    response = await auth_api.disable_mfa(
+        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+        user_id=2,
+        db=FakeDB(FakeResult(scalar_one_or_none=target)),
+        current_user=user(id=1, is_superuser=True),
+    )
+
+    assert response.message == "MFA 已禁用"
+    details = audit_calls[0][1]["details"]
+    assert details["username"] == "bob"
+    assert details["changes"]["mfa_enabled"] == [True, False]
+    assert details["changes"]["mfa_bound"] == [True, False]
+
+
+@pytest.mark.asyncio
+async def test_login_mfa_setup_logs_bind_without_secret(monkeypatch):
+    audit_calls = []
+    target = user(id=2, username="bob", mfa_enabled=True, mfa_secret=None)
+
+    class FakeRedis:
+        async def get(self, key):
+            return "totp-secret"
+
+        async def delete(self, key):
+            return 1
+
+    async def fake_load_challenge(challenge_token, request):
+        return {"user_id": target.id, "remember": False}
+
+    async def fake_get_challenge_user(payload, db):
+        return target
+
+    async def fake_delete_challenge(challenge_token):
+        return None
+
+    async def fake_complete_login(*args, **kwargs):
+        return SimpleNamespace(ok=True)
+
+    async def fake_log(*args, **kwargs):
+        audit_calls.append((args, kwargs))
+
+    monkeypatch.setattr(auth_api, "get_redis", lambda: FakeRedis())
+    monkeypatch.setattr(auth_api, "_load_login_challenge", fake_load_challenge)
+    monkeypatch.setattr(auth_api, "_get_challenge_user", fake_get_challenge_user)
+    monkeypatch.setattr(auth_api, "_delete_login_challenge", fake_delete_challenge)
+    monkeypatch.setattr(auth_api, "verify_totp", lambda secret, code: True)
+    monkeypatch.setattr(auth_api, "_complete_login", fake_complete_login)
+    monkeypatch.setattr(auth_api, "log_operation", fake_log)
+
+    response = await auth_api.login_mfa_verify(
+        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"), headers={}),
+        response=SimpleNamespace(),
+        data=auth_api.MFAVerifyRequest(challenge_token="challenge", code="123456", setup=True),
+        db=FakeDB(),
+    )
+
+    assert response.ok is True
+    assert target.mfa_secret == "totp-secret"
+    details = audit_calls[0][1]["details"]
+    assert details["action"] == "mfa_bind"
+    assert details["username"] == "bob"
+    assert details["changes"]["mfa_bound"] == [False, True]
+    assert "totp-secret" not in str(details)
+
+
+@pytest.mark.asyncio
 async def test_force_logout_user_sessions_endpoint(monkeypatch):
     force_calls = []
     audit_calls = []
@@ -1300,8 +1766,10 @@ async def test_create_user_auto_password_sends_email_before_commit(monkeypatch):
     async def fake_send(db, target_user, temp_password, action):
         sent.append((target_user.email, target_user.username, temp_password, action))
 
+    audit_calls = []
+
     async def fake_log(*args, **kwargs):
-        return None
+        audit_calls.append((args, kwargs))
 
     monkeypatch.setattr(users_api, "send_user_password_email", fake_send)
     monkeypatch.setattr(users_api, "log_operation", fake_log)
@@ -1336,6 +1804,11 @@ async def test_create_user_auto_password_sends_email_before_commit(monkeypatch):
     assert sent[0][0] == "new-user@example.com"
     assert sent[0][3] == "create"
     assert db.commits >= 1
+    audit_details = audit_calls[0][1]["details"]
+    assert audit_details["is_active"] is True
+    assert audit_details["mfa_enabled"] is False
+    assert audit_details["mfa_bound"] is False
+    assert audit_details["group_ids"] == []
 
 
 @pytest.mark.asyncio

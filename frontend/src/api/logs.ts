@@ -18,15 +18,29 @@ export interface LoginLogStats {
   failed_count: number
 }
 
+export interface OperationLogChangeItem {
+  field: string
+  label: string
+  before: string
+  after: string
+  summary: string
+}
+
 export interface OperationLog {
   id: number
   user_id: number | null
   username: string
   action: string
+  action_label?: string
   resource_type: string
+  resource_type_label?: string
   resource_id: number | null
-  resource_name: string | number
-  details: string | null
+  resource_name: string | number | null
+  details: Record<string, any> | null
+  detail_action?: string | null
+  detail_action_label?: string | null
+  operation_summary?: string
+  change_items?: OperationLogChangeItem[]
   ip_address: string | null
   status: string
   created_at: string
