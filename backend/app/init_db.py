@@ -23,10 +23,9 @@ def _generate_initial_admin_password() -> str:
     return "".join(secrets.choice(alphabet) for _ in range(20))
 
 
-def _reset_session_timeout_setting(setting: Setting | None) -> Setting:
+def _ensure_session_timeout_setting(setting: Setting | None) -> Setting:
     if setting is None:
         return Setting(key="session_timeout", value={"value": 30}, description="会话超时时间(分钟)")
-    setting.value = {"value": 30}
     setting.description = "会话超时时间(分钟)"
     return setting
 
@@ -43,7 +42,7 @@ async def seed_default_data() -> None:
 
     async with async_session_maker() as session:
         setting_result = await session.execute(select(Setting).where(Setting.key == "session_timeout"))
-        session_timeout_setting = _reset_session_timeout_setting(setting_result.scalar_one_or_none())
+        session_timeout_setting = _ensure_session_timeout_setting(setting_result.scalar_one_or_none())
         if session_timeout_setting.id is None:
             session.add(session_timeout_setting)
 

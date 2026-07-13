@@ -200,6 +200,7 @@ export interface UserSimple {
   permissions: string[]
   mfa_enabled?: boolean
   must_change_password?: boolean
+  session_expires_at?: string | null
 }
 
 // MFA types

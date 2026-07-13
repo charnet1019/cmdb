@@ -1,19 +1,20 @@
 """
 Settings API Routes
 """
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any
 from email.utils import parseaddr
 from urllib.parse import urlparse
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db
-from app.api.deps import PermissionChecker
+from app.api.deps import AUTH_COOKIE_NAME, PermissionChecker
 from app.utils.audit import log_operation
 from app.models import Setting, User
 from app.core.encryption import encrypt_value
+from app.core.session import load_user_session, set_user_session_timeout
 
 
 def format_datetime_utc(dt: datetime | None) -> str | None:
@@ -85,6 +86,44 @@ def _response_setting_value(key: str, value: Any) -> Any:
     if key == "smtp_password":
         return SMTP_PASSWORD_MASK if value else ""
     return value
+
+
+def _set_auth_cookie(response: Response, request: Request, token: str, ttl_seconds: int) -> None:
+    response.set_cookie(
+        key=AUTH_COOKIE_NAME,
+        value=token,
+        max_age=ttl_seconds,
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="lax",
+        path="/",
+    )
+
+
+async def _apply_current_session_timeout(
+    request: Request | None,
+    response: Response,
+    timeout_minutes: int,
+) -> str | None:
+    if request is None:
+        return None
+    session_id = getattr(request.state, "session_id", None)
+    if not session_id:
+        return None
+
+    current_payload = await load_user_session(session_id)
+    if not current_payload:
+        return None
+    if current_payload.get("remember"):
+        return current_payload.get("expires_at")
+
+    ttl_seconds = max(60, timeout_minutes * 60)
+    session_payload = await set_user_session_timeout(session_id, timedelta(seconds=ttl_seconds))
+    if not session_payload:
+        return None
+
+    _set_auth_cookie(response, request, session_id, ttl_seconds)
+    return session_payload.get("expires_at")
 
 
 def _validate_url(key: str, value: str) -> str:
@@ -234,6 +273,7 @@ async def get_setting(
 async def update_setting(
     key: str,
     value: Dict[str, Any],
+    response: Response,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("sys_config")),
     request: Request = None,
@@ -262,6 +302,10 @@ async def update_setting(
     await db.commit()
     await db.refresh(setting)
 
+    session_expires_at = None
+    if key == "session_timeout":
+        session_expires_at = await _apply_current_session_timeout(request, response, normalized_value)
+
     # Audit log
     if changes:
         await log_operation(
@@ -280,7 +324,8 @@ async def update_setting(
             "key": setting.key,
             "value": {"value": _response_setting_value(setting.key, setting.value.get("value") if setting.value else None)},
             "description": setting.description,
-            "updated_at": format_datetime_utc(setting.updated_at)
+            "updated_at": format_datetime_utc(setting.updated_at),
+            "session_expires_at": session_expires_at,
         }
     }
 
@@ -288,6 +333,7 @@ async def update_setting(
 @router.put("")
 async def update_settings(
     settings_data: Dict[str, Any],
+    response: Response,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("sys_config")),
     request: Request = None,
@@ -299,6 +345,7 @@ async def update_settings(
     ip = request.client.host if request and request.client else None
     updated = []
     changes = {}
+    session_timeout_value = None
 
     for key, value in settings_data.items():
         result = await db.execute(select(Setting).where(Setting.key == key))
@@ -306,6 +353,8 @@ async def update_settings(
 
         previous_value = setting.value.get("value") if setting and setting.value else None
         normalized_value = _normalize_setting(key, value, previous_value)
+        if key == "session_timeout":
+            session_timeout_value = normalized_value
         if previous_value != normalized_value:
             changes[key] = [_audit_setting_value(key, previous_value), _audit_setting_value(key, normalized_value)]
         if setting:
@@ -316,6 +365,10 @@ async def update_settings(
         updated.append(key)
 
     await db.commit()
+
+    session_expires_at = None
+    if session_timeout_value is not None:
+        session_expires_at = await _apply_current_session_timeout(request, response, session_timeout_value)
 
     # Audit log
     if changes:
@@ -332,6 +385,7 @@ async def update_settings(
     return {
         "data": {
             "updated": updated,
-            "message": f"Updated {len(updated)} settings"
+            "message": f"Updated {len(updated)} settings",
+            "session_expires_at": session_expires_at,
         }
     }

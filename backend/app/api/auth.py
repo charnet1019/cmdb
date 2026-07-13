@@ -29,7 +29,7 @@ from app.core.security import (
     generate_totp_secret, verify_totp, generate_totp_qr
 )
 from app.core.redis_client import get_redis
-from app.core.session import create_user_session, delete_user_session, refresh_user_session
+from app.core.session import create_user_session, delete_user_session, refresh_user_session, extend_user_session, set_user_session_timeout
 from app.core.password_policy import validate_password_strength_from_settings
 from app.api.deps import AUTH_COOKIE_NAME, get_current_user, get_user_permissions, PermissionChecker
 from app.config import settings
@@ -206,7 +206,7 @@ async def _complete_login(
 
     session_minutes = await _get_int_setting(db, "session_timeout", 30, 1, 10080)
     expires_delta = timedelta(days=7) if remember else timedelta(minutes=session_minutes)
-    session_id, expires_at = await create_user_session(user.id, request, expires_delta)
+    session_id, expires_at = await create_user_session(user.id, request, expires_delta, remember=remember)
     _set_auth_cookie(response, request, session_id, expires_delta)
     user_permissions = await get_user_permissions(user, db)
 
@@ -357,15 +357,43 @@ async def logout(
 @router.post("/heartbeat", response_model=ResponseBase)
 async def heartbeat(
     request: Request,
+    response: Response,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """
-    Heartbeat — refresh online presence TTL (creates key if missing)
+    Heartbeat — refresh online presence, and extend idle expiry only when
+    the browser reports real user activity since the previous heartbeat.
     """
-    refreshed = await refresh_user_session(getattr(request.state, "session_id", None))
-    if not refreshed:
+    session_id = getattr(request.state, "session_id", None)
+    user_active = request.headers.get("x-cmdb-user-active") == "1"
+    session_payload = await (extend_user_session(session_id) if user_active else refresh_user_session(session_id))
+    if not session_payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="会话已失效")
-    return ResponseBase(message="ok")
+
+    if not isinstance(session_payload, dict):
+        session_payload = getattr(request.state, "session", {}) or {}
+
+    remember = bool(session_payload.get("remember"))
+    session_minutes = await _get_int_setting(db, "session_timeout", 30, 1, 10080)
+    configured_timeout_seconds = session_minutes * 60
+    try:
+        timeout_seconds = int(session_payload.get("timeout_seconds") or 0)
+    except (TypeError, ValueError):
+        timeout_seconds = 0
+
+    if not remember and timeout_seconds != configured_timeout_seconds:
+        updated_payload = await set_user_session_timeout(session_id, timedelta(seconds=configured_timeout_seconds))
+        if updated_payload:
+            session_payload = updated_payload
+            timeout_seconds = configured_timeout_seconds
+
+    expires_at = session_payload.get("expires_at")
+    cookie_seconds = timeout_seconds if remember and timeout_seconds > 0 else configured_timeout_seconds
+    if user_active or not remember:
+        _set_auth_cookie(response, request, session_id, timedelta(seconds=cookie_seconds))
+
+    return ResponseBase(message="ok", data={"expires_at": expires_at})
 
 
 @router.post("/change-password", response_model=ResponseBase)
@@ -492,6 +520,7 @@ async def force_change_password(
 
 @router.get("/me", response_model=CurrentUserResponse)
 async def get_current_user_info(
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -499,6 +528,7 @@ async def get_current_user_info(
     Get current user info with permissions
     """
     permissions = await get_user_permissions(current_user, db)
+    session_payload = getattr(request.state, "session", {}) or {}
 
     return CurrentUserResponse(
         data=UserSimple(
@@ -509,6 +539,7 @@ async def get_current_user_info(
             avatar_url=current_user.avatar_url,
             is_superuser=current_user.is_superuser,
             permissions=permissions,
+            session_expires_at=session_payload.get("expires_at"),
         )
     )
 

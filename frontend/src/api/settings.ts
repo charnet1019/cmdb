@@ -62,7 +62,7 @@ export async function getSettings(): Promise<SettingsResponse> {
 }
 
 // Update multiple settings
-export async function updateSettings(settings: Record<string, any>): Promise<{ updated: string[]; message: string }> {
+export async function updateSettings(settings: Record<string, any>): Promise<{ updated: string[]; message: string; session_expires_at?: string | null }> {
   const response = await api.put('/settings', settings)
   return response.data.data
 }

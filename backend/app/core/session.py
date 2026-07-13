@@ -62,6 +62,7 @@ async def create_user_session(
     user_id: int,
     request: Request,
     expires_delta: timedelta,
+    remember: bool = False,
 ) -> tuple[str, datetime]:
     """Create a Redis-backed login session and return (session_id, expires_at)."""
     redis_client = get_redis()
@@ -74,6 +75,8 @@ async def create_user_session(
         "user_id": user_id,
         "ip_address": _request_ip(request),
         "user_agent": _request_user_agent(request),
+        "remember": remember,
+        "timeout_seconds": ttl_seconds,
         "created_at": _format_utc(now),
         "last_seen_at": _format_utc(now),
         "expires_at": _format_utc(expires_at),
@@ -111,26 +114,71 @@ async def load_user_session(session_id: str | None) -> dict[str, Any] | None:
     return payload
 
 
-async def refresh_user_session(session_id: str | None) -> bool:
-    """Refresh presence and session TTL without extending absolute expiry."""
+async def touch_user_session(session_id: str | None, *, extend_expiry: bool = False) -> dict[str, Any] | None:
+    """Refresh presence and optionally extend the idle session expiry."""
     payload = await load_user_session(session_id)
     if not payload:
-        return False
+        return None
 
     user_id = int(payload["user_id"])
     expires_at = _parse_utc(payload.get("expires_at"))
     if not expires_at:
-        return False
+        return None
 
-    remaining_seconds = max(1, int((expires_at - _utc_now()).total_seconds()))
-    payload["last_seen_at"] = _format_utc(_utc_now())
+    now = _utc_now()
+    if extend_expiry:
+        try:
+            timeout_seconds = int(payload.get("timeout_seconds") or 0)
+        except (TypeError, ValueError):
+            timeout_seconds = 0
+        if timeout_seconds <= 0:
+            created_at = _parse_utc(payload.get("created_at"))
+            timeout_seconds = max(1, int((expires_at - (created_at or now)).total_seconds()))
+        expires_at = now + timedelta(seconds=timeout_seconds)
+        payload["timeout_seconds"] = timeout_seconds
+        payload["expires_at"] = _format_utc(expires_at)
+
+    remaining_seconds = max(1, int((expires_at - now).total_seconds()))
+    payload["last_seen_at"] = _format_utc(now)
 
     redis_client = get_redis()
     await redis_client.setex(_session_key(session_id), remaining_seconds, json.dumps(payload))
     await redis_client.sadd(_user_sessions_key(user_id), session_id)
     await _expire_user_session_set(user_id, remaining_seconds)
     await redis_client.setex(f"{ONLINE_KEY_PREFIX}{user_id}", ONLINE_TTL_SECONDS, "1")
-    return True
+    return payload
+
+
+async def refresh_user_session(session_id: str | None) -> bool:
+    """Refresh presence and session TTL without extending idle expiry."""
+    return await touch_user_session(session_id) is not None
+
+
+async def extend_user_session(session_id: str | None) -> dict[str, Any] | None:
+    """Refresh presence and extend the idle session expiry."""
+    return await touch_user_session(session_id, extend_expiry=True)
+
+
+async def set_user_session_timeout(session_id: str | None, expires_delta: timedelta) -> dict[str, Any] | None:
+    """Update an existing session timeout and expire it from now."""
+    payload = await load_user_session(session_id)
+    if not payload:
+        return None
+
+    user_id = int(payload["user_id"])
+    now = _utc_now()
+    ttl_seconds = max(1, int(expires_delta.total_seconds()))
+    expires_at = now + timedelta(seconds=ttl_seconds)
+    payload["timeout_seconds"] = ttl_seconds
+    payload["last_seen_at"] = _format_utc(now)
+    payload["expires_at"] = _format_utc(expires_at)
+
+    redis_client = get_redis()
+    await redis_client.setex(_session_key(session_id), ttl_seconds, json.dumps(payload))
+    await redis_client.sadd(_user_sessions_key(user_id), session_id)
+    await _expire_user_session_set(user_id, ttl_seconds)
+    await redis_client.setex(f"{ONLINE_KEY_PREFIX}{user_id}", ONLINE_TTL_SECONDS, "1")
+    return payload
 
 
 async def get_active_user_session_ids(user_id: int) -> list[str]:

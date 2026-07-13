@@ -80,6 +80,7 @@ class UserSimple(BaseModel):
     is_superuser: bool = False
     permissions: List[str] = []
     must_change_password: bool = False
+    session_expires_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 

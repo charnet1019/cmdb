@@ -1,9 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { UserSimple, MFARequiredData, MustChangePasswordData } from '@/types'
+import type { UserSimple, TokenResponse, MFARequiredData, MustChangePasswordData } from '@/types'
 import { login as loginApi, logout as logoutApi, getCurrentUser, heartbeat as heartbeatApi, loginMFAVerify, forceChangePassword as forceChangePasswordApi } from '@/api/auth'
 
 const HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000  // 2 minutes
+const ACTIVITY_HEARTBEAT_THROTTLE_MS = 30 * 1000
+const SESSION_EXPIRED_MESSAGE = '登录已超时，请重新登录'
+const USER_ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const
 
 export const useAuthStore = defineStore('auth', () => {
   // State
@@ -13,17 +16,54 @@ export const useAuthStore = defineStore('auth', () => {
   const pendingMFAChallengeToken = ref<string | null>(null)
   const pendingMFASetup = ref(false)  // true = first-time binding flow
   const pendingForceChangeChallengeToken = ref<string | null>(null)
+  const sessionExpiresAt = ref<string | null>(null)
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  let sessionExpiryTimer: ReturnType<typeof setTimeout> | null = null
   let eventSource: EventSource | null = null
+  let userActivitySinceHeartbeat = false
+  let heartbeatInFlight: Promise<void> | null = null
+  let lastActivityHeartbeatAt = 0
+
+  function isSessionActive() {
+    return !!token.value || !!user.value
+  }
+
+  async function sendHeartbeat(userActive = false) {
+    if (!isSessionActive()) return
+    if (hasSessionExpired()) {
+      handleSessionExpired()
+      return
+    }
+
+    const shouldExtend = userActive || userActivitySinceHeartbeat
+    try {
+      const response = await heartbeatApi(shouldExtend)
+      if (shouldExtend) userActivitySinceHeartbeat = false
+      if (response.expires_at) setSessionExpiresAt(response.expires_at)
+    } catch (error: any) {
+      const status = error?.response?.status
+      if (status === 401 || status === 403) {
+        handleSessionExpired()
+      }
+      // Transient network errors are left to the next heartbeat/API call.
+    }
+  }
+
+  function queueHeartbeat(userActive = false) {
+    if (userActive) userActivitySinceHeartbeat = true
+    if (heartbeatInFlight) return
+    heartbeatInFlight = sendHeartbeat(userActive).finally(() => {
+      heartbeatInFlight = null
+      if (userActivitySinceHeartbeat && isSessionActive() && !hasSessionExpired()) {
+        queueHeartbeat(false)
+      }
+    })
+  }
 
   function startHeartbeat() {
     stopHeartbeat()
-    heartbeatTimer = setInterval(async () => {
-      try {
-        await heartbeatApi()
-      } catch {
-        // Heartbeat failure is silent — next API call will 401 if token expired
-      }
+    heartbeatTimer = setInterval(() => {
+      queueHeartbeat(false)
     }, HEARTBEAT_INTERVAL_MS)
   }
 
@@ -34,6 +74,93 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  function parseSessionExpiresAt(value: string | null | undefined): number | null {
+    if (!value) return null
+    const timestamp = Date.parse(value)
+    return Number.isFinite(timestamp) ? timestamp : null
+  }
+
+  function clearSessionExpiryTimer() {
+    if (sessionExpiryTimer !== null) {
+      clearTimeout(sessionExpiryTimer)
+      sessionExpiryTimer = null
+    }
+  }
+
+  function hasSessionExpired(): boolean {
+    const expiresAtMs = parseSessionExpiresAt(sessionExpiresAt.value)
+    return expiresAtMs !== null && Date.now() >= expiresAtMs
+  }
+
+  function handleSessionExpired() {
+    if (!token.value && !user.value) return
+    handleTokenCleared()
+    sessionStorage.setItem("auth:logout-message", SESSION_EXPIRED_MESSAGE)
+    if (window.location.pathname !== "/login") {
+      window.location.href = "/login"
+    }
+  }
+
+  function scheduleSessionExpiryTimer() {
+    clearSessionExpiryTimer()
+    const expiresAtMs = parseSessionExpiresAt(sessionExpiresAt.value)
+    if (expiresAtMs === null) return
+
+    const delayMs = expiresAtMs - Date.now()
+    if (delayMs <= 0) {
+      handleSessionExpired()
+      return
+    }
+    sessionExpiryTimer = setTimeout(handleSessionExpired, delayMs)
+  }
+
+  function setSessionExpiresAt(expiresAt: string | null | undefined) {
+    sessionExpiresAt.value = expiresAt || null
+    scheduleSessionExpiryTimer()
+  }
+
+  function checkSessionExpiry() {
+    if (hasSessionExpired()) {
+      handleSessionExpired()
+    }
+  }
+
+  function handleVisibilityChange() {
+    if (!document.hidden) {
+      checkSessionExpiry()
+    }
+  }
+
+  function markUserActivity() {
+    if (!isSessionActive()) return
+    userActivitySinceHeartbeat = true
+
+    const expiresAtMs = parseSessionExpiresAt(sessionExpiresAt.value)
+    const now = Date.now()
+    if (
+      expiresAtMs !== null &&
+      expiresAtMs - now <= HEARTBEAT_INTERVAL_MS &&
+      now - lastActivityHeartbeatAt >= ACTIVITY_HEARTBEAT_THROTTLE_MS
+    ) {
+      lastActivityHeartbeatAt = now
+      queueHeartbeat(true)
+    }
+  }
+
+  function addUserActivityListeners() {
+    USER_ACTIVITY_EVENTS.forEach(eventName => {
+      window.removeEventListener(eventName, markUserActivity)
+      window.addEventListener(eventName, markUserActivity, { passive: true })
+    })
+  }
+
+  function removeUserActivityListeners() {
+    USER_ACTIVITY_EVENTS.forEach(eventName => {
+      window.removeEventListener(eventName, markUserActivity)
+    })
+    userActivitySinceHeartbeat = false
+    lastActivityHeartbeatAt = 0
+  }
 
   function disconnectEventStream() {
     if (eventSource) {
@@ -73,7 +200,13 @@ export const useAuthStore = defineStore('auth', () => {
     })
   }
 
-  function initializeAuthenticatedSession() {
+  function initializeAuthenticatedSession(expiresAt?: string | null) {
+    if (expiresAt !== undefined) {
+      setSessionExpiresAt(expiresAt)
+    } else {
+      scheduleSessionExpiryTimer()
+    }
+    addUserActivityListeners()
     startHeartbeat()
     connectEventStream()
     void import("@/stores/notifications").then(({ useNotificationsStore }) => {
@@ -86,7 +219,10 @@ export const useAuthStore = defineStore('auth', () => {
   // Listen for token cleared event from API interceptor
   const handleTokenCleared = () => {
     stopHeartbeat()
+    clearSessionExpiryTimer()
+    removeUserActivityListeners()
     disconnectEventStream()
+    sessionExpiresAt.value = null
     token.value = null
     user.value = null
     permissions.value = []
@@ -101,6 +237,10 @@ export const useAuthStore = defineStore('auth', () => {
   // Remove any existing listener first (prevents accumulation during HMR)
   window.removeEventListener('auth:token-cleared', handleTokenCleared)
   window.addEventListener('auth:token-cleared', handleTokenCleared)
+  window.removeEventListener('focus', checkSessionExpiry)
+  window.addEventListener('focus', checkSessionExpiry)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 
   // Getters
   const isAuthenticated = computed(() => !!user.value || !!token.value)
@@ -129,11 +269,11 @@ export const useAuthStore = defineStore('auth', () => {
       return response
     }
 
-    const tokenResponse = response as any
+    const tokenResponse = response as TokenResponse
     token.value = 'cookie-session'
     user.value = tokenResponse.user
     permissions.value = tokenResponse.user.permissions ?? []
-    initializeAuthenticatedSession()
+    initializeAuthenticatedSession(tokenResponse.expires_at)
     return tokenResponse
   }
 
@@ -149,7 +289,7 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = 'cookie-session'
     user.value = tokenResponse.user
     permissions.value = tokenResponse.user.permissions ?? []
-    initializeAuthenticatedSession()
+    initializeAuthenticatedSession(tokenResponse.expires_at)
     return tokenResponse
   }
 
@@ -178,11 +318,11 @@ export const useAuthStore = defineStore('auth', () => {
       return response
     }
 
-    const tokenResponse = response as any
+    const tokenResponse = response as TokenResponse
     token.value = 'cookie-session'
     user.value = tokenResponse.user
     permissions.value = tokenResponse.user.permissions ?? []
-    initializeAuthenticatedSession()
+    initializeAuthenticatedSession(tokenResponse.expires_at)
     return tokenResponse
   }
 
@@ -208,8 +348,8 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = userData
       permissions.value = userData.permissions ?? []
       // Re-establish presence — Redis key may have expired while away
-      await heartbeatApi()
-      initializeAuthenticatedSession()
+      const heartbeat = await heartbeatApi(false)
+      initializeAuthenticatedSession(heartbeat.expires_at ?? userData.session_expires_at ?? null)
       return userData
     } catch (e) {
       logout()
@@ -224,6 +364,11 @@ export const useAuthStore = defineStore('auth', () => {
 
   function hasAnyPermission(perms: string[]): boolean {
     return perms.some(p => hasPermission(p))
+  }
+
+
+  function updateSessionExpiresAt(expiresAt: string | null | undefined) {
+    setSessionExpiresAt(expiresAt)
   }
 
   return {
@@ -244,6 +389,7 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     fetchUser,
     hasPermission,
-    hasAnyPermission
+    hasAnyPermission,
+    updateSessionExpiresAt
   }
 })

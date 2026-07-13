@@ -1493,6 +1493,30 @@ async def test_get_current_user_loads_redis_session(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_get_current_user_info_includes_session_expires_at(monkeypatch):
+    async def fake_permissions(current_user, db):
+        return ["view"]
+
+    monkeypatch.setattr(auth_api, "get_user_permissions", fake_permissions)
+    request = SimpleNamespace(
+        cookies={},
+        state=SimpleNamespace(session={"expires_at": "2026-01-01T00:10:00Z"}),
+    )
+    current = user(id=2, username="bob")
+
+    response = await auth_api.get_current_user_info(
+        request=request,
+        current_user=current,
+        db=FakeDB(),
+    )
+
+    assert response.data.username == "bob"
+    assert response.data.session_expires_at is not None
+    assert response.data.session_expires_at.tzinfo is not None
+    assert response.data.session_expires_at.isoformat().startswith("2026-01-01T00:10:00")
+
+
+@pytest.mark.asyncio
 async def test_get_current_user_forces_logout_when_user_disabled(monkeypatch):
     force_calls = []
 

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { SettingOutlined, SafetyCertificateOutlined, LoadingOutlined, SaveOutlined, InfoCircleOutlined, PictureOutlined, DatabaseOutlined, MailOutlined } from '@ant-design/icons-vue'
 import { getSettings, updateSettings, uploadImage, deleteImage } from '@/api/settings'
+import { useAuthStore } from '@/stores/auth'
 
 // Loading states
 const loading = ref(false)
@@ -96,6 +97,7 @@ function decodeTextEntities(value: string): string {
 // Active tab
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
 
 // Active tab — persisted in URL query so refreshing keeps the tab
 const activeTab = computed({
@@ -205,7 +207,10 @@ async function saveSettings() {
       data.smtp_from_name = form.value.smtp_from_name
     }
 
-    await updateSettings(data)
+    const result = await updateSettings(data)
+    if (result.session_expires_at) {
+      authStore.updateSessionExpiresAt(result.session_expires_at)
+    }
     if (activeTab.value === 'branding') {
       await flushPendingImageDeletes()
       originalLogoImage.value = form.value.logo_image

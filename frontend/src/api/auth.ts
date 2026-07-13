@@ -10,8 +10,13 @@ export async function logout(): Promise<void> {
   await api.post('/auth/logout')
 }
 
-export async function heartbeat(): Promise<void> {
-  await api.post('/auth/heartbeat')
+export async function heartbeat(userActive = false): Promise<{ expires_at?: string | null }> {
+  const response = await api.post<ApiResponse<{ expires_at?: string | null }>>(
+    '/auth/heartbeat',
+    null,
+    { headers: { 'X-CMDB-User-Active': userActive ? '1' : '0' } }
+  )
+  return response.data.data || {}
 }
 
 export async function getCurrentUser(): Promise<UserSimple> {
