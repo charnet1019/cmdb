@@ -17,8 +17,9 @@ const emit = defineEmits<{
 const showUserMenu = ref(false)
 const showNotificationPanel = ref(false)
 const showCompose = ref(false)
+const notificationRoot = ref<HTMLElement | null>(null)
 const siteTitle = ref('')
-const notificationFilter = ref<'all' | 'unread' | 'read'>('all')
+const notificationFilter = ref<'all' | 'unread' | 'read' | 'sent'>('all')
 const recipientScope = ref<'all' | 'users' | 'groups'>('users')
 const selectedUserIds = ref<number[]>([])
 const selectedGroupIds = ref<number[]>([])
@@ -32,6 +33,7 @@ const recipientsLoaded = ref(false)
 let hideTimeout: ReturnType<typeof setTimeout> | null = null
 
 const unreadLabel = computed(() => notificationStore.unreadCount > 99 ? '99+' : String(notificationStore.unreadCount))
+const isSentNotificationFilter = computed(() => notificationFilter.value === 'sent')
 
 async function fetchSiteTitle() {
   try {
@@ -51,6 +53,10 @@ async function loadRecipients() {
 }
 
 async function refreshNotifications() {
+  if (notificationFilter.value === 'sent') {
+    await notificationStore.fetchSentNotifications()
+    return
+  }
   await notificationStore.fetchNotifications(notificationFilter.value)
   await notificationStore.fetchUnreadCount()
 }
@@ -62,6 +68,18 @@ async function toggleNotifications() {
   await notificationStore.fetchCanSend()
   await refreshNotifications()
   await loadRecipients()
+}
+
+function closeNotifications() {
+  showNotificationPanel.value = false
+}
+
+function handleDocumentPointerDown(event: PointerEvent) {
+  if (!showNotificationPanel.value) return
+  const target = event.target
+  if (!(target instanceof Node)) return
+  if (notificationRoot.value?.contains(target)) return
+  closeNotifications()
 }
 
 function resetCompose() {
@@ -102,9 +120,13 @@ async function submitNotification() {
   sendSuccess.value = `已发送给 ${result.recipient_count} 位用户`
   resetCompose()
   showCompose.value = false
+  if (notificationFilter.value === 'sent') {
+    await refreshNotifications()
+  }
 }
 
 async function markRead(item: any) {
+  if (notificationFilter.value === 'sent') return
   await notificationStore.markRead(item)
 }
 
@@ -130,6 +152,7 @@ onMounted(() => {
   notificationStore.fetchUnreadCount().catch(() => {})
   notificationStore.fetchCanSend().catch(() => {})
   window.addEventListener('settings:updated', handleSettingsUpdated)
+  document.addEventListener('pointerdown', handleDocumentPointerDown)
 })
 
 onUnmounted(() => {
@@ -137,6 +160,7 @@ onUnmounted(() => {
     clearTimeout(hideTimeout)
   }
   window.removeEventListener('settings:updated', handleSettingsUpdated)
+  document.removeEventListener('pointerdown', handleDocumentPointerDown)
 })
 
 function handleToggleSidebar() {
@@ -184,7 +208,7 @@ function hideMenu() {
     </div>
 
     <div style="display: flex; align-items: center; gap: 12px;">
-      <div style="position: relative;">
+      <div ref="notificationRoot" style="position: relative;">
         <button class="icon-button" @click="toggleNotifications" title="站内信">
           <BellOutlined />
           <span v-if="notificationStore.unreadCount > 0" class="notification-badge">{{ unreadLabel }}</span>
@@ -206,7 +230,8 @@ function hideMenu() {
             <button :class="['filter-button', notificationFilter === 'all' ? 'active' : '']" @click="notificationFilter = 'all'; refreshNotifications()">全部</button>
             <button :class="['filter-button', notificationFilter === 'unread' ? 'active' : '']" @click="notificationFilter = 'unread'; refreshNotifications()">未读</button>
             <button :class="['filter-button', notificationFilter === 'read' ? 'active' : '']" @click="notificationFilter = 'read'; refreshNotifications()">已读</button>
-            <button class="text-button" @click="markAllRead">全部已读</button>
+            <button :class="['filter-button', notificationFilter === 'sent' ? 'active' : '']" @click="notificationFilter = 'sent'; refreshNotifications()">已发送</button>
+            <button v-if="!isSentNotificationFilter" class="text-button" @click="markAllRead">全部已读</button>
           </div>
 
           <form v-if="showCompose && notificationStore.canSend" class="compose-form" @submit.prevent="submitNotification">
@@ -233,25 +258,25 @@ function hideMenu() {
 
           <div class="notification-list">
             <div v-if="notificationStore.loading" class="empty-state">加载中...</div>
-            <div v-else-if="notificationStore.items.length === 0" class="empty-state">暂无站内信</div>
+            <div v-else-if="notificationStore.items.length === 0" class="empty-state">{{ isSentNotificationFilter ? '暂无已发送记录' : '暂无站内信' }}</div>
             <template v-else>
               <button
                 v-for="item in notificationStore.items"
                 :key="item.id"
                 class="notification-item"
-                :class="{ unread: !item.read_at }"
+                :class="{ unread: !isSentNotificationFilter && !item.read_at }"
                 @click="markRead(item)"
               >
                 <div class="item-main">
                   <div class="item-title">{{ item.title }}</div>
                   <div class="item-content">{{ item.content }}</div>
                   <div class="item-meta">
-                    <span>{{ item.sender?.full_name || item.sender?.username || '系统' }}</span>
+                    <span>{{ isSentNotificationFilter ? `已发送给 ${item.recipient_count || 0} 人` : (item.sender?.full_name || item.sender?.username || '系统') }}</span>
                     <span>{{ formatTime(item.created_at) }}</span>
                   </div>
                 </div>
-                <CheckOutlined v-if="item.read_at" class="read-icon" />
-                <span v-else class="unread-dot"></span>
+                <CheckOutlined v-if="!isSentNotificationFilter && item.read_at" class="read-icon" />
+                <span v-else-if="!isSentNotificationFilter" class="unread-dot"></span>
               </button>
             </template>
           </div>

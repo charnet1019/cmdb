@@ -16,6 +16,20 @@ export async function getNotifications(params: {
   }
 }
 
+export async function getSentNotifications(params: {
+  page?: number
+  limit?: number
+} = {}) {
+  const response = await api.get('/notifications/sent', { params })
+  return {
+    items: (response.data.data || []) as NotificationItem[],
+    total: response.data.meta?.total || 0,
+    page: response.data.meta?.page || 1,
+    limit: response.data.meta?.limit || 20,
+    pages: response.data.meta?.pages || 0,
+  }
+}
+
 export async function getUnreadCount(): Promise<number> {
   const response = await api.get('/notifications/unread-count')
   return response.data.data?.count || 0

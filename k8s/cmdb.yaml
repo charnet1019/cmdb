@@ -1,0 +1,332 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cmdb
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cmdb-secrets
+  namespace: cmdb
+type: Opaque
+stringData:
+  POSTGRES_DB: cmdb
+  POSTGRES_USER: cmdb
+  POSTGRES_PASSWORD: cmdb_password
+  DATABASE_URL: postgresql+asyncpg://cmdb:cmdb_password@postgres:5432/cmdb
+  REDIS_URL: redis://redis:6379/0
+  JWT_SECRET_KEY: change-this-jwt-secret-key-before-production
+  ENCRYPTION_KEY: change-this-encryption-key-before-production
+  CMDB_INITIAL_ADMIN_PASSWORD: ChangeMe123
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cmdb-config
+  namespace: cmdb
+data:
+  DEBUG: "false"
+  CORS_ORIGINS: '["http://localhost","http://127.0.0.1"]'
+  UPLOAD_DIR: /opt/upload
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: cmdb
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data
+  namespace: cmdb
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backend-uploads
+  namespace: cmdb
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: cmdb
+spec:
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: cmdb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: cmdb-secrets
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: cmdb-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cmdb-secrets
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: cmdb
+spec:
+  selector:
+    app: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: cmdb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          command: ["redis-server", "--appendonly", "yes"]
+          ports:
+            - containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+      volumes:
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: redis-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cmdb-backend
+  namespace: cmdb
+spec:
+  selector:
+    app: cmdb-backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cmdb-backend
+  namespace: cmdb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cmdb-backend
+  template:
+    metadata:
+      labels:
+        app: cmdb-backend
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: cmdb-backend:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+            - -c
+            - |
+              import socket, time
+              for _ in range(120):
+                  try:
+                      socket.create_connection(("postgres", 5432), 2).close()
+                      raise SystemExit(0)
+                  except OSError:
+                      time.sleep(2)
+              raise SystemExit("postgres is not reachable")
+        - name: wait-for-redis
+          image: cmdb-backend:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+            - -c
+            - |
+              import socket, time
+              for _ in range(120):
+                  try:
+                      socket.create_connection(("redis", 6379), 2).close()
+                      raise SystemExit(0)
+                  except OSError:
+                      time.sleep(2)
+              raise SystemExit("redis is not reachable")
+      containers:
+        - name: cmdb-backend
+          image: cmdb-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: cmdb-config
+            - secretRef:
+                name: cmdb-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            failureThreshold: 60
+            periodSeconds: 5
+          volumeMounts:
+            - name: backend-uploads
+              mountPath: /opt/upload
+      volumes:
+        - name: backend-uploads
+          persistentVolumeClaim:
+            claimName: backend-uploads
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cmdb-frontend
+  namespace: cmdb
+spec:
+  type: NodePort
+  selector:
+    app: cmdb-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      nodePort: 30080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cmdb-frontend
+  namespace: cmdb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cmdb-frontend
+  template:
+    metadata:
+      labels:
+        app: cmdb-frontend
+    spec:
+      containers:
+        - name: cmdb-frontend
+          image: cmdb-frontend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 20
+            periodSeconds: 20

@@ -84,6 +84,23 @@ def _notification_item(receipt: NotificationReceipt, notification: Notification,
     }
 
 
+def _sent_notification_item(notification: Notification, sender: User | None, recipient_count: int) -> dict:
+    return {
+        "id": notification.id,
+        "notification_id": notification.id,
+        "title": notification.title,
+        "content": notification.content,
+        "sender": {
+            "id": sender.id,
+            "username": sender.username,
+            "full_name": sender.full_name,
+        } if sender else None,
+        "read_at": None,
+        "created_at": notification.created_at.isoformat(),
+        "recipient_count": recipient_count,
+    }
+
+
 @router.get("")
 async def list_notifications(
     status_filter: Literal["all", "unread", "read"] = Query("all", alias="status"),
@@ -113,6 +130,45 @@ async def list_notifications(
         .limit(limit)
     )
     items = [_notification_item(receipt, notification, sender) for receipt, notification, sender in result.all()]
+
+    return {
+        "code": 0,
+        "message": "success",
+        "data": items,
+        "meta": {
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "pages": ceil(total / limit) if total else 0,
+        },
+    }
+
+
+@router.get("/sent")
+async def list_sent_notifications(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    total_result = await db.execute(
+        select(func.count(Notification.id)).where(Notification.sender_id == current_user.id)
+    )
+    total = total_result.scalar() or 0
+
+    result = await db.execute(
+        select(Notification, func.count(NotificationReceipt.id).label("recipient_count"))
+        .outerjoin(NotificationReceipt, NotificationReceipt.notification_id == Notification.id)
+        .where(Notification.sender_id == current_user.id)
+        .group_by(Notification.id)
+        .order_by(Notification.created_at.desc(), Notification.id.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+    )
+    items = [
+        _sent_notification_item(notification, current_user, recipient_count)
+        for notification, recipient_count in result.all()
+    ]
 
     return {
         "code": 0,

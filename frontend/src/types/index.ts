@@ -250,6 +250,7 @@ export interface NotificationItem {
   sender: NotificationSender | null
   read_at: string | null
   created_at: string
+  recipient_count?: number
 }
 
 export interface NotificationCreatePayload {

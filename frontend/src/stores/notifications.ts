@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import type { NotificationItem, NotificationCreatePayload } from '@/types'
 import {
   getNotifications,
+  getSentNotifications,
   getUnreadCount,
   getCanSendNotification,
   sendNotification as sendNotificationApi,
@@ -16,6 +17,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
   const canSend = ref(false)
   const loading = ref(false)
   const sending = ref(false)
+  const activeListMode = ref<'all' | 'unread' | 'read' | 'sent'>('all')
 
   async function fetchUnreadCount() {
     unreadCount.value = await getUnreadCount()
@@ -28,9 +30,22 @@ export const useNotificationsStore = defineStore('notifications', () => {
   }
 
   async function fetchNotifications(status: 'all' | 'unread' | 'read' = 'all') {
+    activeListMode.value = status
     loading.value = true
     try {
       const response = await getNotifications({ status, page: 1, limit: 20 })
+      items.value = response.items
+      return response
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function fetchSentNotifications() {
+    activeListMode.value = 'sent'
+    loading.value = true
+    try {
+      const response = await getSentNotifications({ page: 1, limit: 20 })
       items.value = response.items
       return response
     } finally {
@@ -65,7 +80,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
 
   function handleRealtimeNotification(data: any) {
     unreadCount.value += 1
-    if (!data?.id) return
+    if (!data?.id || activeListMode.value === 'read' || activeListMode.value === 'sent') return
     items.value.unshift({
       id: data.receipt_id || data.id,
       notification_id: data.id,
@@ -84,6 +99,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     canSend.value = false
     loading.value = false
     sending.value = false
+    activeListMode.value = 'all'
   }
 
   return {
@@ -95,6 +111,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     fetchUnreadCount,
     fetchCanSend,
     fetchNotifications,
+    fetchSentNotifications,
     sendNotification,
     markRead,
     markAllRead,
