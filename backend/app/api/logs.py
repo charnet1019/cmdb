@@ -184,6 +184,7 @@ DETAIL_ACTION_LABELS = {
     "bulk_update": "批量更新资产",
     "delete_config": "删除配置文件",
     "delete_credential": "删除凭据",
+    "delete_user_authorizations": "删除用户授权",
     "decrypt_credential": "解密凭据",
     "decrypt_oob_password": "解密OOB密码",
     "disable_mfa": "禁用MFA",
@@ -207,6 +208,20 @@ DETAIL_ACTION_LABELS = {
     "upload_config": "上传配置文件",
 }
 
+PERMISSION_LABELS = {
+    "view": "查看资产",
+    "manage": "管理资产",
+    "authorize": "资产授权",
+    "view_users": "查看用户",
+    "user_mgmt": "用户管理",
+    "sys_config": "系统设置",
+    "audit_log": "日志审计",
+    "view_pwd": "查看密码",
+    "export": "导出资产",
+    "export_pwd": "导出密码",
+}
+
+
 FIELD_LABELS = {
     "applicant": "申请人",
     "asset_code": "资产编码",
@@ -218,6 +233,8 @@ FIELD_LABELS = {
     "email": "邮箱",
     "full_name": "姓名",
     "group_ids": "用户组",
+    "initial_member_ids": "初始成员",
+    "initial_member_names": "初始成员",
     "host_ids": "宿主机",
     "internal_address": "内网地址",
     "is_active": "用户状态",
@@ -236,6 +253,9 @@ FIELD_LABELS = {
     "owner_name": "负责人",
     "password": "密码",
     "permissions": "权限",
+    "requested_user_ids": "请求添加成员",
+    "added_user_ids": "实际新增成员",
+    "skipped_user_ids": "跳过成员",
     "phone": "手机号",
     "platform": "平台",
     "serial_number": "序列号",
@@ -250,6 +270,9 @@ FIELD_LABELS = {
     "status": "状态",
     "storage_locations": "存储位置",
     "target_ids": "授权目标",
+    "target_names": "授权目标",
+    "before_target_names": "原授权目标",
+    "after_target_names": "新授权目标",
     "valid_from": "生效时间",
     "valid_until": "失效时间",
 }
@@ -273,6 +296,8 @@ def _format_detail_value(field: str, value) -> str:
         return "、".join(_format_detail_value(field, item) for item in value) if value else "空"
     if isinstance(value, dict):
         return "、".join(f"{key}: {_format_detail_value(str(key), item)}" for key, item in value.items()) if value else "空"
+    if field in {"permissions", "before_permissions", "after_permissions"} and isinstance(value, str):
+        return PERMISSION_LABELS.get(value, value)
     return str(value)
 
 
@@ -373,6 +398,22 @@ def _build_operation_summary(log: OperationLog, resource_name: str | None, actio
         mode = details.get("mode")
         mode_label = "更新" if mode == "update" else "创建" if mode == "create" else None
         return f"下载{target_name}{mode_label or ''}导入模板"
+    if detail_action == "delete_user_authorizations":
+        count = details.get("count")
+        return f"删除用户授权 {target}: {count}条" if count is not None and target else f"删除用户授权: {count}条" if count is not None else "删除用户授权"
+    if log.resource_type == "authorization" and log.action == "update":
+        entity_name = details.get("entity_name") or target
+        before_target_names = details.get("before_target_names")
+        after_target_names = details.get("after_target_names")
+        if before_target_names is not None and after_target_names is not None and before_target_names != after_target_names:
+            return f"更新授权 {entity_name}: 授权目标从{before_target_names or '空'}修改为{after_target_names or '空'}"
+        active_after = _change_after_bool(details, "is_active")
+        if active_after is not None:
+            return f"{'启用' if active_after else '禁用'}授权 {target}" if target else ("启用授权" if active_after else "禁用授权")
+    if log.resource_type == "group" and log.action == "create":
+        count = details.get("initial_member_count")
+        if count:
+            return f"创建用户组 {target}: 初始成员{count}名" if target else f"创建用户组: 初始成员{count}名"
     if detail_action in {"create_organization", "rename_organization", "delete_organization"}:
         label = detail_action_label or DETAIL_ACTION_LABELS.get(detail_action, detail_action)
         base = f"{label} {target}" if target else label
@@ -408,9 +449,16 @@ def _build_operation_summary(log: OperationLog, resource_name: str | None, actio
         base = f"{detail_action_label} {target}" if target else detail_action_label
     elif log.action == "add_group_members":
         added = details.get("added") if isinstance(details, dict) else None
-        base = f"添加组成员: {added} 名" if added is not None else "添加组成员"
+        added_names = details.get("added_user_names") if isinstance(details, dict) else None
+        if isinstance(added_names, list) and added_names:
+            shown = "、".join(str(name) for name in added_names[:3])
+            suffix = f" 等{len(added_names)}人" if len(added_names) > 3 else ""
+            base = f"添加组成员: {shown}{suffix}"
+        else:
+            base = f"添加组成员: {added} 名" if added is not None else "添加组成员"
     elif log.action == "remove_group_member":
-        base = "移除组成员"
+        username = details.get("username") if isinstance(details, dict) else None
+        base = f"移除组成员 {username}" if username else "移除组成员"
     else:
         target_text = f" {target}" if target else ""
         base = f"{action_label}{resource_type_label}{target_text}"

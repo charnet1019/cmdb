@@ -331,6 +331,13 @@ async def update_authorization(
         raise HTTPException(status_code=404, detail="授权不存在")
 
     changes = {}
+    entity_name = await _resolve_entity_name(db, auth.entity_type, auth.entity_id)
+    before_target_ids = list(auth.target_ids or [])
+    before_target_names = await _resolve_target_names(db, auth.target_type, before_target_ids)
+    before_permissions = list(auth.permissions or [])
+    before_valid_from = auth.valid_from.isoformat() if auth.valid_from else None
+    before_valid_until = auth.valid_until.isoformat() if auth.valid_until else None
+    before_is_active = auth.is_active
 
     def audit_datetime(value):
         return value.isoformat() if value else None
@@ -340,11 +347,24 @@ async def update_authorization(
             changes[field] = [before, after]
 
     if data.permissions is not None:
-        record_change("permissions", list(auth.permissions or []), data.permissions)
+        record_change("permissions", before_permissions, data.permissions)
         auth.permissions = data.permissions
 
     if data.target_ids is not None and len(data.target_ids) > 0:
-        record_change("target_ids", list(auth.target_ids or []), data.target_ids)
+        # Keep update validation consistent with creation so audit logs never point to invalid targets.
+        if auth.target_type == "asset":
+            for target_id in data.target_ids:
+                target_result = await db.execute(select(Asset).where(Asset.id == target_id))
+                if not target_result.scalar_one_or_none():
+                    raise HTTPException(status_code=400, detail=f"资产 {target_id} 不存在")
+        else:
+            for target_id in data.target_ids:
+                if target_id == "__all__":
+                    continue
+                target_result = await db.execute(select(Organization).where(Organization.id == int(target_id)))
+                if not target_result.scalar_one_or_none():
+                    raise HTTPException(status_code=400, detail=f"组织 {target_id} 不存在")
+        record_change("target_ids", before_target_ids, data.target_ids)
         auth.target_ids = data.target_ids
 
     if data.valid_from is not None:
@@ -363,13 +383,30 @@ async def update_authorization(
     await db.refresh(auth)
 
     if changes:
+        after_target_ids = list(auth.target_ids or [])
+        after_target_names = await _resolve_target_names(db, auth.target_type, after_target_ids)
         await log_operation(
             db, current_user.id, "update", "authorization", auth.id,
             details={
-                "name": f"{await _resolve_entity_name(db, auth.entity_type, auth.entity_id)} -> {await _resolve_target_names(db, auth.target_type, auth.target_ids)}",
+                "name": f"{entity_name} -> {after_target_names}",
                 "entity_type": auth.entity_type,
                 "entity_id": auth.entity_id,
+                "entity_name": entity_name,
                 "target_type": auth.target_type,
+                "target_ids": after_target_ids,
+                "target_names": after_target_names,
+                "before_target_ids": before_target_ids,
+                "before_target_names": before_target_names,
+                "after_target_ids": after_target_ids,
+                "after_target_names": after_target_names,
+                "before_permissions": before_permissions,
+                "after_permissions": list(auth.permissions or []),
+                "before_valid_from": before_valid_from,
+                "after_valid_from": audit_datetime(auth.valid_from),
+                "before_valid_until": before_valid_until,
+                "after_valid_until": audit_datetime(auth.valid_until),
+                "before_is_active": before_is_active,
+                "after_is_active": auth.is_active,
                 "permissions": auth.permissions,
                 "is_active": auth.is_active,
                 "changes": changes,
@@ -404,18 +441,25 @@ async def delete_authorization(
     if not auth:
         raise HTTPException(status_code=404, detail="授权不存在")
 
+    entity_name = await _resolve_entity_name(db, auth.entity_type, auth.entity_id)
+    target_names = await _resolve_target_names(db, auth.target_type, auth.target_ids)
+    target_ids = list(auth.target_ids or [])
+    permissions = list(auth.permissions or [])
+
     await db.delete(auth)
     await db.commit()
 
     await log_operation(
         db, current_user.id, "delete", "authorization", auth.id,
         details={
-            "name": f"{await _resolve_entity_name(db, auth.entity_type, auth.entity_id)} -> {await _resolve_target_names(db, auth.target_type, auth.target_ids)}",
+            "name": f"{entity_name} -> {target_names}",
             "entity_type": auth.entity_type,
             "entity_id": auth.entity_id,
+            "entity_name": entity_name,
             "target_type": auth.target_type,
-            "target_ids": auth.target_ids,
-            "permissions": auth.permissions,
+            "target_ids": target_ids,
+            "target_names": target_names,
+            "permissions": permissions,
         },
         ip_address=ip,
     )

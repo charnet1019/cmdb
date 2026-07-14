@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
 from app.database import get_db
-from app.models import User, Group, UserGroup, Authorization, Asset, PasswordChangeLog, Setting
+from app.models import User, Group, UserGroup, Authorization, Asset, Organization, PasswordChangeLog, Setting
 from app.utils.audit import log_operation
 from app.schemas import (
     UserCreate, UserUpdate, UserResponse, UserSimple, UserDetailResponse,
@@ -140,6 +140,52 @@ async def send_user_password_email(db: AsyncSession, target_user: User, temp_pas
         raise
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"邮件发送失败: {exc}") from exc
+
+
+async def _resolve_user_names(db: AsyncSession, user_ids: List[int]) -> dict[int, str]:
+    ids = sorted({int(user_id) for user_id in user_ids if user_id is not None})
+    if not ids:
+        return {}
+    result = await db.execute(select(User.id, User.username).where(User.id.in_(ids)))
+    return {row.id: row.username for row in result.all()}
+
+
+async def _resolve_group_names(db: AsyncSession, group_ids: List[int]) -> dict[int, str]:
+    ids = sorted({int(group_id) for group_id in group_ids if group_id is not None})
+    if not ids:
+        return {}
+    result = await db.execute(select(Group.id, Group.name).where(Group.id.in_(ids)))
+    return {row.id: row.name for row in result.all()}
+
+
+async def _resolve_authorization_target_names(db: AsyncSession, auth: Authorization) -> str:
+    if auth.target_type == "asset":
+        result = await db.execute(select(Asset.name).where(Asset.id.in_(auth.target_ids or [])))
+        names = [row[0] for row in result.all()]
+    else:
+        names = []
+        target_ids = auth.target_ids or []
+        if "__all__" in target_ids:
+            names.append("Default")
+        org_ids = [int(target_id) for target_id in target_ids if str(target_id).isdigit()]
+        if org_ids:
+            result = await db.execute(select(Organization.name).where(Organization.id.in_(org_ids)))
+            names.extend(row[0] for row in result.all())
+    if len(names) <= 3:
+        return ", ".join(names) if names else str(auth.target_ids or [])
+    return ", ".join(names[:3]) + f" 等{len(names)}个"
+
+
+async def _authorization_audit_item(db: AsyncSession, auth: Authorization) -> dict:
+    return {
+        "id": auth.id,
+        "entity_type": auth.entity_type,
+        "entity_id": auth.entity_id,
+        "target_type": auth.target_type,
+        "target_ids": list(auth.target_ids or []),
+        "target_names": await _resolve_authorization_target_names(db, auth),
+        "permissions": list(auth.permissions or []),
+    }
 
 
 # ============== User APIs ==============
@@ -506,6 +552,8 @@ async def update_user(
         changes["is_superuser"] = [user.is_superuser, data.is_superuser]
         user.is_superuser = data.is_superuser
 
+    group_change_details = None
+
     # Update groups only when membership actually changes. The edit form may
     # submit the existing group_ids together with unrelated profile fields.
     if data.group_ids is not None:
@@ -514,6 +562,19 @@ async def update_user(
         new_group_ids = sorted(data.group_ids)
         if current_group_ids != new_group_ids:
             changes["group_ids"] = [current_group_ids, new_group_ids]
+            added_group_ids = sorted(set(new_group_ids) - set(current_group_ids))
+            removed_group_ids = sorted(set(current_group_ids) - set(new_group_ids))
+            group_names = await _resolve_group_names(db, current_group_ids + new_group_ids)
+            group_change_details = {
+                "before_group_ids": current_group_ids,
+                "before_group_names": [group_names.get(group_id, str(group_id)) for group_id in current_group_ids],
+                "after_group_ids": new_group_ids,
+                "after_group_names": [group_names.get(group_id, str(group_id)) for group_id in new_group_ids],
+                "added_group_ids": added_group_ids,
+                "added_group_names": [group_names.get(group_id, str(group_id)) for group_id in added_group_ids],
+                "removed_group_ids": removed_group_ids,
+                "removed_group_names": [group_names.get(group_id, str(group_id)) for group_id in removed_group_ids],
+            }
             # Remove existing groups
             for ug in current_user_groups:
                 await db.delete(ug)
@@ -530,9 +591,12 @@ async def update_user(
     await db.refresh(user)
 
     if changes:
+        details = {"changes": changes, "username": user.username}
+        if group_change_details:
+            details.update(group_change_details)
         await log_operation(
             db, current_user.id, "update", "user", user_id,
-            details={"changes": changes, "username": user.username},
+            details=details,
             ip_address=ip,
         )
 
@@ -594,6 +658,16 @@ async def delete_user(
 
     username = user.username
 
+    # Capture direct authorizations before cleanup for audit logging.
+    auth_result = await db.execute(
+        select(Authorization).where(Authorization.entity_id == user_id, Authorization.entity_type == "user")
+    )
+    direct_authorizations = auth_result.scalars().all()
+    deleted_authorization_items = [
+        await _authorization_audit_item(db, auth)
+        for auth in direct_authorizations
+    ]
+
     # Clean up user-group associations
     ug_result = await db.execute(
         select(UserGroup).where(UserGroup.user_id == user_id)
@@ -602,10 +676,7 @@ async def delete_user(
         await db.delete(ug)
 
     # Delete authorizations belonging to this user
-    auth_result = await db.execute(
-        select(Authorization).where(Authorization.entity_id == user_id, Authorization.entity_type == "user")
-    )
-    for auth in auth_result.scalars().all():
+    for auth in direct_authorizations:
         await db.delete(auth)
 
     # FK references to other tables are handled by ON DELETE SET NULL
@@ -615,9 +686,26 @@ async def delete_user(
 
     await log_operation(
         db, current_user.id, "delete", "user", user_id,
-        details={"username": username},
+        details={
+            "username": username,
+            "deleted_authorization_count": len(deleted_authorization_items),
+            "deleted_authorizations": deleted_authorization_items,
+        },
         ip_address=ip,
     )
+
+    if deleted_authorization_items:
+        await log_operation(
+            db, current_user.id, "delete", "authorization", 0,
+            details={
+                "action": "delete_user_authorizations",
+                "name": username,
+                "username": username,
+                "count": len(deleted_authorization_items),
+                "authorizations": deleted_authorization_items,
+            },
+            ip_address=ip,
+        )
 
     return ResponseBase(message="用户已删除")
 
@@ -926,9 +1014,11 @@ async def create_group(
     db.add(group)
     await db.flush()
 
+    initial_member_ids = list(data.initial_member_ids or [])
+
     # Add initial members
-    if data.initial_member_ids:
-        for user_id in data.initial_member_ids:
+    if initial_member_ids:
+        for user_id in initial_member_ids:
             user_group = UserGroup(user_id=user_id, group_id=group.id)
             db.add(user_group)
 
@@ -937,7 +1027,11 @@ async def create_group(
 
     await log_operation(
         db, current_user.id, "create", "group", group.id,
-        details={"name": group.name},
+        details={
+            "name": group.name,
+            "initial_member_ids": initial_member_ids,
+            "initial_member_count": len(initial_member_ids),
+        },
         ip_address=ip,
     )
 
@@ -987,6 +1081,19 @@ async def delete_group(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"用户组下还有 {member_count} 名成员，请先移除所有成员后再删除"
+        )
+
+    auth_count_result = await db.execute(
+        select(func.count()).select_from(Authorization).where(
+            Authorization.entity_type == "group",
+            Authorization.entity_id == group_id,
+        )
+    )
+    auth_count = auth_count_result.scalar_one()
+    if auth_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"用户组还有 {auth_count} 条授权，请先删除授权后再删除用户组"
         )
 
     group_name = group.name
@@ -1167,11 +1274,13 @@ async def add_group_members(
     if not group:
         raise HTTPException(status_code=404, detail="用户组不存在")
 
-    added = 0
+    added_user_ids = []
+    skipped_user_ids = []
     for user_id in user_ids:
         # Check user exists
         user_result = await db.execute(select(User).where(User.id == user_id))
         if not user_result.scalar_one_or_none():
+            skipped_user_ids.append(user_id)
             continue
 
         # Check if already member
@@ -1182,18 +1291,30 @@ async def add_group_members(
             )
         )
         if existing.scalar_one_or_none():
+            skipped_user_ids.append(user_id)
             continue
 
         user_group = UserGroup(user_id=user_id, group_id=group_id)
         db.add(user_group)
-        added += 1
+        added_user_ids.append(user_id)
 
     await db.commit()
 
+    added = len(added_user_ids)
     if added > 0:
+        name_map = await _resolve_user_names(db, list(user_ids))
         await log_operation(
             db, current_user.id, "add_group_members", "group", group_id,
-            details={"user_ids": user_ids, "added": added, "name": group.name},
+            details={
+                "name": group.name,
+                "requested_user_ids": list(user_ids),
+                "requested_user_names": [name_map.get(user_id, str(user_id)) for user_id in user_ids],
+                "added_user_ids": added_user_ids,
+                "added_user_names": [name_map.get(user_id, str(user_id)) for user_id in added_user_ids],
+                "skipped_user_ids": skipped_user_ids,
+                "skipped_user_names": [name_map.get(user_id, str(user_id)) for user_id in skipped_user_ids],
+                "added": added,
+            },
             ip_address=ip,
         )
 
@@ -1234,7 +1355,12 @@ async def remove_group_member(
 
     await log_operation(
         db, current_user.id, "remove_group_member", "group", group_id,
-        details={"user_id": user_id, "username": user_name, "group_name": group_name},
+        details={
+            "user_id": user_id,
+            "username": user_name,
+            "group_id": group_id,
+            "group_name": group_name,
+        },
         ip_address=ip,
     )
 
