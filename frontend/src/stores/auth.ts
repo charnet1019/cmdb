@@ -2,11 +2,11 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { UserSimple, TokenResponse, MFARequiredData, MustChangePasswordData } from '@/types'
 import { login as loginApi, logout as logoutApi, getCurrentUser, heartbeat as heartbeatApi, loginMFAVerify, forceChangePassword as forceChangePasswordApi } from '@/api/auth'
+import { clearPendingSessionActivity, hasPendingSessionActivity, markSessionActivity, USER_ACTIVITY_EVENTS } from '@/utils/sessionActivity'
 
 const HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000  // 2 minutes
 const ACTIVITY_HEARTBEAT_THROTTLE_MS = 30 * 1000
 const SESSION_EXPIRED_MESSAGE = '登录已超时，请重新登录'
-const USER_ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const
 
 export const useAuthStore = defineStore('auth', () => {
   // State
@@ -22,6 +22,7 @@ export const useAuthStore = defineStore('auth', () => {
   let eventSource: EventSource | null = null
   let userActivitySinceHeartbeat = false
   let heartbeatInFlight: Promise<void> | null = null
+  let sessionExpiryConfirmation: Promise<boolean> | null = null
   let lastActivityHeartbeatAt = 0
 
   function isSessionActive() {
@@ -31,19 +32,22 @@ export const useAuthStore = defineStore('auth', () => {
   async function sendHeartbeat(userActive = false) {
     if (!isSessionActive()) return
     if (hasSessionExpired()) {
-      handleSessionExpired()
+      void handleSessionExpired()
       return
     }
 
     const shouldExtend = userActive || userActivitySinceHeartbeat
     try {
       const response = await heartbeatApi(shouldExtend)
-      if (shouldExtend) userActivitySinceHeartbeat = false
+      if (shouldExtend) {
+        userActivitySinceHeartbeat = false
+        clearPendingSessionActivity()
+      }
       if (response.expires_at) setSessionExpiresAt(response.expires_at)
     } catch (error: any) {
       const status = error?.response?.status
       if (status === 401 || status === 403) {
-        handleSessionExpired()
+        void handleSessionExpired()
       }
       // Transient network errors are left to the next heartbeat/API call.
     }
@@ -92,13 +96,42 @@ export const useAuthStore = defineStore('auth', () => {
     return expiresAtMs !== null && Date.now() >= expiresAtMs
   }
 
-  function handleSessionExpired() {
+  async function confirmActiveSessionBeforeLogout(): Promise<boolean> {
+    const shouldTryRenewal = userActivitySinceHeartbeat || hasPendingSessionActivity()
+    if (!shouldTryRenewal) return false
+    if (sessionExpiryConfirmation) return sessionExpiryConfirmation
+
+    sessionExpiryConfirmation = heartbeatApi(true)
+      .then((response) => {
+        userActivitySinceHeartbeat = false
+        clearPendingSessionActivity()
+        if (response.expires_at) {
+          setSessionExpiresAt(response.expires_at)
+          return !hasSessionExpired()
+        }
+        return false
+      })
+      .catch(() => false)
+      .finally(() => {
+        sessionExpiryConfirmation = null
+      })
+
+    return sessionExpiryConfirmation
+  }
+
+  function expireSessionAndRedirect() {
     if (!token.value && !user.value) return
     handleTokenCleared()
     sessionStorage.setItem("auth:logout-message", SESSION_EXPIRED_MESSAGE)
     if (window.location.pathname !== "/login") {
       window.location.href = "/login"
     }
+  }
+
+  async function handleSessionExpired() {
+    if (!token.value && !user.value) return
+    if (await confirmActiveSessionBeforeLogout()) return
+    expireSessionAndRedirect()
   }
 
   function scheduleSessionExpiryTimer() {
@@ -108,10 +141,12 @@ export const useAuthStore = defineStore('auth', () => {
 
     const delayMs = expiresAtMs - Date.now()
     if (delayMs <= 0) {
-      handleSessionExpired()
+      void handleSessionExpired()
       return
     }
-    sessionExpiryTimer = setTimeout(handleSessionExpired, delayMs)
+    sessionExpiryTimer = setTimeout(() => {
+      void handleSessionExpired()
+    }, delayMs)
   }
 
   function setSessionExpiresAt(expiresAt: string | null | undefined) {
@@ -121,7 +156,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   function checkSessionExpiry() {
     if (hasSessionExpired()) {
-      handleSessionExpired()
+      void handleSessionExpired()
     }
   }
 
@@ -133,6 +168,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   function markUserActivity() {
     if (!isSessionActive()) return
+    markSessionActivity()
     userActivitySinceHeartbeat = true
 
     const expiresAtMs = parseSessionExpiresAt(sessionExpiresAt.value)
@@ -159,6 +195,7 @@ export const useAuthStore = defineStore('auth', () => {
       window.removeEventListener(eventName, markUserActivity)
     })
     userActivitySinceHeartbeat = false
+    clearPendingSessionActivity()
     lastActivityHeartbeatAt = 0
   }
 
@@ -216,6 +253,15 @@ export const useAuthStore = defineStore('auth', () => {
     }).catch(() => {})
   }
 
+  function handleSessionExtended(event: Event) {
+    if (!isSessionActive()) return
+    const expiresAt = (event as CustomEvent<{ expiresAt?: string | null }>).detail?.expiresAt
+    if (!expiresAt) return
+    userActivitySinceHeartbeat = false
+    clearPendingSessionActivity()
+    setSessionExpiresAt(expiresAt)
+  }
+
   // Listen for token cleared event from API interceptor
   const handleTokenCleared = () => {
     stopHeartbeat()
@@ -237,6 +283,8 @@ export const useAuthStore = defineStore('auth', () => {
   // Remove any existing listener first (prevents accumulation during HMR)
   window.removeEventListener('auth:token-cleared', handleTokenCleared)
   window.addEventListener('auth:token-cleared', handleTokenCleared)
+  window.removeEventListener('auth:session-extended', handleSessionExtended)
+  window.addEventListener('auth:session-extended', handleSessionExtended)
   window.removeEventListener('focus', checkSessionExpiry)
   window.addEventListener('focus', checkSessionExpiry)
   document.removeEventListener('visibilitychange', handleVisibilityChange)

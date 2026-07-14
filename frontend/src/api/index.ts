@@ -1,5 +1,6 @@
 import axios, { type AxiosInstance, type AxiosResponse } from 'axios'
 import type { ApiResponse } from '@/types'
+import { hasPendingSessionActivity } from '@/utils/sessionActivity'
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
@@ -12,9 +13,52 @@ const api: AxiosInstance = axios.create({
   },
 })
 
+function getHeader(headers: any, name: string): string | undefined {
+  if (!headers) return undefined
+  if (typeof headers.get === 'function') return headers.get(name) ?? undefined
+  return headers[name] ?? headers[name.toLowerCase()]
+}
+
+function setHeader(headers: any, name: string, value: string) {
+  if (headers && typeof headers.set === 'function') {
+    headers.set(name, value)
+    return headers
+  }
+  return {
+    ...(headers || {}),
+    [name]: value,
+  }
+}
+
+function shouldAttachUserActivityHeader(url?: string): boolean {
+  if (!url) return false
+  return ![
+    '/auth/login',
+    '/auth/logout',
+    '/auth/heartbeat',
+    '/auth/mfa/login-verify',
+    '/auth/mfa/setup-qr',
+    '/auth/force-change-password',
+  ].some(path => url.includes(path))
+}
+
+api.interceptors.request.use((config) => {
+  const existingHeader = getHeader(config.headers, 'X-CMDB-User-Active')
+  if (!existingHeader && hasPendingSessionActivity() && shouldAttachUserActivityHeader(config.url)) {
+    config.headers = setHeader(config.headers, 'X-CMDB-User-Active', '1')
+  }
+  return config
+})
+
 // Response interceptor - handle errors
 api.interceptors.response.use(
   (response: AxiosResponse<ApiResponse>) => {
+    const sessionExpiresAt = response.headers['x-cmdb-session-expires-at']
+    if (sessionExpiresAt) {
+      window.dispatchEvent(new CustomEvent('auth:session-extended', {
+        detail: { expiresAt: sessionExpiresAt },
+      }))
+    }
     return response
   },
   (error) => {

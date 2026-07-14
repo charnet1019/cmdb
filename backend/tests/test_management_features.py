@@ -6,7 +6,7 @@ import types
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 
 # app.api.__init__ imports the auth router, whose avatar helpers import Pillow.
 # These tests do not exercise avatar image processing, so provide a minimal
@@ -1483,6 +1483,7 @@ async def test_get_current_user_loads_redis_session(monkeypatch):
 
     result = await deps.get_current_user(
         request=request,
+        response=Response(),
         credentials=SimpleNamespace(credentials="session-1"),
         db=FakeDB(FakeResult(scalar_one_or_none=current)),
     )
@@ -1490,6 +1491,54 @@ async def test_get_current_user_loads_redis_session(monkeypatch):
     assert result is current
     assert request.state.session_id == "session-1"
     assert request.state.session["user_id"] == 2
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_extends_active_business_request_session(monkeypatch):
+    extend_calls = []
+
+    async def load_session(session_id):
+        assert session_id == "session-1"
+        return {
+            "session_id": session_id,
+            "user_id": 2,
+            "timeout_seconds": 1800,
+            "expires_at": "2026-01-01T00:10:00Z",
+        }
+
+    async def extend_session(session_id):
+        extend_calls.append(session_id)
+        return {
+            "session_id": session_id,
+            "user_id": 2,
+            "timeout_seconds": 1800,
+            "expires_at": "2026-01-01T00:30:00Z",
+        }
+
+    monkeypatch.setattr(deps, "load_user_session", load_session)
+    monkeypatch.setattr(deps, "extend_user_session", extend_session)
+    request = SimpleNamespace(
+        cookies={},
+        headers={"x-cmdb-user-active": "1"},
+        state=SimpleNamespace(),
+        url=SimpleNamespace(path="/api/v1/assets", scheme="http"),
+    )
+    response = Response()
+    current = user(id=2, username="bob")
+
+    result = await deps.get_current_user(
+        request=request,
+        response=response,
+        credentials=SimpleNamespace(credentials="session-1"),
+        db=FakeDB(FakeResult(scalar_one_or_none=current)),
+    )
+
+    assert result is current
+    assert extend_calls == ["session-1"]
+    assert request.state.session["expires_at"] == "2026-01-01T00:30:00Z"
+    assert response.headers[deps.SESSION_EXPIRES_HEADER] == "2026-01-01T00:30:00Z"
+    assert "cmdb_access_token=session-1" in response.headers["set-cookie"]
+    assert "Max-Age=1800" in response.headers["set-cookie"]
 
 
 @pytest.mark.asyncio
@@ -1533,6 +1582,7 @@ async def test_get_current_user_forces_logout_when_user_disabled(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         await deps.get_current_user(
             request=SimpleNamespace(cookies={}, state=SimpleNamespace()),
+            response=Response(),
             credentials=SimpleNamespace(credentials="session-1"),
             db=FakeDB(FakeResult(scalar_one_or_none=user(id=2, is_active=False))),
         )

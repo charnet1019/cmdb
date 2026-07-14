@@ -4,18 +4,48 @@ Dependency injection for FastAPI routes
 """
 from datetime import datetime
 from typing import Optional, List, Set, Dict
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, cast, String
 
 from app.database import get_db
-from app.core.session import load_user_session, delete_user_session, force_logout_user
+from app.core.session import load_user_session, delete_user_session, force_logout_user, extend_user_session
 from app.models import User, Authorization, Group, UserGroup, Organization, Asset
 
 
 # HTTP Bearer security scheme. The credential/cookie value is a Redis session id.
 AUTH_COOKIE_NAME = "cmdb_access_token"
+SESSION_EXPIRES_HEADER = "X-CMDB-Session-Expires-At"
+
+
+def _set_auth_cookie(response: Response | None, request: Request, session_id: str, ttl_seconds: int) -> None:
+    if response is None:
+        return
+    response.set_cookie(
+        key=AUTH_COOKIE_NAME,
+        value=session_id,
+        max_age=ttl_seconds,
+        httponly=True,
+        secure=getattr(request.url, "scheme", "http") == "https",
+        samesite="lax",
+        path="/",
+    )
+
+
+def _refresh_response_session(response: Response | None, request: Request, session_id: str, session_payload: dict) -> None:
+    if response is None:
+        return
+    try:
+        ttl_seconds = int(session_payload.get("timeout_seconds") or 0)
+    except (TypeError, ValueError):
+        ttl_seconds = 0
+    if ttl_seconds > 0:
+        _set_auth_cookie(response, request, session_id, ttl_seconds)
+    expires_at = session_payload.get("expires_at")
+    if expires_at:
+        response.headers[SESSION_EXPIRES_HEADER] = str(expires_at)
+
 
 # Keep Bearer optional so browser clients can authenticate with HttpOnly cookies.
 security = HTTPBearer(auto_error=False)
@@ -23,6 +53,7 @@ security = HTTPBearer(auto_error=False)
 
 async def get_current_user(
     request: Request,
+    response: Response,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: AsyncSession = Depends(get_db),
 ) -> User:
@@ -42,6 +73,15 @@ async def get_current_user(
     session_payload = await load_user_session(session_id)
     if session_payload is None:
         raise credentials_exception
+
+    request_headers = getattr(request, "headers", {}) or {}
+    request_path = getattr(getattr(request, "url", None), "path", "")
+    if request_headers.get("x-cmdb-user-active") == "1" and not request_path.endswith("/auth/heartbeat"):
+        extended_payload = await extend_user_session(session_id)
+        if extended_payload is None:
+            raise credentials_exception
+        session_payload = extended_payload
+        _refresh_response_session(response, request, session_id, session_payload)
 
     user_id: Optional[int] = session_payload.get("user_id")
     if user_id is None:
