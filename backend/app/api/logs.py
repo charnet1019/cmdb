@@ -23,6 +23,59 @@ def format_datetime_utc(dt: datetime | None) -> str | None:
     # Ensure we treat it as UTC and add Z suffix
     return dt.replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z')
 
+ASSET_CATEGORY_LABELS = {
+    "host": "主机",
+    "network": "网络设备",
+    "database": "数据库",
+    "cloud": "云服务",
+    "web": "网站服务",
+    "gpt": "AI服务",
+}
+
+
+def _asset_category_label(category: str | None) -> str:
+    return ASSET_CATEGORY_LABELS.get(category or "", category or "全部")
+
+
+def _asset_operation_target_name(action: str | None, details: dict) -> str | None:
+    target_name = details.get("target_name")
+    if target_name:
+        return str(target_name)
+
+    category = details.get("category")
+    scope = details.get("scope")
+    name = details.get("name")
+
+    if action == "export":
+        if category:
+            return f"{_asset_category_label(str(category))}资产"
+        if isinstance(name, str) and name.startswith("export_"):
+            legacy = name.removeprefix("export_")
+            if legacy in ASSET_CATEGORY_LABELS:
+                return f"{_asset_category_label(legacy)}资产"
+            scope = legacy
+        if scope == "selected":
+            return "选中资产"
+        if scope == "filtered":
+            return "筛选资产"
+        return "全部资产"
+
+    if action == "import":
+        if category:
+            return f"{_asset_category_label(str(category))}资产"
+        if isinstance(name, str) and name.startswith("import_"):
+            legacy = name.removeprefix("import_")
+            if legacy in ASSET_CATEGORY_LABELS:
+                return f"{_asset_category_label(legacy)}资产"
+
+    if details.get("action") == "download_import_template":
+        if category:
+            return f"{_asset_category_label(str(category))}资产"
+        return "资产"
+
+    return None
+
+
 def _get_resource_name(log: OperationLog) -> Optional[str]:
     """Resolve resource name from details or resource_id.
 
@@ -48,6 +101,8 @@ def _get_resource_name(log: OperationLog) -> Optional[str]:
             asset_name = details.get("asset_name")
             filename = details.get("filename")
             name = f"{asset_name} / {filename}" if asset_name and filename else asset_name or details.get("name")
+        elif detail_action in {"download_import_template", "export_assets", "import_assets"} or log.action in {"export", "import"}:
+            name = _asset_operation_target_name(log.action, details) or details.get("name") or details.get("asset_name")
         else:
             name = details.get("name") or details.get("asset_name")
     elif log.resource_type == "user":
@@ -81,6 +136,7 @@ ACTION_LABELS = {
     "delete": "删除",
     "authorize": "授权",
     "download": "下载",
+    "decrypt": "解密",
     "import": "导入",
     "export": "导出",
     "add_group_members": "添加组成员",
@@ -91,8 +147,10 @@ RESOURCE_TYPE_LABELS = {
     "asset": "资产",
     "authorization": "授权",
     "auth": "认证",
+    "credential": "凭据",
     "group": "用户组",
     "log_cleanup": "日志清理",
+    "organization": "组织节点",
     "setting": "系统设置",
     "user": "用户",
 }
@@ -125,8 +183,13 @@ DETAIL_ACTION_LABELS = {
     "bulk_delete": "批量删除资产",
     "bulk_update": "批量更新资产",
     "delete_config": "删除配置文件",
+    "delete_credential": "删除凭据",
+    "decrypt_credential": "解密凭据",
+    "decrypt_oob_password": "解密OOB密码",
     "disable_mfa": "禁用MFA",
     "download_config": "下载配置文件",
+    "download_import_template": "下载导入模板",
+    "export_assets": "导出资产",
     "force_logout": "强制离线",
     "import_assets": "导入资产",
     "logout": "用户登出",
@@ -136,6 +199,11 @@ DETAIL_ACTION_LABELS = {
     "mfa_reset": "重置MFA",
     "rollback_config": "回滚配置文件",
     "save_config": "保存配置文件",
+    "create_organization": "创建组织节点",
+    "rename_organization": "重命名组织节点",
+    "delete_organization": "删除组织节点",
+    "create_credential": "创建凭据",
+    "update_credential": "更新凭据",
     "upload_config": "上传配置文件",
 }
 
@@ -145,6 +213,7 @@ FIELD_LABELS = {
     "avatar_url": "头像",
     "category": "资产类型",
     "description": "描述",
+    "credential_type": "凭据类型",
     "device_type": "设备类型",
     "email": "邮箱",
     "full_name": "姓名",
@@ -155,6 +224,7 @@ FIELD_LABELS = {
     "is_superuser": "超级管理员",
     "mfa_bound": "MFA 绑定状态",
     "mfa_enabled": "MFA 状态",
+    "metadata": "元数据",
     "model": "型号",
     "name": "名称",
     "namespace": "命名空间",
@@ -164,6 +234,7 @@ FIELD_LABELS = {
     "oob_username": "OOB 用户名",
     "owner_id": "负责人",
     "owner_name": "负责人",
+    "password": "密码",
     "permissions": "权限",
     "phone": "手机号",
     "platform": "平台",
@@ -286,6 +357,41 @@ def _build_operation_summary(log: OperationLog, resource_name: str | None, actio
         label = detail_action_label or DETAIL_ACTION_LABELS.get(detail_action, detail_action)
         filename = details.get("filename")
         return f"{label} {filename}" if filename else label
+    if log.resource_type == "asset" and log.action == "export":
+        target_name = _asset_operation_target_name(log.action, details) or target or "资产"
+        count = details.get("count")
+        return f"导出{target_name}: {count}条" if count is not None else f"导出{target_name}"
+    if log.resource_type == "asset" and log.action == "import":
+        target_name = _asset_operation_target_name(log.action, details) or target or "资产"
+        mode = details.get("mode")
+        mode_label = "更新" if mode == "update" else "创建" if mode == "create" else None
+        count = details.get("success_count")
+        prefix = f"导入{mode_label}{target_name}" if mode_label else f"导入{target_name}"
+        return f"{prefix}: 成功{count}条" if count is not None else prefix
+    if detail_action == "download_import_template":
+        target_name = _asset_operation_target_name(log.action, details) or target or "资产导入模板"
+        mode = details.get("mode")
+        mode_label = "更新" if mode == "update" else "创建" if mode == "create" else None
+        return f"下载{target_name}{mode_label or ''}导入模板"
+    if detail_action in {"create_organization", "rename_organization", "delete_organization"}:
+        label = detail_action_label or DETAIL_ACTION_LABELS.get(detail_action, detail_action)
+        base = f"{label} {target}" if target else label
+        if detail_action == "rename_organization" and change_items:
+            return f"{base}；" + "；".join(f"将{item['label']}从{item['before']}修改为{item['after']}" for item in change_items)
+        return base
+    if detail_action in {"create_credential", "update_credential", "delete_credential", "decrypt_credential", "decrypt_oob_password"}:
+        label = detail_action_label or DETAIL_ACTION_LABELS.get(detail_action, detail_action)
+        asset_name = details.get("asset_name")
+        credential_name = details.get("credential_username") or details.get("username")
+        if asset_name and credential_name:
+            base = f"{label} {asset_name} / {credential_name}"
+        elif asset_name:
+            base = f"{label} {asset_name}"
+        else:
+            base = f"{label} {target}" if target else label
+        if detail_action == "update_credential" and change_items:
+            return f"{base}；" + "；".join(f"将{item['label']}从{item['before']}修改为{item['after']}" for item in change_items)
+        return base
 
     promoted_summary = _promoted_user_action_summary(log, target, details)
     if promoted_summary:
@@ -314,7 +420,7 @@ def _build_operation_summary(log: OperationLog, resource_name: str | None, actio
 
     if isinstance(details, dict):
         if details.get("count") is not None:
-            base = f"{base}: {details['count']} 条"
+            base = f"{base}: {details['count']}条"
         elif details.get("keys"):
             base = f"{base}: {', '.join(str(key) for key in details['keys'])}"
         elif details.get("deleted_counts"):

@@ -94,6 +94,15 @@ ASSET_TYPE_FIELDS: Dict[str, List[str]] = {
     "gpt": [],
 }
 
+ASSET_CATEGORY_LABELS = {
+    "host": "主机",
+    "network": "网络设备",
+    "database": "数据库",
+    "cloud": "云服务",
+    "web": "网站服务",
+    "gpt": "AI服务",
+}
+
 # Common fields for all asset types
 COMMON_FIELDS = [
     "id", "name", "asset_code", "category", "internal_address",
@@ -101,6 +110,42 @@ COMMON_FIELDS = [
     "notes", "extra_data", "created_at", "updated_at",
     "applicant", "credentials"
 ]
+
+
+def _client_ip(request: Request | None) -> Optional[str]:
+    return request.client.host if request and request.client else None
+
+
+def _asset_category_label(category: Optional[str]) -> str:
+    return ASSET_CATEGORY_LABELS.get(category or "", category or "全部")
+
+
+def _export_target_name(scope: str, category: Optional[str], organization_id: Optional[int], search: Optional[str]) -> str:
+    if category:
+        return f"{_asset_category_label(category)}资产"
+    if scope == "selected":
+        return "选中资产"
+    if scope == "filtered" or search or organization_id is not None:
+        return "筛选资产"
+    return "全部资产"
+
+
+def _storage_location_items(locations) -> list[dict[str, Any]]:
+    items = []
+    for loc in locations or []:
+        if isinstance(loc, dict):
+            items.append({
+                "path": loc.get("path"),
+                "path_type": loc.get("path_type"),
+                "description": loc.get("description"),
+            })
+        else:
+            items.append({
+                "path": loc.path,
+                "path_type": loc.path_type,
+                "description": loc.description,
+            })
+    return items
 
 
 def build_asset_response(
@@ -1231,7 +1276,9 @@ async def bulk_delete_assets(
 async def download_import_template(
     category: str,
     mode: str = Query("create", description="create or update"),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("manage")),
+    request: Request = None,
 ):
     """Download XLSX import template for specified category."""
     if category not in CATEGORY_FIELDS:
@@ -1246,6 +1293,26 @@ async def download_import_template(
         )
 
     buffer, filename = generate_category_template(category, mode)
+    category_label = _asset_category_label(category)
+    mode_label = "创建" if mode == "create" else "更新"
+    await log_operation(
+        db=db,
+        user_id=current_user.id,
+        action="download",
+        resource_type="asset",
+        resource_id=0,
+        details={
+            "name": f"{category_label}资产导入模板",
+            "target_name": f"{category_label}资产",
+            "action": "download_import_template",
+            "category": category,
+            "category_label": category_label,
+            "mode": mode,
+            "mode_label": mode_label,
+            "filename": filename,
+        },
+        ip_address=_client_ip(request),
+    )
     return StreamingResponse(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1260,6 +1327,7 @@ async def import_assets(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("manage")),
+    request: Request = None,
 ):
     """Import assets from XLSX file."""
     # Validate category before reading file
@@ -1346,14 +1414,18 @@ async def import_assets(
             resource_type="asset",
             resource_id=0,
             details={
-                "name": f"import_{category}",
+                "name": f"{_asset_category_label(category)}资产",
+                "target_name": f"{_asset_category_label(category)}资产",
+                "action": "import_assets",
                 "category": category,
+                "category_label": _asset_category_label(category),
                 "mode": mode,
                 "total_rows": len(valid_records) + len(parse_errors),
                 "success_count": success_count,
                 "failed_count": len(all_errors),
                 "created_orgs": list(created_orgs) if created_orgs else None,
             },
+            ip_address=_client_ip(request),
         )
 
         return ImportResponse(
@@ -1398,6 +1470,7 @@ async def export_assets(
     include_passwords: bool = Query(False, description="Whether to include decrypted asset credentials"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("export")),
+    request: Request = None,
 ):
     """
     Export assets to Excel or CSV with chunked streaming.
@@ -1585,6 +1658,7 @@ async def export_assets(
         media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
     # Audit log
+    export_target_name = _export_target_name(scope, export_category, organization_id, search)
     await log_operation(
         db=db,
         user_id=current_user.id,
@@ -1592,12 +1666,19 @@ async def export_assets(
         resource_type="asset",
         resource_id=0,
         details={
-            "name": f"export_{export_category or scope}",
+            "name": export_target_name,
+            "target_name": export_target_name,
+            "action": "export_assets",
             "format": format,
             "scope": scope,
             "category": export_category,
+            "category_label": _asset_category_label(export_category) if export_category else None,
+            "organization_id": organization_id,
+            "search": search,
+            "include_passwords": can_export_passwords,
             "count": count,
         },
+        ip_address=_client_ip(request),
     )
 
     return StreamingResponse(
@@ -1739,6 +1820,22 @@ async def update_asset(
     # Extract database-specific fields before generic update
     host_ids = update_data.pop("host_ids", None)
     storage_locations_data = update_data.pop("storage_locations", None)
+
+    if host_ids is not None and asset.category == "database":
+        host_result = await db.execute(
+            select(AssetHostRelation.host_id).where(AssetHostRelation.asset_id == asset_id)
+        )
+        before_host_ids = sorted(str(row[0]) for row in host_result.all())
+        after_host_ids = sorted(str(host_id) for host_id in (host_ids or []))
+        record_change("host_ids", before_host_ids, after_host_ids)
+
+    if storage_locations_data is not None and asset.category == "database":
+        storage_result = await db.execute(
+            select(StorageLocation).where(StorageLocation.asset_id == asset_id)
+        )
+        before_storage_locations = _storage_location_items(storage_result.scalars().all())
+        after_storage_locations = _storage_location_items(storage_locations_data)
+        record_change("storage_locations", before_storage_locations, after_storage_locations)
 
     for field, value in update_data.items():
         # Map schema 'extra_data' to model 'extra_data'
@@ -1962,6 +2059,7 @@ async def create_organization(
     parent_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("manage")),
+    request: Request = None,
 ):
     """Create a new organization node"""
     parent_path = ""
@@ -2000,6 +2098,17 @@ async def create_organization(
     await db.commit()
     await db.refresh(org)
 
+    await log_operation(
+        db, current_user.id, "create", "organization", org.id,
+        details={
+            "name": org.name,
+            "action": "create_organization",
+            "parent_id": parent_id,
+            "path": org.path,
+        },
+        ip_address=_client_ip(request),
+    )
+
     return {"code": 0, "data": {"id": org.id, "name": org.name, "path": org.path}}
 
 
@@ -2009,6 +2118,7 @@ async def update_organization(
     name: str = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("manage")),
+    request: Request = None,
 ):
     """Update organization node (rename)"""
     result = await db.execute(
@@ -2027,11 +2137,24 @@ async def update_organization(
         current_user, "manage", "organization", str(org_id), db,
     )
 
+    before_name = org.name
     if name:
         org.name = name
 
     await db.commit()
     await db.refresh(org)
+
+    if name and before_name != org.name:
+        await log_operation(
+            db, current_user.id, "update", "organization", org.id,
+            details={
+                "name": org.name,
+                "action": "rename_organization",
+                "path": org.path,
+                "changes": {"name": [before_name, org.name]},
+            },
+            ip_address=_client_ip(request),
+        )
 
     return {"code": 0, "data": {"id": org.id, "name": org.name}}
 
@@ -2041,6 +2164,7 @@ async def delete_organization(
     org_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("manage")),
+    request: Request = None,
 ):
     """Delete organization node"""
     result = await db.execute(
@@ -2079,8 +2203,23 @@ async def delete_organization(
             detail="该节点下有资产，无法删除"
         )
 
+    org_name = org.name
+    org_parent_id = org.parent_id
+    org_path = org.path
+
     await db.delete(org)
     await db.commit()
+
+    await log_operation(
+        db, current_user.id, "delete", "organization", org_id,
+        details={
+            "name": org_name,
+            "action": "delete_organization",
+            "parent_id": org_parent_id,
+            "path": org_path,
+        },
+        ip_address=_client_ip(request),
+    )
 
     return {"code": 0, "message": "节点已删除"}
 
@@ -2185,6 +2324,20 @@ async def create_credential(
     await db.commit()
     await db.refresh(credential)
 
+    await log_operation(
+        db, current_user.id, "create", "credential", credential.id,
+        details={
+            "name": credential.username,
+            "action": "create_credential",
+            "asset_id": credential.asset_id,
+            "asset_name": asset.name,
+            "credential_id": credential.id,
+            "credential_username": credential.username,
+            "credential_type": credential.credential_type,
+        },
+        ip_address=_client_ip(request),
+    )
+
     return CredentialResponse(
         id=credential.id,
         asset_id=credential.asset_id,
@@ -2205,6 +2358,7 @@ async def decrypt_oob_password(
     asset_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("view_pwd")),
+    request: Request = None,
 ):
     """Decrypt OOB password for host asset (requires view_pwd permission)"""
     result = await db.execute(
@@ -2261,6 +2415,19 @@ async def decrypt_oob_password(
             detail="解密失败"
         )
 
+    await log_operation(
+        db, current_user.id, "decrypt", "credential", 0,
+        details={
+            "name": asset.oob_username or "OOB",
+            "action": "decrypt_oob_password",
+            "asset_id": asset.id,
+            "asset_name": asset.name,
+            "credential_username": asset.oob_username,
+            "credential_type": "oob",
+        },
+        ip_address=_client_ip(request),
+    )
+
     return OOBDecryptResponse(oob_password=decrypted_password)
 
 
@@ -2269,6 +2436,7 @@ async def decrypt_credential(
     credential_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("view_pwd")),
+    request: Request = None,
 ):
     """Decrypt credential password (requires view_pwd permission)"""
     result = await db.execute(
@@ -2298,6 +2466,20 @@ async def decrypt_credential(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="解密失败"
         )
+
+    await log_operation(
+        db, current_user.id, "decrypt", "credential", credential.id,
+        details={
+            "name": credential.username,
+            "action": "decrypt_credential",
+            "asset_id": credential.asset_id,
+            "asset_name": asset.name if asset else None,
+            "credential_id": credential.id,
+            "credential_username": credential.username,
+            "credential_type": credential.credential_type,
+        },
+        ip_address=_client_ip(request),
+    )
 
     return CredentialDecryptResponse(
         id=credential.id,
@@ -2335,10 +2517,18 @@ async def update_credential(
         organization_id=asset.organization_id if asset else None,
     )
 
+    changes = {}
+
+    def record_credential_change(field: str, before, after) -> None:
+        if before != after:
+            changes[field] = [before, after]
+
     # Update fields
     if data.username is not None:
+        record_credential_change("username", credential.username, data.username)
         credential.username = data.username
     if data.password is not None:
+        changes["password"] = ["未变更", "已更新"]
         credential.password_encrypted = encrypt_value(data.password)
 
         # Log credential password change
@@ -2350,10 +2540,27 @@ async def update_credential(
         )
         db.add(password_log)
     if data.metadata is not None:
+        record_credential_change("metadata", credential.extra_data, data.metadata)
         credential.extra_data = data.metadata
 
     await db.commit()
     await db.refresh(credential)
+
+    if changes:
+        await log_operation(
+            db, current_user.id, "update", "credential", credential.id,
+            details={
+                "name": credential.username,
+                "action": "update_credential",
+                "asset_id": credential.asset_id,
+                "asset_name": asset.name if asset else None,
+                "credential_id": credential.id,
+                "credential_username": credential.username,
+                "credential_type": credential.credential_type,
+                "changes": changes,
+            },
+            ip_address=_client_ip(request),
+        )
 
     return CredentialResponse(
         id=credential.id,
@@ -2369,6 +2576,7 @@ async def delete_credential(
     credential_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(PermissionChecker("manage")),
+    request: Request = None,
 ):
     """Delete a credential"""
     result = await db.execute(
@@ -2391,8 +2599,27 @@ async def delete_credential(
         organization_id=asset.organization_id if asset else None,
     )
 
+    credential_username = credential.username
+    credential_type = credential.credential_type
+    credential_asset_id = credential.asset_id
+    asset_name = asset.name if asset else None
+
     await db.delete(credential)
     await db.commit()
+
+    await log_operation(
+        db, current_user.id, "delete", "credential", credential_id,
+        details={
+            "name": credential_username,
+            "action": "delete_credential",
+            "asset_id": credential_asset_id,
+            "asset_name": asset_name,
+            "credential_id": credential_id,
+            "credential_username": credential_username,
+            "credential_type": credential_type,
+        },
+        ip_address=_client_ip(request),
+    )
 
     return ResponseBase(message="凭证已删除")
 
