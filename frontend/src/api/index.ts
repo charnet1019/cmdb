@@ -1,6 +1,7 @@
 import axios, { type AxiosInstance, type AxiosResponse } from 'axios'
 import type { ApiResponse } from '@/types'
 import { hasPendingSessionActivity } from '@/utils/sessionActivity'
+import { resolveLogoutReason, setLogoutMessage } from '@/utils/logoutReason'
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
@@ -30,16 +31,22 @@ function setHeader(headers: any, name: string, value: string) {
   }
 }
 
-function shouldAttachUserActivityHeader(url?: string): boolean {
+const AUTH_FLOW_ENDPOINTS = [
+  '/auth/login',
+  '/auth/logout',
+  '/auth/heartbeat',
+  '/auth/mfa/login-verify',
+  '/auth/mfa/setup-qr',
+  '/auth/force-change-password',
+]
+
+function isAuthFlowEndpoint(url?: string): boolean {
   if (!url) return false
-  return ![
-    '/auth/login',
-    '/auth/logout',
-    '/auth/heartbeat',
-    '/auth/mfa/login-verify',
-    '/auth/mfa/setup-qr',
-    '/auth/force-change-password',
-  ].some(path => url.includes(path))
+  return AUTH_FLOW_ENDPOINTS.some(path => url.includes(path))
+}
+
+function shouldAttachUserActivityHeader(url?: string): boolean {
+  return !isAuthFlowEndpoint(url)
 }
 
 api.interceptors.request.use((config) => {
@@ -62,17 +69,20 @@ api.interceptors.response.use(
     return response
   },
   (error) => {
+    const status = error.response?.status
     const detail = error.response?.data?.detail
-    const shouldClearAuth = error.response?.status === 401
-      || (error.response?.status === 403 && detail === '用户已被禁用')
+    const logoutReason = resolveLogoutReason(status, detail)
 
-    if (shouldClearAuth) {
+    if (logoutReason && !isAuthFlowEndpoint(error.config?.url)) {
       // Don't redirect if already on login page — MFA verification errors
       // also return 401 and we want to stay on the MFA input form.
       if (window.location.pathname === '/login') {
         return Promise.reject(error)
       }
-      window.dispatchEvent(new CustomEvent('auth:token-cleared'))
+      setLogoutMessage(logoutReason, logoutReason === 'user_disabled' ? detail : null)
+      window.dispatchEvent(new CustomEvent('auth:token-cleared', {
+        detail: { reason: logoutReason, message: detail },
+      }))
       window.location.href = '/login'
     }
     return Promise.reject(error)

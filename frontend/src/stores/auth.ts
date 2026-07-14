@@ -3,10 +3,11 @@ import { ref, computed } from 'vue'
 import type { UserSimple, TokenResponse, MFARequiredData, MustChangePasswordData } from '@/types'
 import { login as loginApi, logout as logoutApi, getCurrentUser, heartbeat as heartbeatApi, loginMFAVerify, forceChangePassword as forceChangePasswordApi } from '@/api/auth'
 import { clearPendingSessionActivity, hasPendingSessionActivity, markSessionActivity, USER_ACTIVITY_EVENTS } from '@/utils/sessionActivity'
+import { resolveLogoutReason, setLogoutMessage } from '@/utils/logoutReason'
+import type { LogoutReason } from '@/utils/logoutReason'
 
 const HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000  // 2 minutes
 const ACTIVITY_HEARTBEAT_THROTTLE_MS = 30 * 1000
-const SESSION_EXPIRED_MESSAGE = '登录已超时，请重新登录'
 
 export const useAuthStore = defineStore('auth', () => {
   // State
@@ -23,10 +24,19 @@ export const useAuthStore = defineStore('auth', () => {
   let userActivitySinceHeartbeat = false
   let heartbeatInFlight: Promise<void> | null = null
   let sessionExpiryConfirmation: Promise<boolean> | null = null
+  let lastExpiryFailureReason: LogoutReason | null = null
   let lastActivityHeartbeatAt = 0
 
   function isSessionActive() {
     return !!token.value || !!user.value
+  }
+
+  function resolveErrorLogoutReason(error: any, fallback: LogoutReason): LogoutReason {
+    const status = error?.response?.status
+    const detail = error?.response?.data?.detail
+    const reason = resolveLogoutReason(status, detail)
+    if (reason === 'server_session_invalid') return fallback
+    return reason || (status ? fallback : 'renewal_failed')
   }
 
   async function sendHeartbeat(userActive = false) {
@@ -47,7 +57,7 @@ export const useAuthStore = defineStore('auth', () => {
     } catch (error: any) {
       const status = error?.response?.status
       if (status === 401 || status === 403) {
-        void handleSessionExpired()
+        expireSessionAndRedirect(resolveErrorLogoutReason(error, 'heartbeat_session_invalid'))
       }
       // Transient network errors are left to the next heartbeat/API call.
     }
@@ -101,6 +111,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (!shouldTryRenewal) return false
     if (sessionExpiryConfirmation) return sessionExpiryConfirmation
 
+    lastExpiryFailureReason = null
     sessionExpiryConfirmation = heartbeatApi(true)
       .then((response) => {
         userActivitySinceHeartbeat = false
@@ -109,9 +120,13 @@ export const useAuthStore = defineStore('auth', () => {
           setSessionExpiresAt(response.expires_at)
           return !hasSessionExpired()
         }
+        lastExpiryFailureReason = 'renewal_failed'
         return false
       })
-      .catch(() => false)
+      .catch((error) => {
+        lastExpiryFailureReason = resolveErrorLogoutReason(error, 'heartbeat_session_invalid')
+        return false
+      })
       .finally(() => {
         sessionExpiryConfirmation = null
       })
@@ -119,10 +134,10 @@ export const useAuthStore = defineStore('auth', () => {
     return sessionExpiryConfirmation
   }
 
-  function expireSessionAndRedirect() {
+  function expireSessionAndRedirect(reason: LogoutReason, fallbackMessage?: string | null) {
     if (!token.value && !user.value) return
     handleTokenCleared()
-    sessionStorage.setItem("auth:logout-message", SESSION_EXPIRED_MESSAGE)
+    setLogoutMessage(reason, fallbackMessage)
     if (window.location.pathname !== "/login") {
       window.location.href = "/login"
     }
@@ -130,8 +145,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function handleSessionExpired() {
     if (!token.value && !user.value) return
+    const hadRecentActivity = userActivitySinceHeartbeat || hasPendingSessionActivity()
     if (await confirmActiveSessionBeforeLogout()) return
-    expireSessionAndRedirect()
+    expireSessionAndRedirect(hadRecentActivity ? (lastExpiryFailureReason || 'renewal_failed') : 'local_idle_timeout')
   }
 
   function scheduleSessionExpiryTimer() {
@@ -211,16 +227,18 @@ export const useAuthStore = defineStore('auth', () => {
 
     eventSource = new EventSource("/api/v1/events/stream", { withCredentials: true })
     eventSource.addEventListener("force_logout", (event) => {
-      let message = "账号已被管理员强制离线"
+      let reason: LogoutReason = 'admin_forced'
+      let message: string | null = null
       try {
         const data = JSON.parse((event as MessageEvent).data || "{}")
-        message = data.message || message
+        reason = data.reason === 'user_disabled' ? 'user_disabled' : 'admin_forced'
+        message = data.message || null
       } catch {
         // Keep default message.
       }
       disconnectEventStream()
       handleTokenCleared()
-      sessionStorage.setItem("auth:logout-message", message)
+      setLogoutMessage(reason, message)
       if (window.location.pathname !== "/login") {
         window.location.href = "/login"
       }
@@ -263,7 +281,11 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   // Listen for token cleared event from API interceptor
-  const handleTokenCleared = () => {
+  const handleTokenCleared = (event?: Event) => {
+    const detail = (event as CustomEvent<{ reason?: LogoutReason; message?: string | null }> | undefined)?.detail
+    if (detail?.reason) {
+      setLogoutMessage(detail.reason, detail.reason === 'user_disabled' || detail.reason === 'admin_forced' ? detail.message : null)
+    }
     stopHeartbeat()
     clearSessionExpiryTimer()
     removeUserActivityListeners()
@@ -399,8 +421,12 @@ export const useAuthStore = defineStore('auth', () => {
       const heartbeat = await heartbeatApi(false)
       initializeAuthenticatedSession(heartbeat.expires_at ?? userData.session_expires_at ?? null)
       return userData
-    } catch (e) {
-      logout()
+    } catch (e: any) {
+      const reason = resolveLogoutReason(e?.response?.status, e?.response?.data?.detail)
+      if (reason) {
+        setLogoutMessage(reason, reason === 'user_disabled' ? e?.response?.data?.detail : null)
+      }
+      handleTokenCleared()
       throw e
     }
   }

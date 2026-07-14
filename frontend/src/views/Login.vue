@@ -6,6 +6,7 @@ import { UserOutlined, LockOutlined, EyeOutlined, EyeInvisibleOutlined, LoadingO
 import { useAuthStore } from '@/stores/auth'
 import { getPublicSettings } from '@/api/settings'
 import { getMFASetupQR } from '@/api/auth'
+import { consumeLogoutMessage } from '@/utils/logoutReason'
 import type { MustChangePasswordData } from '@/types'
 
 const router = useRouter()
@@ -224,6 +225,10 @@ async function handleForceChangePassword() {
 
 onMounted(() => {
   fetchBranding()
+  const logoutMessage = consumeLogoutMessage()
+  if (logoutMessage) {
+    message.warning(logoutMessage)
+  }
 })
 </script>
 
