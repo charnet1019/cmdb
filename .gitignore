@@ -73,3 +73,5 @@ frontend/src/views/assets/backup/
 
 # Local agent/tool state
 .claude/
+
+prototype
