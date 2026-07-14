@@ -4,6 +4,7 @@ import type { UserSimple, TokenResponse, MFARequiredData, MustChangePasswordData
 import { login as loginApi, logout as logoutApi, getCurrentUser, heartbeat as heartbeatApi, loginMFAVerify, forceChangePassword as forceChangePasswordApi } from '@/api/auth'
 import { clearPendingSessionActivity, hasPendingSessionActivity, markSessionActivity, USER_ACTIVITY_EVENTS } from '@/utils/sessionActivity'
 import { resolveLogoutReason, setLogoutMessage } from '@/utils/logoutReason'
+import { showSystemNotification } from '@/utils/systemNotification'
 import type { LogoutReason } from '@/utils/logoutReason'
 
 const HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000  // 2 minutes
@@ -246,6 +247,7 @@ export const useAuthStore = defineStore('auth', () => {
     eventSource.addEventListener("notification", (event) => {
       try {
         const data = JSON.parse((event as MessageEvent).data || "{}")
+        showSystemNotification(data)
         void import("@/stores/notifications").then(({ useNotificationsStore }) => {
           useNotificationsStore().handleRealtimeNotification(data)
         })

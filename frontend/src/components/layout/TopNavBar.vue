@@ -5,6 +5,7 @@ import { ref, onUnmounted, onMounted, computed } from 'vue'
 import { MenuOutlined, BellOutlined, DownOutlined, UserOutlined, LogoutOutlined, SendOutlined, CheckOutlined } from '@ant-design/icons-vue'
 import { getPublicSettings } from '@/api/settings'
 import { getUsersForAuth, getGroupsForAuth } from '@/api/authorizations'
+import { OPEN_NOTIFICATIONS_PANEL_EVENT, requestSystemNotificationPermission } from '@/utils/systemNotification'
 
 const authStore = useAuthStore()
 const notificationStore = useNotificationsStore()
@@ -61,13 +62,25 @@ async function refreshNotifications() {
   await notificationStore.fetchUnreadCount()
 }
 
-async function toggleNotifications() {
-  showNotificationPanel.value = !showNotificationPanel.value
-  if (!showNotificationPanel.value) return
+async function openNotifications() {
+  showNotificationPanel.value = true
   showUserMenu.value = false
   await notificationStore.fetchCanSend()
   await refreshNotifications()
   await loadRecipients()
+}
+
+async function toggleNotifications() {
+  await requestSystemNotificationPermission()
+  if (showNotificationPanel.value) {
+    showNotificationPanel.value = false
+    return
+  }
+  await openNotifications()
+}
+
+function handleOpenNotificationsPanel() {
+  void openNotifications()
 }
 
 function closeNotifications() {
@@ -152,6 +165,7 @@ onMounted(() => {
   notificationStore.fetchUnreadCount().catch(() => {})
   notificationStore.fetchCanSend().catch(() => {})
   window.addEventListener('settings:updated', handleSettingsUpdated)
+  window.addEventListener(OPEN_NOTIFICATIONS_PANEL_EVENT, handleOpenNotificationsPanel)
   document.addEventListener('pointerdown', handleDocumentPointerDown)
 })
 
@@ -160,6 +174,7 @@ onUnmounted(() => {
     clearTimeout(hideTimeout)
   }
   window.removeEventListener('settings:updated', handleSettingsUpdated)
+  window.removeEventListener(OPEN_NOTIFICATIONS_PANEL_EVENT, handleOpenNotificationsPanel)
   document.removeEventListener('pointerdown', handleDocumentPointerDown)
 })
 
