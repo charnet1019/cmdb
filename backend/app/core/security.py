@@ -2,10 +2,9 @@
 Security Module
 Password hashing, JWT token management, and TOTP MFA
 """
-from datetime import datetime, timedelta
 from io import BytesIO
-from typing import Any, Optional
-from jose import jwt, JWTError
+from typing import Optional
+import secrets
 import bcrypt
 import pyotp
 import qrcode
@@ -22,44 +21,20 @@ def get_password_hash(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 
-def create_access_token(
-    subject: str | int,
-    expires_delta: Optional[timedelta] = None,
-    additional_data: Optional[dict[str, Any]] = None,
-) -> str:
-    """Create a JWT access token"""
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(hours=settings.JWT_ACCESS_TOKEN_EXPIRE_HOURS)
-
-    to_encode = {
-        "sub": str(subject),
-        "exp": expire,
-        "iat": datetime.utcnow(),
-    }
-    if additional_data:
-        to_encode.update(additional_data)
-
-    encoded_jwt = jwt.encode(
-        to_encode,
-        settings.JWT_SECRET_KEY,
-        algorithm=settings.JWT_ALGORITHM
-    )
-    return encoded_jwt
+_dummy_password_hash: Optional[str] = None
 
 
-def decode_access_token(token: str) -> Optional[dict[str, Any]]:
-    """Decode and validate a JWT access token"""
-    try:
-        payload = jwt.decode(
-            token,
-            settings.JWT_SECRET_KEY,
-            algorithms=[settings.JWT_ALGORITHM]
-        )
-        return payload
-    except JWTError:
-        return None
+def get_dummy_password_hash() -> str:
+    """Return a fixed, process-lifetime bcrypt hash with no matching password.
+
+    Used to run a bcrypt comparison for unknown usernames during login, so the
+    response time is similar to a real wrong-password attempt and can't be
+    used to enumerate valid usernames via timing.
+    """
+    global _dummy_password_hash
+    if _dummy_password_hash is None:
+        _dummy_password_hash = get_password_hash(secrets.token_hex(32))
+    return _dummy_password_hash
 
 
 def generate_totp_secret() -> str:

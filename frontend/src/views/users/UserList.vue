@@ -6,6 +6,8 @@ import { UserAddOutlined, SearchOutlined, SafetyCertificateOutlined, SafetyOutli
 import { createUser, updateUser, deleteUser, forceLogoutUser, resetUserPassword, getUserAuthorizations, getGroups } from '@/api/users'
 import { useUsersStore } from '@/stores/users'
 import { formatDateTime } from '@/utils/datetime'
+import { PERMISSION_LABELS } from '@/utils/permissions'
+import { confirmAction } from '@/utils/confirmAction'
 import { resetUserMFA } from '@/api/auth'
 import type { User, UserAuthorization } from '@/types'
 
@@ -326,57 +328,44 @@ async function handleSubmit() {
 
 // Delete user
 async function handleDelete(user: User) {
-  Modal.confirm({
+  confirmAction({
     title: '删除用户',
     content: "确定要删除该用户吗？此操作不可恢复。",
     okText: '删除',
-    okType: 'danger',
-    cancelText: '取消',
+    successMessage: '用户已删除',
+    formatError: getErrorMessage,
     onOk: async () => {
-      try {
-        await deleteUser(user.id)
-        message.success('用户已删除')
-        fetchUsers()
-      } catch (e: any) {
-        message.error(getErrorMessage(e))
-      }
+      await deleteUser(user.id)
+      fetchUsers()
     },
   })
 }
 
 // Reset MFA binding
 async function handleResetMFA(user: User) {
-  Modal.confirm({
+  confirmAction({
     title: '重置 MFA 绑定',
     content: "确定要重置该用户的 MFA 绑定吗？用户下次登录需要重新绑定。",
     okText: '重置',
-    cancelText: '取消',
+    danger: false,
+    successMessage: 'MFA 已重置',
+    formatError: getErrorMessage,
     onOk: async () => {
-      try {
-        await resetUserMFA(user.id)
-        message.success('MFA 已重置')
-        fetchUsers()
-      } catch (e: any) {
-        message.error(getErrorMessage(e))
-      }
+      await resetUserMFA(user.id)
+      fetchUsers()
     },
   })
 }
 
 async function handleForceLogout(user: User) {
-  Modal.confirm({
+  confirmAction({
     title: '强制离线用户',
     content: `确定要强制 ${user.full_name || user.username} 离线吗？该用户所有登录会话将立即失效。`,
     okText: '强制离线',
-    okType: 'danger',
-    cancelText: '取消',
+    formatError: getErrorMessage,
     onOk: async () => {
-      try {
-        const result = await forceLogoutUser(user.id)
-        message.success(`用户已强制离线，终止 ${result.terminated_sessions} 个会话`)
-      } catch (e: any) {
-        message.error(getErrorMessage(e))
-      }
+      const result = await forceLogoutUser(user.id)
+      message.success(`用户已强制离线，终止 ${result.terminated_sessions} 个会话`)
     },
   })
 }
@@ -454,17 +443,7 @@ const categoryLabels: Record<string, string> = {
 }
 
 // Permission labels
-const permissionLabels: Record<string, string> = {
-  view: '查看资产',
-  manage: '管理资产',
-  view_users: '查看用户',
-  user_mgmt: '用户管理',
-  sys_config: '系统设置',
-  audit_log: '日志审计',
-  view_pwd: '查看密码',
-  export: '导出资产',
-  export_pwd: '导出密码'
-}
+const permissionLabels = PERMISSION_LABELS
 
 // Open authorizations modal
 async function openAuthorizationsModal(user: User) {

@@ -9,6 +9,7 @@ import {
   CloseCircleOutlined
 } from '@ant-design/icons-vue'
 import { downloadImportTemplate, importAssets, type ImportResult } from '@/api/assets'
+import { validateFileExtension, validateFileSize } from '@/utils/fileValidation'
 import * as XLSX from 'xlsx'
 
 const props = defineProps<{
@@ -53,16 +54,16 @@ async function handleFileSelect(event: Event) {
   const file = target.files?.[0]
 
   if (file) {
-    // Validate file type
-    if (!file.name.endsWith('.xlsx')) {
-      message.error('请选择xlsx格式的文件')
+    const extensionError = validateFileExtension(file, ['.xlsx'])
+    if (extensionError) {
+      message.error(extensionError)
       target.value = ''
       return
     }
 
-    // Validate file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      message.error('文件大小不能超过10MB')
+    const sizeError = validateFileSize(file, 10)
+    if (sizeError) {
+      message.error(sizeError)
       target.value = ''
       return
     }

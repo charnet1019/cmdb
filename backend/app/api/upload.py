@@ -3,21 +3,23 @@ File Upload API Routes
 """
 import os
 import uuid
-from io import BytesIO
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from PIL import Image, UnidentifiedImageError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.api.deps import PermissionChecker
 from app.models import User
 from app.config import settings
+from app.utils.image_upload import (
+    ALLOWED_IMAGE_EXTENSIONS,
+    MAX_IMAGE_FILE_SIZE,
+    validate_image_extension,
+    validate_image_size,
+    normalize_image,
+)
 
 router = APIRouter(prefix="/upload", tags=["Upload"])
-
-ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 
 def _get_upload_dir() -> Path:
@@ -25,30 +27,6 @@ def _get_upload_dir() -> Path:
     upload_dir = Path(settings.UPLOAD_DIR)
     upload_dir.mkdir(parents=True, exist_ok=True)
     return upload_dir
-
-
-def _normalize_image(content: bytes, ext: str) -> bytes:
-    format_map = {
-        ".png": "PNG",
-        ".jpg": "JPEG",
-        ".jpeg": "JPEG",
-        ".gif": "GIF",
-        ".webp": "WEBP",
-    }
-    try:
-        with Image.open(BytesIO(content)) as image:
-            image.load()
-            output = BytesIO()
-            save_format = format_map[ext]
-            if save_format == "JPEG" and image.mode not in ("RGB", "L"):
-                image = image.convert("RGB")
-            image.save(output, format=save_format)
-            return output.getvalue()
-    except (UnidentifiedImageError, OSError, ValueError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="文件内容不是有效图片",
-        ) from exc
 
 
 @router.post("/image")
@@ -62,23 +40,17 @@ async def upload_image(
     Requires sys_config permission.
     Returns the URL path to access the uploaded image.
     """
-    # Validate file extension
     ext = os.path.splitext(file.filename or "")[1].lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported file type: {ext}. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
-        )
+    validate_image_extension(
+        ext, f"Unsupported file type: {ext}. Allowed: {', '.join(ALLOWED_IMAGE_EXTENSIONS)}"
+    )
 
-    # Read and validate file size
     content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File too large. Maximum size: {MAX_FILE_SIZE // (1024 * 1024)}MB",
-        )
+    validate_image_size(
+        content, f"File too large. Maximum size: {MAX_IMAGE_FILE_SIZE // (1024 * 1024)}MB"
+    )
 
-    content = _normalize_image(content, ext)
+    content = normalize_image(content, ext)
 
     # Generate unique filename preserving extension
     filename = f"{uuid.uuid4().hex}{ext}"

@@ -1411,9 +1411,9 @@ onMounted(async () => {
                           v-if="isFieldEditing(index, 'username')"
                           :ref="(el: any) => { if (el) credentialInputRefs.set(`${index}-username`, el) }"
                           v-model="cred.username"
-                          type="text"
+                          type="search"
                           class="input-field text-xs flex-1"
-                          autocomplete="off"
+                          autocomplete="section-credential username"
                           @blur="stopFieldEdit"
                           @keyup.enter.prevent="stopFieldEdit"
                         />
@@ -1433,7 +1433,7 @@ onMounted(async () => {
                           v-model="cred.password"
                           type="text"
                           class="input-field text-xs flex-1"
-                          autocomplete="off"
+                          autocomplete="new-password"
                           @blur="stopFieldEdit"
                           @keyup.enter.prevent="stopFieldEdit"
                           placeholder="输入新密码"
@@ -1480,10 +1480,10 @@ onMounted(async () => {
                     <label class="block text-xs text-slate-500 mb-1">用户名</label>
                     <input
                       v-model="newCredentialForm.username"
-                      type="text"
+                      type="search"
                       class="input-field text-sm"
                       placeholder="输入用户名"
-                      autocomplete="off"
+                      autocomplete="section-credential username"
                       @keyup.enter.prevent="addCredentialToForm"
                     />
                   </div>
@@ -1494,7 +1494,7 @@ onMounted(async () => {
                       :type="showPassword ? 'text' : 'password'"
                       class="input-field text-sm w-full pr-8"
                       placeholder="输入密码"
-                      autocomplete="off"
+                      autocomplete="new-password"
                       @keyup.enter.prevent="addCredentialToForm"
                     />
                     <button type="button" @click="showPassword = !showPassword" class="absolute right-2 top-[calc(50%+10px)] -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -1700,12 +1700,12 @@ onMounted(async () => {
               <div class="grid grid-cols-2 gap-3">
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1">OOB用户名</label>
-                  <input v-model="form.oob_username" type="text" class="input-field" placeholder="OOB 用户名" autocomplete="off" />
+                  <input v-model="form.oob_username" type="search" class="input-field" placeholder="OOB 用户名" autocomplete="section-oob username" />
                 </div>
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1">OOB密码</label>
                   <div class="relative">
-                    <input v-model="form.oob_password" :type="showOobPassword ? 'text' : 'password'" class="input-field pr-8" placeholder="OOB 密码" autocomplete="off" />
+                    <input v-model="form.oob_password" :type="showOobPassword ? 'text' : 'password'" class="input-field pr-8" placeholder="OOB 密码" autocomplete="new-password" />
                     <button type="button" @click="showOobPassword = !showOobPassword" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                       <EyeOutlined v-if="!showOobPassword" class="text-sm" />
                       <EyeInvisibleOutlined v-else class="text-sm" />

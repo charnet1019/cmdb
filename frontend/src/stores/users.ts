@@ -30,12 +30,6 @@ export const useUsersStore = defineStore('users', () => {
     return result
   }
 
-  async function fetchAllUsers() {
-    const result = await getUsers({ limit: 100 })
-    allUsers.value = result.items || []
-    return allUsers.value
-  }
-
   async function fetchGroups(params?: { page?: number; limit?: number; search?: string }) {
     if (params?.page !== undefined) groupsPage.value = params.page
     if (params?.limit !== undefined) groupsLimit.value = params.limit
@@ -47,12 +41,6 @@ export const useUsersStore = defineStore('users', () => {
     groups.value = result.items || []
     groupsTotal.value = result.total || 0
     return result
-  }
-
-  async function fetchAllGroups() {
-    const result = await getGroups({ limit: 100 })
-    groups.value = result.items || []
-    return groups.value
   }
 
   function resetUsers() {
@@ -78,9 +66,7 @@ export const useUsersStore = defineStore('users', () => {
     groupsPage,
     groupsLimit,
     fetchUsers,
-    fetchAllUsers,
     fetchGroups,
-    fetchAllGroups,
     resetUsers,
     resetGroups,
   }

@@ -3,7 +3,8 @@
  * Handles organization tree, context menu, drag-drop, and CRUD operations
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { message, Modal } from 'ant-design-vue'
+import { message } from 'ant-design-vue'
+import { confirmAction } from '@/utils/confirmAction'
 import {
   getOrganizationsWithStats,
   createOrganization,
@@ -15,7 +16,6 @@ import type { Organization } from '@/types'
 export function useOrganizations() {
   // Data
   const organizations = ref<Organization[]>([])
-  const rootAssetCount = ref(0)
   const totalAssetCount = ref(0)
 
   // Tree state
@@ -46,12 +46,10 @@ export function useOrganizations() {
     try {
       const result = await getOrganizationsWithStats()
       organizations.value = result.organizations || []
-      rootAssetCount.value = result.root_asset_count || 0
       totalAssetCount.value = result.total_assets || 0
     } catch (error) {
       console.error('Failed to fetch organizations')
       organizations.value = []
-      rootAssetCount.value = 0
       totalAssetCount.value = 0
     }
   }
@@ -71,12 +69,6 @@ export function useOrganizations() {
 
   function toggleRootExpansion() {
     isRootExpanded.value = !isRootExpanded.value
-  }
-
-  // Selection
-  function selectOrganization(orgId: number | null, callback?: () => void) {
-    selectedOrgId.value = orgId
-    callback?.()
   }
 
   // Get flattened org tree for display
@@ -234,25 +226,19 @@ export function useOrganizations() {
     closeOrgContextMenu()
     if (!org || org.isRoot || org.id === null) return
 
-    Modal.confirm({
+    confirmAction({
       title: '确认删除',
       content: `确定要删除节点 "${org.name}" 吗？删除后该节点下的所有子节点也会被删除。`,
       okText: '删除',
-      okType: 'danger',
-      cancelText: '取消',
-      centered: true,
-      async onOk() {
-        try {
-          await deleteOrganization(org.id!)
-          message.success('节点已删除')
-          if (selectedOrgId.value === org.id) {
-            selectedOrgId.value = null
-          }
-          fetchOrganizations()
-        } catch (error: any) {
-          message.error(error.response?.data?.detail || '删除失败')
+      successMessage: '节点已删除',
+      errorMessage: '删除失败',
+      onOk: async () => {
+        await deleteOrganization(org.id!)
+        if (selectedOrgId.value === org.id) {
+          selectedOrgId.value = null
         }
-      }
+        fetchOrganizations()
+      },
     })
   }
 
@@ -307,7 +293,6 @@ export function useOrganizations() {
   return {
     // State
     organizations,
-    rootAssetCount,
     totalAssetCount,
     expandedOrgIds,
     isRootExpanded,
@@ -329,10 +314,8 @@ export function useOrganizations() {
     toggleOrg,
     isOrgExpanded,
     toggleRootExpansion,
-    selectOrganization,
     getOrgPath,
     handleOrgContextMenu,
-    closeOrgContextMenu,
     openCreateOrgModal,
     openRenameOrgModal,
     handleOrgModalSubmit,

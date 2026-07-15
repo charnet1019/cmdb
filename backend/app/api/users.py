@@ -3,7 +3,6 @@ User Management API
 CRUD operations for users and user groups
 """
 from typing import Optional, List
-from datetime import datetime
 import asyncio
 import logging
 import secrets
@@ -13,19 +12,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
 from app.database import get_db
-from app.models import User, Group, UserGroup, Authorization, Asset, Organization, PasswordChangeLog, Setting
+from app.models import User, Group, UserGroup, Authorization, Asset, PasswordChangeLog
 from app.utils.audit import log_operation
+from app.utils.naming import resolve_target_names
+from app.utils.pagination import get_pagination_meta
 from app.utils.rate_limit import check_password_email_rate_limit
 from app.utils.smtp import load_smtp_config, build_password_email, send_smtp_message, raise_smtp_config_incomplete
 from app.schemas import (
-    UserCreate, UserUpdate, UserResponse, UserSimple, UserDetailResponse,
-    UserListResponse, PaginationMeta,
-    GroupCreate, GroupUpdate, GroupResponse, GroupSimple, GroupDetailResponse,
+    UserCreate, UserUpdate, UserResponse, UserDetailResponse,
+    UserListResponse,
+    GroupCreate, GroupUpdate, GroupResponse, GroupDetailResponse,
     GroupListResponse, PasswordResetRequest, ResponseBase
 )
 from app.api.deps import get_current_user, PermissionChecker, get_user_permissions
 from app.core.security import get_password_hash, verify_password
-from app.core.password_policy import validate_password_strength_from_settings
+from app.core.password_policy import validate_password_strength_from_settings, check_password_not_reused, record_password_history
+from app.core.settings_helper import get_setting_value
 from app.core.session import force_logout_user
 from app.core.events import publish_user_event
 from app.config import settings
@@ -44,19 +46,8 @@ async def _publish_force_logout_event(user_id: int, reason: str, message: str) -
         pass
 
 
-def _setting_plain_value(setting: Setting | None, default=None):
-    if not setting or not isinstance(setting.value, dict):
-        return default
-    return setting.value.get("value", default)
-
-
-async def _get_setting_value(db: AsyncSession, key: str, default=None):
-    result = await db.execute(select(Setting).where(Setting.key == key))
-    return _setting_plain_value(result.scalar_one_or_none(), default)
-
-
 async def generate_temporary_password(db: AsyncSession) -> str:
-    min_length = int(await _get_setting_value(db, "password_min_length", settings.PASSWORD_MIN_LENGTH) or settings.PASSWORD_MIN_LENGTH)
+    min_length = int(await get_setting_value(db, "password_min_length", settings.PASSWORD_MIN_LENGTH) or settings.PASSWORD_MIN_LENGTH)
     length = max(16, min(min_length, settings.PASSWORD_MAX_LENGTH))
     special_chars = "!_-+=*"
     required = [
@@ -113,24 +104,6 @@ async def _resolve_group_names(db: AsyncSession, group_ids: List[int]) -> dict[i
     return {row.id: row.name for row in result.all()}
 
 
-async def _resolve_authorization_target_names(db: AsyncSession, auth: Authorization) -> str:
-    if auth.target_type == "asset":
-        result = await db.execute(select(Asset.name).where(Asset.id.in_(auth.target_ids or [])))
-        names = [row[0] for row in result.all()]
-    else:
-        names = []
-        target_ids = auth.target_ids or []
-        if "__all__" in target_ids:
-            names.append("Default")
-        org_ids = [int(target_id) for target_id in target_ids if str(target_id).isdigit()]
-        if org_ids:
-            result = await db.execute(select(Organization.name).where(Organization.id.in_(org_ids)))
-            names.extend(row[0] for row in result.all())
-    if len(names) <= 3:
-        return ", ".join(names) if names else str(auth.target_ids or [])
-    return ", ".join(names[:3]) + f" 等{len(names)}个"
-
-
 async def _authorization_audit_item(db: AsyncSession, auth: Authorization) -> dict:
     return {
         "id": auth.id,
@@ -138,7 +111,7 @@ async def _authorization_audit_item(db: AsyncSession, auth: Authorization) -> di
         "entity_id": auth.entity_id,
         "target_type": auth.target_type,
         "target_ids": list(auth.target_ids or []),
-        "target_names": await _resolve_authorization_target_names(db, auth),
+        "target_names": await resolve_target_names(db, auth.target_type, auth.target_ids),
         "permissions": list(auth.permissions or []),
     }
 
@@ -169,10 +142,7 @@ async def list_users(
     if is_active is not None:
         query = query.where(User.is_active == is_active)
 
-    # Count total
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await db.execute(count_query)
-    total = total_result.scalar()
+    meta = await get_pagination_meta(db, query, page, limit)
 
     # Apply pagination
     query = query.offset((page - 1) * limit).limit(limit)
@@ -213,12 +183,7 @@ async def list_users(
 
     return UserListResponse(
         data=user_responses,
-        meta=PaginationMeta(
-            total=total,
-            page=page,
-            limit=limit,
-            pages=(total + limit - 1) // limit,
-        )
+        meta=meta,
     )
 
 
@@ -273,12 +238,13 @@ async def create_user(
             )
 
         # Create user (MFA enabled but no secret — user binds on first login)
+        initial_password_hash = get_password_hash(initial_password)
         user = User(
             username=data.username,
             email=data.email,
             full_name=data.full_name,
             phone=data.phone,
-            password_hash=get_password_hash(initial_password),
+            password_hash=initial_password_hash,
             is_active=data.is_active,
             mfa_enabled=data.mfa_enabled,
             must_change_password=True,
@@ -286,6 +252,7 @@ async def create_user(
 
         db.add(user)
         await db.flush()
+        await record_password_history(initial_password_hash, user.id, db)
 
         # Add user to groups
         if data.group_ids:
@@ -752,15 +719,19 @@ async def reset_user_password(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="新密码不能与当前密码相同"
             )
-        user.password_hash = get_password_hash(data.new_password)
+        await check_password_not_reused(data.new_password, user.id, db)
+        new_password_hash = get_password_hash(data.new_password)
+        user.password_hash = new_password_hash
         temp_password = None
     else:
         temp_password = await generate_temporary_password(db)
-        user.password_hash = get_password_hash(temp_password)
+        new_password_hash = get_password_hash(temp_password)
+        user.password_hash = new_password_hash
 
     if data.force_change:
         user.must_change_password = True
 
+    await record_password_history(new_password_hash, user.id, db)
     await db.commit()
 
     # Log as password change (not operation)
@@ -915,10 +886,7 @@ async def list_groups(
     if search:
         query = query.where(Group.name.ilike(f"%{search}%"))
 
-    # Count total
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await db.execute(count_query)
-    total = total_result.scalar()
+    meta = await get_pagination_meta(db, query, page, limit)
 
     # Apply pagination
     query = query.offset((page - 1) * limit).limit(limit)
@@ -950,12 +918,7 @@ async def list_groups(
 
     return GroupListResponse(
         data=group_responses,
-        meta=PaginationMeta(
-            total=total,
-            page=page,
-            limit=limit,
-            pages=(total + limit - 1) // limit,
-        )
+        meta=meta,
     )
 
 

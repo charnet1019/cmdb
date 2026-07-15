@@ -218,7 +218,6 @@ export function useTypeTree(assetStats: { value: AssetStats }) {
     expandedTypeIds,
     selectedTypeNodeId,
     activeCategory,
-    typeTreeStructure,
     flattenedTypeTree,
     selectedTypeNode,
 

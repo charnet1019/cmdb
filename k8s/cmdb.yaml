@@ -15,7 +15,6 @@ stringData:
   POSTGRES_PASSWORD: cmdb_password
   DATABASE_URL: postgresql+asyncpg://cmdb:cmdb_password@postgres:5432/cmdb
   REDIS_URL: redis://redis:6379/0
-  JWT_SECRET_KEY: change-this-jwt-secret-key-before-production
   ENCRYPTION_KEY: change-this-encryption-key-before-production
   CMDB_INITIAL_ADMIN_PASSWORD: ChangeMe123
 ---

@@ -2,31 +2,48 @@
 Authorization API
 Asset authorization management
 """
-from datetime import datetime, timezone
-from typing import Optional, List
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, and_
-from sqlalchemy.orm import selectinload
+from sqlalchemy import select, or_, and_
 
 from app.database import get_db
 from app.models import User, Group, Asset, Organization, Authorization
-from app.api.deps import PermissionChecker
+from app.api.deps import PermissionChecker, get_user_permissions
 from app.utils.audit import log_operation
+from app.utils.datetime_utils import format_datetime_utc
+from app.utils.naming import truncate_names, build_org_name_path, resolve_target_names
+from app.utils.pagination import get_pagination_meta
 from app.schemas import (
-    AuthorizationCreate, AuthorizationUpdate, AuthorizationResponse,
-    PaginationMeta, ResponseBase
+    AuthorizationCreate, AuthorizationUpdate,
+    ResponseBase
 )
 
 
-def format_datetime_utc(dt: datetime | None) -> str | None:
-    """Format datetime as ISO 8601 with Z suffix for UTC"""
-    if dt is None:
-        return None
-    return dt.replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z')
-
-
 router = APIRouter(prefix="/authorizations", tags=["授权管理"])
+
+VALID_ENTITY_TYPES = {"user", "group"}
+VALID_TARGET_TYPES = {"asset", "organization"}
+
+
+async def _assert_grantable_permissions(db: AsyncSession, current_user: User, requested_permissions: list) -> None:
+    """Prevent privilege escalation: a grantor can only hand out permissions they hold themselves."""
+    if current_user.is_superuser:
+        return
+    granter_permissions = set(await get_user_permissions(current_user, db))
+    excess = [p for p in requested_permissions if p not in granter_permissions]
+    if excess:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"无权授予超出自身权限范围的权限: {', '.join(excess)}",
+        )
+
+
+def _parse_org_id(target_id: str) -> int:
+    try:
+        return int(target_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail=f"组织 ID 格式错误: {target_id}")
 
 
 @router.get("")
@@ -99,10 +116,7 @@ async def list_authorizations(
 
         query = query.where(or_(*conditions))
 
-    # Count total
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await db.execute(count_query)
-    total = total_result.scalar()
+    meta = await get_pagination_meta(db, query, page, limit)
 
     # Apply pagination
     query = query.offset((page - 1) * limit).limit(limit)
@@ -140,25 +154,14 @@ async def list_authorizations(
         orgs = orgs_result.scalars().all()
         # Build id→name map for name_path computation
         id_to_name = {o.id: o.name for o in orgs}
-        def get_name_path(org: Organization) -> str:
-            path_ids = org.path.split("/") if org.path else []
-            names = []
-            for pid in path_ids:
-                try:
-                    names.append(id_to_name[int(pid)])
-                except (KeyError, ValueError):
-                    break
-            return "/".join(names) if names else org.name
-        target_names.update({str(o.id): get_name_path(o) for o in orgs})
+        target_names.update({str(o.id): build_org_name_path(o, id_to_name) for o in orgs})
 
     def format_target_names(auth: Authorization) -> str:
         if auth.target_type == "asset":
             names = [target_names.get(tid, f"Asset {tid}") for tid in auth.target_ids]
         else:
             names = [target_names.get(tid, "Default" if tid == "__all__" else f"Org {tid}") for tid in auth.target_ids]
-        if len(names) <= 3:
-            return ", ".join(names)
-        return ", ".join(names[:3]) + f" 等{len(names)}个"
+        return truncate_names(names)
 
     return {
         "code": 0,
@@ -181,12 +184,7 @@ async def list_authorizations(
             }
             for auth in auths
         ],
-        "meta": PaginationMeta(
-            total=total,
-            page=page,
-            limit=limit,
-            pages=(total + limit - 1) // limit,
-        )
+        "meta": meta,
     }
 
 
@@ -201,26 +199,6 @@ async def _resolve_entity_name(db: AsyncSession, entity_type: str, entity_id: in
         group = group.scalar_one_or_none()
         return group.name if group else str(entity_id)
 
-async def _resolve_target_names(db: AsyncSession, target_type: str, target_ids: list[str]) -> str:
-    """Resolve target names for audit logging"""
-    if target_type == "asset":
-        assets = await db.execute(select(Asset).where(Asset.id.in_(target_ids)))
-        assets = assets.scalars().all()
-        names = [a.name for a in assets]
-        if len(names) <= 3:
-            return ", ".join(names)
-        return ", ".join(names[:3]) + f" 等{len(names)}个"
-    else:
-        org_ids = [int(tid) for tid in target_ids if tid != "__all__" and tid.isdigit()]
-        names = []
-        if "__all__" in target_ids:
-            names.append("Default")
-        if org_ids:
-            orgs = await db.execute(select(Organization).where(Organization.id.in_(org_ids)))
-            orgs = orgs.scalars().all()
-            names.extend([o.name for o in orgs])
-        return ", ".join(names) if names else str(target_ids)
-
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_authorization(
     data: AuthorizationCreate,
@@ -230,6 +208,15 @@ async def create_authorization(
 ):
     """Create a new authorization (authorize permission required)"""
     ip = request.client.host if request and request.client else None
+
+    if data.entity_type not in VALID_ENTITY_TYPES:
+        raise HTTPException(status_code=400, detail=f"无效的授权对象类型: {data.entity_type}")
+    if data.target_type not in VALID_TARGET_TYPES:
+        raise HTTPException(status_code=400, detail=f"无效的授权目标类型: {data.target_type}")
+
+    # A grantor can never hand out permissions beyond what they hold themselves.
+    await _assert_grantable_permissions(db, current_user, data.permissions)
+
     # Validate entity exists
     if data.entity_type == "user":
         entity_result = await db.execute(select(User).where(User.id == data.entity_id))
@@ -250,17 +237,20 @@ async def create_authorization(
         for target_id in data.target_ids:
             if target_id == "__all__":
                 continue  # Root org sentinel — valid
-            target_result = await db.execute(select(Organization).where(Organization.id == int(target_id)))
+            target_result = await db.execute(select(Organization).where(Organization.id == _parse_org_id(target_id)))
             if not target_result.scalar_one_or_none():
                 raise HTTPException(status_code=400, detail=f"组织 {target_id} 不存在")
 
-    # Check for existing authorization with same entity + target_type + identical target_ids set
+    # Check for an existing ACTIVE authorization with the same entity + target + permission set.
+    # Inactive rows (soft-disabled) or rows granting a different permission set are not duplicates.
     existing_result = await db.execute(
         select(Authorization).where(
             Authorization.entity_type == data.entity_type,
             Authorization.entity_id == data.entity_id,
             Authorization.target_type == data.target_type,
             Authorization.target_ids == data.target_ids,
+            Authorization.permissions == data.permissions,
+            Authorization.is_active == True,
         )
     )
     if existing_result.scalar_one_or_none():
@@ -283,7 +273,7 @@ async def create_authorization(
 
     # Resolve names for audit log
     entity_name = await _resolve_entity_name(db, data.entity_type, data.entity_id)
-    target_names = await _resolve_target_names(db, data.target_type, data.target_ids)
+    target_names = await resolve_target_names(db, data.target_type, data.target_ids)
 
     await log_operation(
         db, current_user.id, "create", "authorization", auth.id,
@@ -330,10 +320,14 @@ async def update_authorization(
     if not auth:
         raise HTTPException(status_code=404, detail="授权不存在")
 
+    if data.permissions is not None:
+        # A grantor can never hand out permissions beyond what they hold themselves.
+        await _assert_grantable_permissions(db, current_user, data.permissions)
+
     changes = {}
     entity_name = await _resolve_entity_name(db, auth.entity_type, auth.entity_id)
     before_target_ids = list(auth.target_ids or [])
-    before_target_names = await _resolve_target_names(db, auth.target_type, before_target_ids)
+    before_target_names = await resolve_target_names(db, auth.target_type, before_target_ids)
     before_permissions = list(auth.permissions or [])
     before_valid_from = auth.valid_from.isoformat() if auth.valid_from else None
     before_valid_until = auth.valid_until.isoformat() if auth.valid_until else None
@@ -361,7 +355,7 @@ async def update_authorization(
             for target_id in data.target_ids:
                 if target_id == "__all__":
                     continue
-                target_result = await db.execute(select(Organization).where(Organization.id == int(target_id)))
+                target_result = await db.execute(select(Organization).where(Organization.id == _parse_org_id(target_id)))
                 if not target_result.scalar_one_or_none():
                     raise HTTPException(status_code=400, detail=f"组织 {target_id} 不存在")
         record_change("target_ids", before_target_ids, data.target_ids)
@@ -384,7 +378,7 @@ async def update_authorization(
 
     if changes:
         after_target_ids = list(auth.target_ids or [])
-        after_target_names = await _resolve_target_names(db, auth.target_type, after_target_ids)
+        after_target_names = await resolve_target_names(db, auth.target_type, after_target_ids)
         await log_operation(
             db, current_user.id, "update", "authorization", auth.id,
             details={
@@ -442,7 +436,7 @@ async def delete_authorization(
         raise HTTPException(status_code=404, detail="授权不存在")
 
     entity_name = await _resolve_entity_name(db, auth.entity_type, auth.entity_id)
-    target_names = await _resolve_target_names(db, auth.target_type, auth.target_ids)
+    target_names = await resolve_target_names(db, auth.target_type, auth.target_ids)
     target_ids = list(auth.target_ids or [])
     permissions = list(auth.permissions or [])
 
@@ -528,21 +522,11 @@ async def list_organizations_for_auth(
     # Build id→name map from ID path (e.g. "7/12/13" → "Default/开发部/数据库")
     id_to_name = {o.id: o.name for o in orgs}
 
-    def get_name_path(org: Organization) -> str:
-        path_ids = org.path.split("/") if org.path else []
-        names = []
-        for pid in path_ids:
-            try:
-                names.append(id_to_name[int(pid)])
-            except (KeyError, ValueError):
-                break
-        return "/".join(names) if names else org.name
-
     return {
         "code": 0,
         "data": [
             {"id": None, "name": "Default", "path": None, "name_path": "Default"},
         ] + [
-            {"id": o.id, "name": o.name, "path": o.path, "name_path": "Default/" + get_name_path(o)} for o in orgs
+            {"id": o.id, "name": o.name, "path": o.path, "name_path": "Default/" + build_org_name_path(o, id_to_name)} for o in orgs
         ]
     }

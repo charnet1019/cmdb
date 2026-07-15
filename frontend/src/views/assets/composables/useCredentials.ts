@@ -3,10 +3,9 @@
  * Handles credential CRUD, decryption, and clipboard operations
  */
 import { ref, nextTick } from 'vue'
-import { message, Modal } from 'ant-design-vue'
+import { message } from 'ant-design-vue'
 import {
   decryptCredential,
-  deleteCredential,
   decryptOobPassword
 } from '@/api/assets'
 
@@ -142,15 +141,6 @@ export function useCredentials() {
     }
   }
 
-  // Toggle new password visibility
-  function toggleNewPasswordVisibility(index: number) {
-    if (visibleNewPasswords.value.has(index)) {
-      visibleNewPasswords.value.delete(index)
-    } else {
-      visibleNewPasswords.value.add(index)
-    }
-  }
-
   // Add credential to form
   function addCredentialToForm() {
     if (!newCredentialForm.value.username || !newCredentialForm.value.password) {
@@ -192,27 +182,6 @@ export function useCredentials() {
     return editingCredentialField.value?.index === index && editingCredentialField.value?.field === field
   }
 
-  // Delete credential
-  async function handleDeleteCredential(credential: { id: number; username?: string }, callback?: () => void) {
-    Modal.confirm({
-      title: '确认删除',
-      content: `确定要删除凭证 "${credential.username || '此凭证'}" 吗？删除后无法恢复。`,
-      okText: '删除',
-      okType: 'danger',
-      cancelText: '取消',
-      centered: true,
-      async onOk() {
-        try {
-          await deleteCredential(credential.id)
-          message.success('凭证已删除')
-          callback?.()
-        } catch (error) {
-          message.error('删除失败')
-        }
-      }
-    })
-  }
-
   // Reset form
   function resetFormCredentials() {
     formCredentials.value = []
@@ -227,25 +196,21 @@ export function useCredentials() {
     decryptedFormPasswords,
     visibleNewPasswords,
     formCredentials,
-    editingCredentialField,
     credentialInputRefs,
     newCredentialForm,
 
     // Actions
-    copyToClipboard,
     copyUsername,
     copyPassword,
     copyOobPassword,
     formatPasswordDecryptError,
     viewPassword,
     viewFormCredentialPassword,
-    toggleNewPasswordVisibility,
     addCredentialToForm,
     removeCredentialFromForm,
     startFieldEdit,
     stopFieldEdit,
     isFieldEditing,
-    handleDeleteCredential,
     resetFormCredentials
   }
 }

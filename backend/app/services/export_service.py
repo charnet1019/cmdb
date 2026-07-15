@@ -4,10 +4,11 @@ Handles Excel and CSV export functionality
 """
 from io import BytesIO, StringIO
 import csv
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Tuple
 from datetime import datetime, timedelta, timezone
 from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from app.models import AssetStatus
+from app.core.asset_categories import ASSET_CATEGORY_LABELS
 
 # Column definitions for export by asset category
 CATEGORY_COLUMNS: Dict[str, List[tuple]] = {
@@ -164,52 +165,18 @@ DEFAULT_COLUMNS = [
 UTC8 = timezone(timedelta(hours=8))
 UTC8_FMT = "%Y-%m-%d %H:%M:%S"
 
-CATEGORY_LABELS = {
-    "host": "主机",
-    "network": "网络设备",
-    "database": "数据库",
-    "cloud": "云服务",
-    "web": "Web 应用",
-    "gpt": "GPT 服务",
-}
 
 # Module-level status label mapping — reused across all exports
-STATUS_LABELS: Dict[str, str] = {}
-
-def _init_status_labels():
-    """Lazy-init status labels to avoid importing models at module level."""
-    if not STATUS_LABELS:
-        from app.models import AssetStatus
-        STATUS_LABELS.update({
-            AssetStatus.INVENTORY: "库存",
-            AssetStatus.DEPLOYING: "部署中",
-            AssetStatus.RUNNING: "运行中",
-            AssetStatus.MAINTENANCE: "维护中",
-            AssetStatus.DEACTIVATED: "停用",
-            AssetStatus.PENDING_SCRAP: "待报废",
-            AssetStatus.SCRAPPED: "已报废",
-            AssetStatus.RETURNED: "已退还",
-        })
-
-_init_status_labels()
-
-# Shared openpyxl styles — created once, reused
-_HEADER_FILL = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-_HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
-_HEADER_ALIGN = Alignment(horizontal="center", vertical="center")
-_HEADER_BORDER = Border(
-    left=Side(style='thin', color='B4C6E7'),
-    right=Side(style='thin', color='B4C6E7'),
-    top=Side(style='thin', color='B4C6E7'),
-    bottom=Side(style='thin', color='B4C6E7'),
-)
-_CELL_BORDER = Border(
-    left=Side(style='thin', color='E7E6E6'),
-    right=Side(style='thin', color='E7E6E6'),
-    top=Side(style='thin', color='E7E6E6'),
-    bottom=Side(style='thin', color='E7E6E6'),
-)
-_CELL_ALIGN = Alignment(horizontal="left", vertical="center", wrap_text=True)
+STATUS_LABELS: Dict[str, str] = {
+    AssetStatus.INVENTORY: "库存",
+    AssetStatus.DEPLOYING: "部署中",
+    AssetStatus.RUNNING: "运行中",
+    AssetStatus.MAINTENANCE: "维护中",
+    AssetStatus.DEACTIVATED: "停用",
+    AssetStatus.PENDING_SCRAP: "待报废",
+    AssetStatus.SCRAPPED: "已报废",
+    AssetStatus.RETURNED: "已退还",
+}
 
 # Column width defaults
 COLUMN_WIDTHS = {
@@ -249,7 +216,7 @@ def format_field_value(field: str, asset: Dict[str, Any]) -> Any:
     value = asset.get(field)
 
     if field == "category" and value:
-        return CATEGORY_LABELS.get(value, value)
+        return ASSET_CATEGORY_LABELS.get(value, value)
     if field == "status":
         return STATUS_LABELS.get(value, value) if value else ""
     if field == "vendor" and value is None:
@@ -287,50 +254,6 @@ def format_field_value(field: str, asset: Dict[str, Any]) -> Any:
     if field == "extra_data":
         return ""
     return value
-
-
-def _write_excel_data(ws, data: List[Dict[str, Any]], export_columns: List[tuple]):
-    """Write data rows to an Excel worksheet with formatting."""
-    for row_idx, asset in enumerate(data, 2):
-        for col_idx, (field, _) in enumerate(export_columns, 1):
-            value = format_field_value(field, asset)
-            if field == "extra_data":
-                continue
-            cell = ws.cell(row=row_idx, column=col_idx, value=value if value else "")
-            cell.border = _CELL_BORDER
-            cell.alignment = _CELL_ALIGN
-
-
-def export_assets_to_excel(data: List[Dict[str, Any]], category: Optional[str] = None) -> BytesIO:
-    """Export assets to Excel format."""
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "资产导出"
-
-    export_columns = CATEGORY_COLUMNS.get(category, DEFAULT_COLUMNS) if category else DEFAULT_COLUMNS
-
-    # Write headers
-    for col, (field, label) in enumerate(export_columns, 1):
-        cell = ws.cell(row=1, column=col, value=label)
-        cell.fill = _HEADER_FILL
-        cell.font = _HEADER_FONT
-        cell.alignment = _HEADER_ALIGN
-        cell.border = _HEADER_BORDER
-
-    # Write data
-    _write_excel_data(ws, data, export_columns)
-
-    # Column widths
-    for col_idx, (field, _) in enumerate(export_columns, 1):
-        col_letter = ws.cell(row=1, column=col_idx).column_letter
-        ws.column_dimensions[col_letter].width = COLUMN_WIDTHS.get(field, 15)
-
-    ws.row_dimensions[1].height = 25
-
-    buffer = BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
-    return buffer
 
 
 async def _export_excel_stream(
@@ -408,26 +331,3 @@ async def _export_csv_stream(
     return BytesIO(content), count
 
 
-def export_assets_to_csv(data: List[Dict[str, Any]], category: Optional[str] = None) -> BytesIO:
-    """Export assets to CSV format with UTF-8 BOM."""
-    export_columns = CATEGORY_COLUMNS.get(category, DEFAULT_COLUMNS) if category else DEFAULT_COLUMNS
-
-    string_buffer = StringIO()
-    writer = csv.writer(string_buffer, lineterminator='\n')
-
-    # Header
-    writer.writerow([label for _, label in export_columns])
-
-    # Data rows
-    for asset in data:
-        row = []
-        for field, _ in export_columns:
-            value = format_field_value(field, asset)
-            row.append(value if value else "")
-        writer.writerow(row)
-
-    csv_content = string_buffer.getvalue()
-    string_buffer.close()
-
-    content = b'\xef\xbb\xbf' + csv_content.encode('utf-8')
-    return BytesIO(content)

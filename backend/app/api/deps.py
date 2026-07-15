@@ -19,7 +19,7 @@ AUTH_COOKIE_NAME = "cmdb_access_token"
 SESSION_EXPIRES_HEADER = "X-CMDB-Session-Expires-At"
 
 
-def _set_auth_cookie(response: Response | None, request: Request, session_id: str, ttl_seconds: int) -> None:
+def set_auth_cookie(response: Response | None, request: Request, session_id: str, ttl_seconds: int) -> None:
     if response is None:
         return
     response.set_cookie(
@@ -33,6 +33,10 @@ def _set_auth_cookie(response: Response | None, request: Request, session_id: st
     )
 
 
+def clear_auth_cookie(response: Response) -> None:
+    response.delete_cookie(key=AUTH_COOKIE_NAME, path="/")
+
+
 def _refresh_response_session(response: Response | None, request: Request, session_id: str, session_payload: dict) -> None:
     if response is None:
         return
@@ -41,7 +45,7 @@ def _refresh_response_session(response: Response | None, request: Request, sessi
     except (TypeError, ValueError):
         ttl_seconds = 0
     if ttl_seconds > 0:
-        _set_auth_cookie(response, request, session_id, ttl_seconds)
+        set_auth_cookie(response, request, session_id, ttl_seconds)
     expires_at = session_payload.get("expires_at")
     if expires_at:
         response.headers[SESSION_EXPIRES_HEADER] = str(expires_at)

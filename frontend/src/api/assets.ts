@@ -31,12 +31,6 @@ export async function getAssets(params: {
   return getPaginated<Asset>('/assets', params)
 }
 
-export async function getAsset(id: string): Promise<Asset> {
-  const response = await api.get(`/assets/${id}`)
-  // Backend returns AssetResponse directly
-  return response.data
-}
-
 export async function createAsset(data: Partial<Asset>): Promise<Asset> {
   const response = await api.post('/assets', data)
   // Backend returns AssetResponse directly, not wrapped in { data: ... }
@@ -172,13 +166,6 @@ export async function deleteOrganization(orgId: number): Promise<void> {
 }
 
 // Credential APIs
-export async function getCredentials(assetId?: string): Promise<Credential[]> {
-  const response = await api.get('/credentials', {
-    params: { asset_id: assetId }
-  })
-  return response.data.data
-}
-
 export async function createCredential(assetId: string, data: {
   username: string
   password: string

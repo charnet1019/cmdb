@@ -1,31 +1,19 @@
 """Redis-backed per-second rate limiter for sensitive operations."""
 import time
 from fastapi import HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis_client import get_redis
-from app.models import Setting
+from app.core.settings_helper import get_int_setting
 
 CREDENTIAL_DECRYPT_RATE_LIMIT_SETTING_KEY = "decrypt_rate_limit"
 CREDENTIAL_DECRYPT_RATE_LIMIT_DEFAULT = 3
 
 
-async def _get_limit_per_second(db: AsyncSession, setting_key: str, default: int) -> int:
-    result = await db.execute(select(Setting).where(Setting.key == setting_key))
-    setting = result.scalar_one_or_none()
-    if not setting or not isinstance(setting.value, dict):
-        return default
-    try:
-        return int(setting.value.get("value", default))
-    except (TypeError, ValueError):
-        return default
-
-
 async def check_credential_decrypt_rate_limit(db: AsyncSession, user_id: int) -> None:
     """Raise 429 if user_id exceeds the configured credential-decrypt rate (default 3/秒)."""
-    limit = await _get_limit_per_second(
-        db, CREDENTIAL_DECRYPT_RATE_LIMIT_SETTING_KEY, CREDENTIAL_DECRYPT_RATE_LIMIT_DEFAULT
+    limit = await get_int_setting(
+        db, CREDENTIAL_DECRYPT_RATE_LIMIT_SETTING_KEY, CREDENTIAL_DECRYPT_RATE_LIMIT_DEFAULT, 0, 100
     )
     if limit <= 0:
         return
@@ -77,4 +65,42 @@ async def check_smtp_test_email_rate_limit(actor_user_id: int) -> None:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="测试邮件发送过于频繁，请稍后再试",
+        )
+
+
+MFA_VERIFY_RATE_LIMIT_WINDOW_SECONDS = 600  # matches login challenge TTL
+MFA_VERIFY_RATE_LIMIT_MAX_ATTEMPTS = 5
+
+
+async def check_mfa_verify_rate_limit(challenge_token: str) -> None:
+    """Raise 429 if a given login challenge has already seen too many TOTP
+    verification attempts (prevents brute-forcing a 6-digit code)."""
+    redis_client = get_redis()
+    key = f"ratelimit:mfa_verify:{challenge_token}"
+    count = await redis_client.incr(key)
+    if count == 1:
+        await redis_client.expire(key, MFA_VERIFY_RATE_LIMIT_WINDOW_SECONDS)
+    if count > MFA_VERIFY_RATE_LIMIT_MAX_ATTEMPTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="验证码错误次数过多，请重新登录",
+        )
+
+
+SECURITY_NOTIFICATION_EMAIL_RATE_LIMIT_WINDOW_SECONDS = 600  # 10 minutes
+SECURITY_NOTIFICATION_EMAIL_RATE_LIMIT_MAX_SENDS = 3
+
+
+async def check_security_notification_email_rate_limit(recipient_user_id: int) -> None:
+    """Raise 429 if the recipient already received too many security
+    notification emails recently (MFA reset/disable, etc.)."""
+    redis_client = get_redis()
+    key = f"ratelimit:security_notification_email:{recipient_user_id}"
+    count = await redis_client.incr(key)
+    if count == 1:
+        await redis_client.expire(key, SECURITY_NOTIFICATION_EMAIL_RATE_LIMIT_WINDOW_SECONDS)
+    if count > SECURITY_NOTIFICATION_EMAIL_RATE_LIMIT_MAX_SENDS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="该用户近期收到的安全通知邮件过多，请稍后再试",
         )

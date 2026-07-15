@@ -6,22 +6,12 @@ from datetime import datetime, timezone
 from typing import Optional, List
 from uuid import uuid4
 from sqlalchemy import (
-    String, Text, Boolean, Integer, DateTime, ForeignKey, Index, Enum as SQLEnum, UniqueConstraint
+    String, Text, Boolean, Integer, DateTime, ForeignKey, Index, UniqueConstraint
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 import enum
 from app.database import Base
-
-
-class AssetCategory(str, enum.Enum):
-    """Asset category enumeration"""
-    HOST = "host"
-    NETWORK = "network"
-    DATABASE = "database"
-    CLOUD = "cloud"
-    WEB = "web"
-    GPT = "gpt"
 
 
 class AssetStatus(str, enum.Enum):
@@ -34,20 +24,6 @@ class AssetStatus(str, enum.Enum):
     PENDING_SCRAP = "pending_scrap"   # 待报废
     SCRAPPED = "scrapped"             # 已报废
     RETURNED = "returned"             # 已退还
-
-
-class PermissionType(str, enum.Enum):
-    """Permission type enumeration"""
-    VIEW = "view"                    # 查看资产
-    MANAGE = "manage"                # 管理资产
-    VIEW_USERS = "view_users"        # 查看用户
-    USER_MGMT = "user_mgmt"          # 用户管理
-    SYS_CONFIG = "sys_config"        # 系统设置
-    AUDIT_LOG = "audit_log"          # 日志审计
-    VIEW_PWD = "view_pwd"            # 查看密码
-    EXPORT = "export"                # 导出资产
-    EXPORT_PWD = "export_pwd"        # 导出密码
-    AUTHORIZE = "authorize"          # 资产授权
 
 
 class User(Base):
@@ -63,7 +39,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    mfa_secret: Mapped[Optional[str]] = mapped_column(String(100))
+    mfa_secret: Mapped[Optional[str]] = mapped_column(String(255))  # Fernet-encrypted; ~140 chars
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
     avatar_url: Mapped[Optional[str]] = mapped_column(String(500))
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
@@ -184,7 +160,7 @@ class Asset(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, index=True, default=lambda: str(uuid4()))
     name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     asset_code: Mapped[Optional[str]] = mapped_column(String(50), unique=True)  # CI编号
-    category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # AssetCategory
+    category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # host/network/database/cloud/web/gpt
     created_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)  # 创建者 ID
     internal_address: Mapped[Optional[str]] = mapped_column(Text)  # 内网地址(多行)
     external_address: Mapped[Optional[str]] = mapped_column(Text)  # 外网地址(多行)
@@ -439,6 +415,20 @@ class PasswordChangeLog(Base):
     __table_args__ = (
         Index("idx_password_change_logs_user_id", "user_id"),
         Index("idx_password_change_logs_changed_by", "changed_by"),
+    )
+
+
+class PasswordHistory(Base):
+    """Previously used password hashes, for reuse-prevention checks"""
+    __tablename__ = "password_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+    __table_args__ = (
+        Index("idx_password_history_user_id", "user_id"),
     )
 
 

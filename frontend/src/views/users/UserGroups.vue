@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { message, Modal } from 'ant-design-vue'
+import { message } from 'ant-design-vue'
 import { UsergroupAddOutlined, SearchOutlined, SafetyCertificateOutlined, GroupOutlined, EditOutlined, DeleteOutlined, CloseOutlined, UserAddOutlined, UserDeleteOutlined } from '@ant-design/icons-vue'
 import { formatDate } from '@/utils/datetime'
+import { PERMISSION_LABELS } from '@/utils/permissions'
+import { confirmAction } from '@/utils/confirmAction'
 import { createGroup, deleteGroup, updateGroup, getGroupAuthorizations, getGroupMembers, addGroupMembers, removeGroupMember, getUsers } from '@/api/users'
 import { useUsersStore } from '@/stores/users'
 import { useAuthStore } from '@/stores/auth'
@@ -69,17 +71,7 @@ const categoryLabels: Record<string, string> = {
 }
 
 // Permission labels
-const permissionLabels: Record<string, string> = {
-  view: '查看资产',
-  manage: '管理资产',
-  view_users: '查看用户',
-  user_mgmt: '用户管理',
-  sys_config: '系统设置',
-  audit_log: '日志审计',
-  view_pwd: '查看密码',
-  export: '导出资产',
-  export_pwd: '导出密码'
-}
+const permissionLabels = PERMISSION_LABELS
 
 // Fetch groups
 async function fetchGroups() {
@@ -204,20 +196,15 @@ async function handleEditSubmit() {
 
 // Delete group
 async function handleDelete(group: Group) {
-  Modal.confirm({
+  confirmAction({
     title: '删除用户组',
     content: `确定要删除用户组 "${group.name}" 吗？如果该用户组有成员，需要先移除所有成员才能删除。`,
     okText: '删除',
-    okType: 'danger',
-    cancelText: '取消',
+    successMessage: '用户组已删除',
+    errorMessage: '删除失败',
     onOk: async () => {
-      try {
-        await deleteGroup(group.id)
-        message.success('用户组已删除')
-        fetchGroups()
-      } catch (e: any) {
-        message.error(e.response?.data?.detail || '删除失败')
-      }
+      await deleteGroup(group.id)
+      fetchGroups()
     },
   })
 }
@@ -275,21 +262,16 @@ async function handleAddMembers() {
 
 // Remove member
 async function handleRemoveMember(member: GroupMember) {
-  Modal.confirm({
+  confirmAction({
     title: '移除成员',
     content: `确定要将 "${member.username}" 从用户组移除吗？`,
     okText: '移除',
-    okType: 'danger',
-    cancelText: '取消',
+    successMessage: '成员已移除',
+    errorMessage: '移除失败',
     onOk: async () => {
-      try {
-        await removeGroupMember(selectedGroup.value!.id, member.id)
-        message.success('成员已移除')
-        groupMembers.value = groupMembers.value.filter(m => m.id !== member.id)
-        fetchGroups()
-      } catch {
-        message.error('移除失败')
-      }
+      await removeGroupMember(selectedGroup.value!.id, member.id)
+      groupMembers.value = groupMembers.value.filter(m => m.id !== member.id)
+      fetchGroups()
     },
   })
 }

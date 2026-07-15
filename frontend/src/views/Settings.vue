@@ -3,8 +3,9 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { SettingOutlined, SafetyCertificateOutlined, LoadingOutlined, SaveOutlined, InfoCircleOutlined, PictureOutlined, DatabaseOutlined, MailOutlined, SendOutlined } from '@ant-design/icons-vue'
-import { getSettings, updateSettings, uploadImage, deleteImage, sendTestEmail } from '@/api/settings'
+import { getSettings, updateSettings, sendTestEmail } from '@/api/settings'
 import { useAuthStore } from '@/stores/auth'
+import { useImageUploadField } from '@/composables/useImageUploadField'
 
 // Loading states
 const loading = ref(false)
@@ -30,6 +31,7 @@ const form = ref({
   password_require_lowercase: true,
   password_require_digit: true,
   password_require_special: false,
+  password_history_count: 3,
   // 登录设置
   max_login_attempts: 5,
   lockout_duration: 30,
@@ -51,46 +53,21 @@ const form = ref({
   smtp_from_name: 'CMDB',
 })
 
-// Upload states
-const logoUploading = ref(false)
-const bgUploading = ref(false)
-
 // Test email state
 const testEmailRecipient = ref('')
 const testEmailSending = ref(false)
 
-// File input refs for resetting after upload/clear
-const logoInput = ref<HTMLInputElement | null>(null)
-const bgInput = ref<HTMLInputElement | null>(null)
-const originalLogoImage = ref<string | null>(null)
-const originalBackgroundImage = ref<string | null>(null)
-const pendingImageDeletes = new Set<string>()
-
-function resetFileInput(inputRef: typeof logoInput) {
-  if (inputRef.value) inputRef.value.value = ''
-}
-
-function uploadedFilename(url: string | null): string | null {
-  if (!url || !url.startsWith('/uploads/')) return null
-  return url.split('/').pop() || null
-}
-
-async function deleteUploadedImage(url: string | null) {
-  const filename = uploadedFilename(url)
-  if (!filename) return
-  try { await deleteImage(filename) } catch {}
-}
-
-function queueSavedImageDelete(url: string | null) {
-  const filename = uploadedFilename(url)
-  if (filename) pendingImageDeletes.add(filename)
-}
-
-async function flushPendingImageDeletes() {
-  const filenames = Array.from(pendingImageDeletes)
-  pendingImageDeletes.clear()
-  await Promise.all(filenames.map(filename => deleteImage(filename).catch(() => {})))
-}
+// Logo / background image upload fields
+const logoImage = computed({
+  get: () => form.value.logo_image,
+  set: (v) => { form.value.logo_image = v },
+})
+const backgroundImage = computed({
+  get: () => form.value.login_background_image,
+  set: (v) => { form.value.login_background_image = v },
+})
+const logo = useImageUploadField(logoImage, 'Logo 已上传，请保存设置后生效')
+const background = useImageUploadField(backgroundImage, '背景图片已上传，请保存设置后生效')
 
 // Text entity normalization for settings saved as plain text
 function decodeTextEntities(value: string): string {
@@ -148,15 +125,15 @@ async function fetchSettings() {
     if (response.data.password_require_lowercase !== undefined) form.value.password_require_lowercase = response.data.password_require_lowercase
     if (response.data.password_require_digit !== undefined) form.value.password_require_digit = response.data.password_require_digit
     if (response.data.password_require_special !== undefined) form.value.password_require_special = response.data.password_require_special
+    if (response.data.password_history_count !== undefined) form.value.password_history_count = response.data.password_history_count
     if (response.data.max_login_attempts !== undefined) form.value.max_login_attempts = response.data.max_login_attempts
     if (response.data.lockout_duration !== undefined) form.value.lockout_duration = response.data.lockout_duration
     if (response.data.decrypt_rate_limit !== undefined) form.value.decrypt_rate_limit = response.data.decrypt_rate_limit
     if (response.data.login_subtitle !== undefined) form.value.login_subtitle = response.data.login_subtitle
     if (response.data.logo_image !== undefined) form.value.logo_image = response.data.logo_image
     if (response.data.login_background_image !== undefined) form.value.login_background_image = response.data.login_background_image
-    originalLogoImage.value = form.value.logo_image
-    originalBackgroundImage.value = form.value.login_background_image
-    pendingImageDeletes.clear()
+    logo.markSaved()
+    background.markSaved()
     if (response.data.login_log_retention !== undefined) form.value.login_log_retention = response.data.login_log_retention
     if (response.data.operation_log_retention !== undefined) form.value.operation_log_retention = response.data.operation_log_retention
     if (response.data.password_log_retention !== undefined) form.value.password_log_retention = response.data.password_log_retention
@@ -191,6 +168,7 @@ async function saveSettings() {
       data.password_require_lowercase = form.value.password_require_lowercase
       data.password_require_digit = form.value.password_require_digit
       data.password_require_special = form.value.password_require_special
+      data.password_history_count = form.value.password_history_count
       data.max_login_attempts = form.value.max_login_attempts
       data.lockout_duration = form.value.lockout_duration
       data.session_timeout = form.value.session_timeout
@@ -219,9 +197,9 @@ async function saveSettings() {
       authStore.updateSessionExpiresAt(result.session_expires_at)
     }
     if (activeTab.value === 'branding') {
-      await flushPendingImageDeletes()
-      originalLogoImage.value = form.value.logo_image
-      originalBackgroundImage.value = form.value.login_background_image
+      await Promise.all([logo.flushPendingDeletes(), background.flushPendingDeletes()])
+      logo.markSaved()
+      background.markSaved()
     }
     message.success('设置已保存')
     window.dispatchEvent(new CustomEvent('settings:updated', { detail: data }))
@@ -270,27 +248,20 @@ function resetToDefaults() {
     form.value.password_require_lowercase = true
     form.value.password_require_digit = true
     form.value.password_require_special = false
+    form.value.password_history_count = 3
     form.value.max_login_attempts = 5
     form.value.lockout_duration = 30
     form.value.session_timeout = 30
     form.value.decrypt_rate_limit = 3
     form.value.otp_issuer_name = "CMDB"
   } else if (activeTab.value === "branding") {
-    const previousLogo = form.value.logo_image
-    const previousBackground = form.value.login_background_image
-    if (previousLogo === originalLogoImage.value) queueSavedImageDelete(previousLogo)
-    else void deleteUploadedImage(previousLogo)
-    if (previousBackground === originalBackgroundImage.value) queueSavedImageDelete(previousBackground)
-    else void deleteUploadedImage(previousBackground)
+    void logo.clear()
+    void background.clear()
     form.value.site_title = "CMDB"
     form.value.login_subtitle = "企业资产配置管理平台"
     form.value.copyright_text = ""
     form.value.beian_number = ""
     form.value.beian_url = ""
-    form.value.logo_image = null
-    form.value.login_background_image = null
-    resetFileInput(logoInput)
-    resetFileInput(bgInput)
   } else if (activeTab.value === "email") {
     form.value.smtp_host = ""
     form.value.smtp_port = 465
@@ -300,64 +271,6 @@ function resetToDefaults() {
     form.value.smtp_from_email = ""
     form.value.smtp_from_name = "CMDB"
   }
-}
-
-// Upload logo
-async function handleLogoUpload(file: File) {
-  logoUploading.value = true
-  try {
-    const previous = form.value.logo_image
-    const result = await uploadImage(file)
-    form.value.logo_image = result.url
-    if (previous && previous !== result.url) {
-      if (previous === originalLogoImage.value) queueSavedImageDelete(previous)
-      else await deleteUploadedImage(previous)
-    }
-    message.success('Logo 已上传，请保存设置后生效')
-  } catch (error: any) {
-    message.error(error.response?.data?.detail || '上传失败')
-  } finally {
-    logoUploading.value = false
-    resetFileInput(logoInput)
-  }
-}
-
-// Upload background image
-async function handleBgUpload(file: File) {
-  bgUploading.value = true
-  try {
-    const previous = form.value.login_background_image
-    const result = await uploadImage(file)
-    form.value.login_background_image = result.url
-    if (previous && previous !== result.url) {
-      if (previous === originalBackgroundImage.value) queueSavedImageDelete(previous)
-      else await deleteUploadedImage(previous)
-    }
-    message.success('背景图片已上传，请保存设置后生效')
-  } catch (error: any) {
-    message.error(error.response?.data?.detail || '上传失败')
-  } finally {
-    bgUploading.value = false
-    resetFileInput(bgInput)
-  }
-}
-
-// Clear logo
-async function clearLogo() {
-  const previous = form.value.logo_image
-  if (previous === originalLogoImage.value) queueSavedImageDelete(previous)
-  else await deleteUploadedImage(previous)
-  form.value.logo_image = null
-  resetFileInput(logoInput)
-}
-
-// Clear background
-async function clearBackground() {
-  const previous = form.value.login_background_image
-  if (previous === originalBackgroundImage.value) queueSavedImageDelete(previous)
-  else await deleteUploadedImage(previous)
-  form.value.login_background_image = null
-  resetFileInput(bgInput)
 }
 
 // Initial load
@@ -571,6 +484,22 @@ onMounted(() => {
                 </label>
               </div>
             </div>
+
+            <!-- Password History -->
+            <div class="mt-4">
+              <label class="block text-sm font-medium text-slate-700 mb-1">密码历史检查</label>
+              <div class="flex items-center gap-4">
+                <input
+                  v-model.number="form.password_history_count"
+                  type="number"
+                  min="0"
+                  max="20"
+                  class="input-field w-32"
+                />
+                <span class="text-slate-600">次</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-1">禁止用户将密码修改为最近使用过的 N 次密码 (0-20次，0 表示不检查)</p>
+            </div>
           </div>
 
           <!-- Login Security Section -->
@@ -749,19 +678,19 @@ onMounted(() => {
                 <label
                   class="flex items-center justify-center gap-1 px-4 py-2 border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors text-sm"
                 >
-                  <LoadingOutlined v-if="logoUploading" class="animate-spin" />
+                  <LoadingOutlined v-if="logo.uploading.value" class="animate-spin" />
                   <span v-else>选择文件</span>
                   <input
-                    ref="logoInput"
+                    :ref="(el: any) => { logo.inputRef.value = el }"
                     type="file"
                     accept="image/png,image/jpeg,image/gif,image/webp"
                     class="hidden"
-                    @change="($event: any) => $event.target.files[0] && handleLogoUpload($event.target.files[0])"
+                    @change="($event: any) => $event.target.files[0] && logo.handleUpload($event.target.files[0])"
                   />
                 </label>
                 <p v-if="form.logo_image" class="text-xs text-slate-500">
                   已选择，保存后生效
-                  <button @click="clearLogo" class="text-error hover:underline ml-1">移除</button>
+                  <button @click="logo.clear" class="text-error hover:underline ml-1">移除</button>
                 </p>
                 <p v-else class="text-xs text-slate-500">支持 PNG、JPG、GIF、WebP，最大 10MB。上传后需保存设置才会生效</p>
               </div>
@@ -787,19 +716,19 @@ onMounted(() => {
                 <label
                   class="flex items-center justify-center gap-1 px-4 py-2 border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors text-sm"
                 >
-                  <LoadingOutlined v-if="bgUploading" class="animate-spin" />
+                  <LoadingOutlined v-if="background.uploading.value" class="animate-spin" />
                   <span v-else>选择文件</span>
                   <input
-                    ref="bgInput"
+                    :ref="(el: any) => { background.inputRef.value = el }"
                     type="file"
                     accept="image/png,image/jpeg,image/gif,image/webp"
                     class="hidden"
-                    @change="($event: any) => $event.target.files[0] && handleBgUpload($event.target.files[0])"
+                    @change="($event: any) => $event.target.files[0] && background.handleUpload($event.target.files[0])"
                   />
                 </label>
                 <p v-if="form.login_background_image" class="text-xs text-slate-500">
                   已选择，保存后生效
-                  <button @click="clearBackground" class="text-error hover:underline ml-1">移除</button>
+                  <button @click="background.clear" class="text-error hover:underline ml-1">移除</button>
                 </p>
                 <p v-else class="text-xs text-slate-500">支持 PNG、JPG、GIF、WebP，最大 10MB。上传后需保存设置才会生效</p>
               </div>

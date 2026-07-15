@@ -2,8 +2,7 @@
 Dashboard API
 Statistics and overview data for dashboard page
 """
-from datetime import datetime, timezone
-from typing import List, Dict, Optional
+from typing import List, Dict
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, false
@@ -12,7 +11,7 @@ from app.database import get_db
 from app.models import User, Asset, LoginLog
 from app.api.deps import get_current_user, get_authorized_asset_ids, get_user_permissions
 from app.core.redis_client import get_redis, ONLINE_KEY_PREFIX
-from app.schemas import ResponseBase
+from app.utils.datetime_utils import format_datetime_utc
 
 
 router = APIRouter(prefix="/dashboard", tags=["仪表盘"])
@@ -132,7 +131,7 @@ async def get_dashboard_stats(
         for login_log, user in recent_logins_result.all():
             recent_logins.append({
                 "user": user.full_name if user and user.full_name else (user.username if user else login_log.username),
-                "time": login_log.created_at.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z"),
+                "time": format_datetime_utc(login_log.created_at),
                 "ip": login_log.ip_address,
                 "user_id": login_log.user_id,
                 "is_online": login_log.user_id in online_user_ids,

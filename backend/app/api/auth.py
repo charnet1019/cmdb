@@ -4,15 +4,15 @@ Login, logout, token management, MFA
 """
 from datetime import datetime, timedelta
 from typing import Optional
+import asyncio
 import json
+import logging
 import os
 import secrets
 import uuid
-from io import BytesIO
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, UploadFile, File
 from redis.exceptions import RedisError
-from PIL import Image, UnidentifiedImageError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -21,20 +21,27 @@ from app.models import User, LoginLog, Setting
 from app.schemas import (
     LoginRequest, LoginResponse, TokenResponse, UserSimple, CurrentUserResponse,
     PasswordChangeRequest, ForcePasswordChangeRequest, ResponseBase,
-    MFARequiredResponse, MFARequiredData, MFAVerifyRequest, MFASetupQRData,
+    MFARequiredResponse, MFARequiredData, MFAVerifyRequest, MFASetupQRData, MFASetupQRRequest,
     MustChangePasswordResponse, MustChangePasswordData,
 )
 from app.core.security import (
-    verify_password, get_password_hash,
+    verify_password, get_password_hash, get_dummy_password_hash,
     generate_totp_secret, verify_totp, generate_totp_qr
 )
 from app.core.redis_client import get_redis
 from app.core.session import create_user_session, delete_user_session, refresh_user_session, extend_user_session, set_user_session_timeout
-from app.core.password_policy import validate_password_strength_from_settings
-from app.api.deps import AUTH_COOKIE_NAME, get_current_user, get_user_permissions, PermissionChecker
+from app.core.password_policy import validate_password_strength_from_settings, check_password_not_reused, record_password_history
+from app.core.encryption import encrypt_value, decrypt_value
+from app.core.settings_helper import get_int_setting
+from app.api.deps import get_current_user, get_user_permissions, PermissionChecker, set_auth_cookie, clear_auth_cookie
 from app.config import settings
 from app.utils.audit import log_operation
+from app.utils.image_upload import MAX_IMAGE_FILE_SIZE, validate_image_extension, validate_image_size, normalize_image
+from app.utils.rate_limit import check_mfa_verify_rate_limit, check_security_notification_email_rate_limit
+from app.utils.smtp import load_smtp_config, build_mfa_security_email, send_smtp_message
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["认证"])
 
@@ -42,6 +49,13 @@ LOGIN_CHALLENGE_KEY_PREFIX = "login:challenge:"
 LOGIN_CHALLENGE_TTL_SECONDS = 600  # 10 minutes
 LOGIN_FAILURE_KEY_PREFIX = "login:fail:"
 LOGIN_LOCK_KEY_PREFIX = "login:lock:"
+
+
+def _decrypt_mfa_secret(value: str | None) -> str | None:
+    """mfa_secret is stored Fernet-encrypted."""
+    if not value:
+        return None
+    return decrypt_value(value)
 
 
 def _request_ip(request: Request) -> str | None:
@@ -57,62 +71,43 @@ def _login_guard_key(username: str, request: Request) -> str:
     return f"{username.strip().lower()}:{ip}"
 
 
-async def _get_setting_value(db: AsyncSession, key: str, default):
-    result = await db.execute(select(Setting).where(Setting.key == key))
-    setting = result.scalar_one_or_none()
-    if not setting or not isinstance(setting.value, dict):
-        return default
-    return setting.value.get("value", default)
-
-
-async def _get_int_setting(db: AsyncSession, key: str, default: int, min_value: int, max_value: int) -> int:
-    value = await _get_setting_value(db, key, default)
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return default
-    return max(min_value, min(parsed, max_value))
+def _login_guard_username_key(username: str) -> str:
+    # Username-only guard: catches an attacker rotating IPs, which the
+    # username+ip guard above cannot detect on its own.
+    return username.strip().lower()
 
 
 async def _is_login_locked(username: str, request: Request) -> bool:
     redis_client = get_redis()
-    return bool(await redis_client.get(f"{LOGIN_LOCK_KEY_PREFIX}{_login_guard_key(username, request)}"))
+    guard_key = _login_guard_key(username, request)
+    username_key = _login_guard_username_key(username)
+    locked_ip, locked_username = await redis_client.mget(
+        f"{LOGIN_LOCK_KEY_PREFIX}{guard_key}",
+        f"{LOGIN_LOCK_KEY_PREFIX}{username_key}",
+    )
+    return bool(locked_ip or locked_username)
 
 
 async def _record_failed_login(username: str, request: Request, db: AsyncSession) -> None:
-    max_attempts = await _get_int_setting(db, "max_login_attempts", 5, 1, 50)
-    lockout_minutes = await _get_int_setting(db, "lockout_duration", 30, 1, 1440)
+    max_attempts = await get_int_setting(db, "max_login_attempts", 5, 1, 50)
+    lockout_minutes = await get_int_setting(db, "lockout_duration", 30, 1, 1440)
     redis_client = get_redis()
-    guard_key = _login_guard_key(username, request)
-    fail_key = f"{LOGIN_FAILURE_KEY_PREFIX}{guard_key}"
-    attempts = await redis_client.incr(fail_key)
-    await redis_client.expire(fail_key, lockout_minutes * 60)
-    if attempts >= max_attempts:
-        await redis_client.setex(f"{LOGIN_LOCK_KEY_PREFIX}{guard_key}", lockout_minutes * 60, "1")
-        await redis_client.delete(fail_key)
+    lockout_seconds = lockout_minutes * 60
+
+    for guard_key in (_login_guard_key(username, request), _login_guard_username_key(username)):
+        fail_key = f"{LOGIN_FAILURE_KEY_PREFIX}{guard_key}"
+        attempts = await redis_client.incr(fail_key)
+        await redis_client.expire(fail_key, lockout_seconds)
+        if attempts >= max_attempts:
+            await redis_client.setex(f"{LOGIN_LOCK_KEY_PREFIX}{guard_key}", lockout_seconds, "1")
+            await redis_client.delete(fail_key)
 
 
 async def _clear_failed_login(username: str, request: Request) -> None:
     redis_client = get_redis()
-    guard_key = _login_guard_key(username, request)
-    await redis_client.delete(f"{LOGIN_FAILURE_KEY_PREFIX}{guard_key}")
-    await redis_client.delete(f"{LOGIN_LOCK_KEY_PREFIX}{guard_key}")
-
-
-def _set_auth_cookie(response: Response, request: Request, token: str, expires_delta: timedelta) -> None:
-    response.set_cookie(
-        key=AUTH_COOKIE_NAME,
-        value=token,
-        max_age=int(expires_delta.total_seconds()),
-        httponly=True,
-        secure=request.url.scheme == "https",
-        samesite="lax",
-        path="/",
-    )
-
-
-def _clear_auth_cookie(response: Response) -> None:
-    response.delete_cookie(key=AUTH_COOKIE_NAME, path="/")
+    for guard_key in (_login_guard_key(username, request), _login_guard_username_key(username)):
+        await redis_client.delete(f"{LOGIN_FAILURE_KEY_PREFIX}{guard_key}")
+        await redis_client.delete(f"{LOGIN_LOCK_KEY_PREFIX}{guard_key}")
 
 
 async def _create_login_challenge(user: User, request: Request, remember: bool) -> str:
@@ -174,6 +169,27 @@ async def _delete_login_challenge(token: str) -> None:
     await redis_client.delete(f"{MFA_SETUP_KEY_PREFIX}{token}")
 
 
+def _send_mfa_security_email_sync(config: dict, recipient_email: str, username: str, action: str) -> None:
+    msg = build_mfa_security_email(config, recipient_email, username, action)
+    send_smtp_message(config, msg)
+
+
+async def _notify_mfa_security_change(db: AsyncSession, user: User, action: str) -> None:
+    """Best-effort email to the affected user when an admin resets/disables
+    their MFA — an attacker who compromises an admin account and strips a
+    target's MFA should not be able to do so silently."""
+    try:
+        config = await load_smtp_config(db)
+        if not config["host"] or not config["from_email"]:
+            return
+        await check_security_notification_email_rate_limit(user.id)
+        await asyncio.to_thread(_send_mfa_security_email_sync, config, user.email, user.username, action)
+    except HTTPException:
+        pass
+    except Exception as exc:
+        logger.warning("MFA security notification email failed for user_id=%s action=%s: %s", user.id, action, exc)
+
+
 async def _get_challenge_user(payload: dict, db: AsyncSession) -> User:
     result = await db.execute(select(User).where(User.id == payload.get("user_id")))
     user = result.scalar_one_or_none()
@@ -204,10 +220,10 @@ async def _complete_login(
     await db.commit()
     await db.refresh(user)
 
-    session_minutes = await _get_int_setting(db, "session_timeout", 30, 1, 10080)
+    session_minutes = await get_int_setting(db, "session_timeout", 30, 1, 10080)
     expires_delta = timedelta(days=7) if remember else timedelta(minutes=session_minutes)
     session_id, expires_at = await create_user_session(user.id, request, expires_delta, remember=remember)
-    _set_auth_cookie(response, request, session_id, expires_delta)
+    set_auth_cookie(response, request, session_id, int(expires_delta.total_seconds()))
     user_permissions = await get_user_permissions(user, db)
 
     return LoginResponse(
@@ -276,6 +292,10 @@ async def _login_impl(
     )
 
     if not user:
+        # Run a bcrypt comparison against a dummy hash so the response time
+        # for an unknown username matches a wrong-password attempt — otherwise
+        # the timing difference reveals whether the username exists.
+        verify_password(data.password, get_dummy_password_hash())
         login_log.failure_reason = "用户不存在"
         db.add(login_log)
         await _record_failed_login(data.username, request, db)
@@ -339,7 +359,7 @@ async def logout(
     """
     ip = request.client.host if request and request.client else None
     await delete_user_session(getattr(request.state, "session_id", None), current_user.id)
-    _clear_auth_cookie(response)
+    clear_auth_cookie(response)
 
     # Audit log
     await log_operation(
@@ -375,7 +395,7 @@ async def heartbeat(
         session_payload = getattr(request.state, "session", {}) or {}
 
     remember = bool(session_payload.get("remember"))
-    session_minutes = await _get_int_setting(db, "session_timeout", 30, 1, 10080)
+    session_minutes = await get_int_setting(db, "session_timeout", 30, 1, 10080)
     configured_timeout_seconds = session_minutes * 60
     try:
         timeout_seconds = int(session_payload.get("timeout_seconds") or 0)
@@ -391,7 +411,7 @@ async def heartbeat(
     expires_at = session_payload.get("expires_at")
     cookie_seconds = timeout_seconds if remember and timeout_seconds > 0 else configured_timeout_seconds
     if user_active or not remember:
-        _set_auth_cookie(response, request, session_id, timedelta(seconds=cookie_seconds))
+        set_auth_cookie(response, request, session_id, cookie_seconds)
 
     return ResponseBase(message="ok", data={"expires_at": expires_at})
 
@@ -434,8 +454,12 @@ async def change_password(
             detail="; ".join(errors)
         )
 
+    await check_password_not_reused(data.new_password, current_user.id, db)
+
     # Update password
-    current_user.password_hash = get_password_hash(data.new_password)
+    new_password_hash = get_password_hash(data.new_password)
+    current_user.password_hash = new_password_hash
+    await record_password_history(new_password_hash, current_user.id, db)
 
     # Log password change
     from app.models import PasswordChangeLog
@@ -489,8 +513,12 @@ async def force_change_password(
             detail="; ".join(errors),
         )
 
-    user.password_hash = get_password_hash(data.new_password)
+    await check_password_not_reused(data.new_password, user.id, db)
+
+    new_password_hash = get_password_hash(data.new_password)
+    user.password_hash = new_password_hash
     user.must_change_password = False
+    await record_password_history(new_password_hash, user.id, db)
 
     from app.models import PasswordChangeLog
     password_log = PasswordChangeLog(
@@ -544,28 +572,6 @@ async def get_current_user_info(
     )
 
 
-ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-
-
-def _normalize_avatar_image(content: bytes, ext: str) -> bytes:
-    format_map = {".png": "PNG", ".jpg": "JPEG", ".jpeg": "JPEG", ".gif": "GIF", ".webp": "WEBP"}
-    try:
-        with Image.open(BytesIO(content)) as image:
-            image.load()
-            output = BytesIO()
-            save_format = format_map[ext]
-            if save_format == "JPEG" and image.mode not in ("RGB", "L"):
-                image = image.convert("RGB")
-            image.save(output, format=save_format)
-            return output.getvalue()
-    except (UnidentifiedImageError, OSError, ValueError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="文件内容不是有效图片",
-        ) from exc
-
-
 @router.post("/avatar", response_model=ResponseBase)
 async def upload_avatar(
     file: UploadFile = File(...),
@@ -574,20 +580,12 @@ async def upload_avatar(
 ):
     """Upload or update user avatar — any authenticated user can update their own."""
     ext = os.path.splitext(file.filename or "")[1].lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"不支持的文件类型: {ext}",
-        )
+    validate_image_extension(ext, f"不支持的文件类型: {ext}")
 
     content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"文件过大，最大 {MAX_FILE_SIZE // (1024 * 1024)}MB",
-        )
+    validate_image_size(content, f"文件过大，最大 {MAX_IMAGE_FILE_SIZE // (1024 * 1024)}MB")
 
-    content = _normalize_avatar_image(content, ext)
+    content = normalize_image(content, ext)
 
     upload_dir = Path(settings.UPLOAD_DIR) / "avatars"
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -640,10 +638,12 @@ MFA_SETUP_TTL = 300  # 5 minutes
 @router.post("/mfa/setup-qr")
 async def mfa_setup_qr(
     request: Request,
-    challenge_token: str,
+    data: MFASetupQRRequest,
     db: AsyncSession = Depends(get_db),
 ):
     """Generate temporary TOTP secret for a password-verified login challenge."""
+    challenge_token = data.challenge_token
+    await check_mfa_verify_rate_limit(challenge_token)
     payload = await _load_login_challenge(challenge_token, request)
     user = await _get_challenge_user(payload, db)
 
@@ -678,6 +678,7 @@ async def login_mfa_verify(
     If setup=True, the secret was stored temporarily in Redis during the binding flow.
     If setup=False, the secret is already persisted in the database.
     """
+    await check_mfa_verify_rate_limit(data.challenge_token)
     payload = await _load_login_challenge(data.challenge_token, request)
     user = await _get_challenge_user(payload, db)
 
@@ -700,7 +701,7 @@ async def login_mfa_verify(
                 detail="MFA 绑定已过期，请重试",
             )
     else:
-        secret = user.mfa_secret
+        secret = _decrypt_mfa_secret(user.mfa_secret)
 
     if not secret or not verify_totp(secret, data.code):
         login_log = LoginLog(
@@ -720,7 +721,7 @@ async def login_mfa_verify(
 
     mfa_bound_before = bool(user.mfa_secret)
     if data.setup:
-        user.mfa_secret = secret
+        user.mfa_secret = encrypt_value(secret)
         redis_client = get_redis()
         await redis_client.delete(f"{MFA_SETUP_KEY_PREFIX}{data.challenge_token}")
 
@@ -777,6 +778,8 @@ async def reset_mfa(
         ip_address=ip,
     )
 
+    await _notify_mfa_security_change(db, user, "reset")
+
     return ResponseBase(message="MFA 已重置，用户下次登录需重新绑定")
 
 
@@ -817,5 +820,7 @@ async def disable_mfa(
         },
         ip_address=ip,
     )
+
+    await _notify_mfa_security_change(db, user, "disable")
 
     return ResponseBase(message="MFA 已禁用")

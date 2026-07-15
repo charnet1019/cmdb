@@ -3,7 +3,8 @@
  * Handles fetching, creating, updating, deleting assets
  */
 import { ref, computed } from 'vue'
-import { message, Modal } from 'ant-design-vue'
+import { message } from 'ant-design-vue'
+import { confirmAction } from '@/utils/confirmAction'
 import {
   getAssets,
   deleteAsset,
@@ -147,24 +148,18 @@ export function useAssets() {
 
   // Delete single asset
   async function handleDelete(asset: Asset, fetchFn: () => void, onDeleted?: () => void) {
-    Modal.confirm({
+    confirmAction({
       title: '确认删除',
       content: `确定要删除资产 "${asset.name}" 吗？删除后无法恢复。`,
       okText: '删除',
-      okType: 'danger',
-      cancelText: '取消',
-      centered: true,
-      async onOk() {
-        try {
-          await deleteAsset(asset.id)
-          message.success('资产已删除')
-          fetchFn()
-          fetchAssetStats()
-          onDeleted?.()
-        } catch (error) {
-          message.error('删除失败')
-        }
-      }
+      successMessage: '资产已删除',
+      errorMessage: '删除失败',
+      onOk: async () => {
+        await deleteAsset(asset.id)
+        fetchFn()
+        fetchAssetStats()
+        onDeleted?.()
+      },
     })
   }
 
@@ -175,25 +170,19 @@ export function useAssets() {
       return
     }
 
-    Modal.confirm({
+    confirmAction({
       title: '确认删除',
       content: `确定要删除选中的 ${ids.length} 个资产吗？删除后无法恢复。`,
       okText: '删除',
-      okType: 'danger',
-      cancelText: '取消',
-      centered: true,
-      async onOk() {
-        try {
-          await bulkDeleteAssets(ids)
-          message.success(`已删除 ${ids.length} 个资产`)
-          allSelected.value = false
-          fetchFn()
-          fetchAssetStats()
-          onDeleted?.()
-        } catch (error: any) {
-          message.error(error.response?.data?.detail || '批量删除失败')
-        }
-      }
+      errorMessage: '批量删除失败',
+      onOk: async () => {
+        await bulkDeleteAssets(ids)
+        message.success(`已删除 ${ids.length} 个资产`)
+        allSelected.value = false
+        fetchFn()
+        fetchAssetStats()
+        onDeleted?.()
+      },
     })
   }
 
@@ -215,22 +204,18 @@ export function useAssets() {
       'returned': '已退还'
     }
 
-    Modal.confirm({
+    confirmAction({
       title: '确认修改状态',
       content: `确定要将选中的 ${ids.length} 个资产的状态修改为「${statusLabels[statusValue] || statusValue}」吗？`,
       okText: '确定',
-      cancelText: '取消',
-      centered: true,
-      async onOk() {
-        try {
-          await bulkUpdateAssets(ids, { status: statusValue })
-          message.success(`已更新 ${ids.length} 个资产的状态`)
-          fetchFn()
-          fetchAssetStats()
-        } catch (error: any) {
-          message.error(error.response?.data?.detail || '批量修改状态失败')
-        }
-      }
+      danger: false,
+      errorMessage: '批量修改状态失败',
+      onOk: async () => {
+        await bulkUpdateAssets(ids, { status: statusValue })
+        message.success(`已更新 ${ids.length} 个资产的状态`)
+        fetchFn()
+        fetchAssetStats()
+      },
     })
   }
 

@@ -5,7 +5,6 @@ Loads from environment variables first, then falls back to .env file
 """
 import os
 import json
-from typing import Optional
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -36,11 +35,6 @@ class Settings(BaseSettings):
     REDIS_URL: str
     REDIS_CONNECT_TIMEOUT_SECONDS: float = 2.0
     REDIS_SOCKET_TIMEOUT_SECONDS: float = 2.0
-
-    # JWT - required for security, no hardcoded defaults
-    JWT_SECRET_KEY: str
-    JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_TOKEN_EXPIRE_HOURS: int = 24
 
     # Encryption - required for credential storage, no hardcoded defaults
     ENCRYPTION_KEY: str

@@ -55,18 +55,14 @@ export async function loginMFAVerify(challengeToken: string, code: string, setup
 }
 
 export async function getMFASetupQR(challengeToken: string): Promise<MFASetupQRData> {
-  const response = await api.post<ApiResponse<MFASetupQRData>>('/auth/mfa/setup-qr', null, {
-    params: { challenge_token: challengeToken },
+  const response = await api.post<ApiResponse<MFASetupQRData>>('/auth/mfa/setup-qr', {
+    challenge_token: challengeToken,
   })
   return response.data.data
 }
 
 export async function resetUserMFA(userId: number): Promise<void> {
   await api.post(`/auth/mfa/reset?user_id=${userId}`)
-}
-
-export async function disableUserMFA(userId: number): Promise<void> {
-  await api.post(`/auth/mfa/disable?user_id=${userId}`)
 }
 
 export async function forceChangePassword(data: {

@@ -2,7 +2,7 @@
 Log Audit API
 Login logs, operation logs, and password change logs
 """
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,31 +10,12 @@ from sqlalchemy import select, func, or_, cast, String, alias
 
 from app.database import get_db
 from app.models import User, LoginLog, OperationLog, PasswordChangeLog, Asset, Credential
-from app.api.deps import get_current_user, PermissionChecker
+from app.api.deps import PermissionChecker
+from app.core.asset_categories import ASSET_CATEGORY_LABELS, asset_category_label
 from app.utils.audit import log_operation
-from app.schemas import PaginationMeta, ResponseBase
+from app.utils.datetime_utils import format_datetime_utc
+from app.utils.pagination import get_pagination_meta
 from app.services.log_cleanup import cleanup_expired_logs
-
-
-def format_datetime_utc(dt: datetime | None) -> str | None:
-    """Format datetime as ISO 8601 with Z suffix for UTC"""
-    if dt is None:
-        return None
-    # Ensure we treat it as UTC and add Z suffix
-    return dt.replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z')
-
-ASSET_CATEGORY_LABELS = {
-    "host": "主机",
-    "network": "网络设备",
-    "database": "数据库",
-    "cloud": "云服务",
-    "web": "网站服务",
-    "gpt": "AI服务",
-}
-
-
-def _asset_category_label(category: str | None) -> str:
-    return ASSET_CATEGORY_LABELS.get(category or "", category or "全部")
 
 
 def _asset_operation_target_name(action: str | None, details: dict) -> str | None:
@@ -48,11 +29,11 @@ def _asset_operation_target_name(action: str | None, details: dict) -> str | Non
 
     if action == "export":
         if category:
-            return f"{_asset_category_label(str(category))}资产"
+            return f"{asset_category_label(str(category))}资产"
         if isinstance(name, str) and name.startswith("export_"):
             legacy = name.removeprefix("export_")
             if legacy in ASSET_CATEGORY_LABELS:
-                return f"{_asset_category_label(legacy)}资产"
+                return f"{asset_category_label(legacy)}资产"
             scope = legacy
         if scope == "selected":
             return "选中资产"
@@ -62,15 +43,15 @@ def _asset_operation_target_name(action: str | None, details: dict) -> str | Non
 
     if action == "import":
         if category:
-            return f"{_asset_category_label(str(category))}资产"
+            return f"{asset_category_label(str(category))}资产"
         if isinstance(name, str) and name.startswith("import_"):
             legacy = name.removeprefix("import_")
             if legacy in ASSET_CATEGORY_LABELS:
-                return f"{_asset_category_label(legacy)}资产"
+                return f"{asset_category_label(legacy)}资产"
 
     if details.get("action") == "download_import_template":
         if category:
-            return f"{_asset_category_label(str(category))}资产"
+            return f"{asset_category_label(str(category))}资产"
         return "资产"
 
     return None
@@ -171,6 +152,7 @@ SETTING_FIELD_LABELS = {
     "otp_issuer_name": "OTP 验证器名称",
     "password_log_retention": "改密日志保留天数",
     "password_min_length": "密码最小长度",
+    "password_history_count": "密码历史检查次数",
     "password_require_digit": "密码至少包含数字",
     "password_require_lowercase": "密码至少包含小写字母",
     "password_require_special": "密码至少包含特殊字符",
@@ -179,7 +161,7 @@ SETTING_FIELD_LABELS = {
 }
 
 BRANDING_SETTING_KEYS = {"site_title", "login_subtitle", "logo_image", "login_background_image", "copyright_text", "beian_number", "beian_url"}
-SECURITY_SETTING_KEYS = {"login_log_retention", "operation_log_retention", "password_log_retention", "password_min_length", "password_require_uppercase", "password_require_lowercase", "password_require_digit", "password_require_special", "max_login_attempts", "lockout_duration", "session_timeout", "decrypt_rate_limit", "otp_issuer_name"}
+SECURITY_SETTING_KEYS = {"login_log_retention", "operation_log_retention", "password_log_retention", "password_min_length", "password_require_uppercase", "password_require_lowercase", "password_require_digit", "password_require_special", "password_history_count", "max_login_attempts", "lockout_duration", "session_timeout", "decrypt_rate_limit", "otp_issuer_name"}
 
 DETAIL_ACTION_LABELS = {
     "bulk_delete": "批量删除资产",
@@ -556,10 +538,7 @@ async def list_login_logs(
         except ValueError:
             pass
 
-    # Count total
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await db.execute(count_query)
-    total = total_result.scalar()
+    meta = await get_pagination_meta(db, query, page, limit)
 
     # Calculate stats with single query using case aggregation
     # Use UTC datetime without timezone for compatibility with database
@@ -604,12 +583,7 @@ async def list_login_logs(
             }
             for log in logs
         ],
-        "meta": PaginationMeta(
-            total=total,
-            page=page,
-            limit=limit,
-            pages=(total + limit - 1) // limit,
-        ),
+        "meta": meta,
         "stats": {
             "today_total": today_count,
             "success_rate": success_rate,
@@ -670,10 +644,7 @@ async def list_operation_logs(
         except ValueError:
             pass
 
-    # Count total
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await db.execute(count_query)
-    total = total_result.scalar()
+    meta = await get_pagination_meta(db, query, page, limit)
 
     # Apply pagination
     query = query.offset((page - 1) * limit).limit(limit)
@@ -699,12 +670,7 @@ async def list_operation_logs(
             _format_operation_log(log, users_map.get(log.user_id, "Unknown"))
             for log in logs
         ],
-        "meta": PaginationMeta(
-            total=total,
-            page=page,
-            limit=limit,
-            pages=(total + limit - 1) // limit,
-        )
+        "meta": meta,
     }
 
 
@@ -766,10 +732,7 @@ async def list_password_logs(
         except ValueError:
             pass
 
-    # Count total
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await db.execute(count_query)
-    total = total_result.scalar()
+    meta = await get_pagination_meta(db, query, page, limit)
 
     # Apply pagination
     query = query.offset((page - 1) * limit).limit(limit)
@@ -833,12 +796,7 @@ async def list_password_logs(
             }
             for log in logs
         ],
-        "meta": PaginationMeta(
-            total=total,
-            page=page,
-            limit=limit,
-            pages=(total + limit - 1) // limit,
-        )
+        "meta": meta,
     }
 
 

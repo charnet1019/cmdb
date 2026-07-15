@@ -93,8 +93,6 @@ export interface AssetConfigVersion {
 
 export type AssetCategory = 'host' | 'network' | 'database' | 'cloud' | 'web' | 'gpt'
 
-export type AssetStatus = 'inventory' | 'deploying' | 'running' | 'maintenance' | 'deactivated' | 'pending_scrap' | 'scrapped' | 'returned'
-
 export interface Credential {
   id: number
   asset_id: number
@@ -138,42 +136,11 @@ export interface Authorization {
   created_at: string
 }
 
-// Log types
-export interface LoginLog {
-  id: number
-  username: string | null
-  ip_address: string | null
-  user_agent: string | null
-  status: string
-  failure_reason: string | null
-  created_at: string
-}
-
-export interface OperationLog {
-  id: number
-  user_id: number | null
-  action: string
-  resource_type: string | null
-  resource_id: number | null
-  details: Record<string, any> | null
-  ip_address: string | null
-  status: string
-  created_at: string
-}
-
 // API Response types
 export interface ApiResponse<T = any> {
   code: number
   message: string
   data: T
-}
-
-export interface PaginatedResponse<T> {
-  items: T[]
-  total: number
-  page: number
-  limit: number
-  pages: number
 }
 
 // Auth types

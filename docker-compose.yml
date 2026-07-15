@@ -34,7 +34,6 @@ services:
       DEBUG: "false"
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cmdb}:${POSTGRES_PASSWORD:-cmdb_password}@postgres:5432/${POSTGRES_DB:-cmdb}
       REDIS_URL: redis://redis:6379/0
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-this-jwt-secret-key-before-production}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-change-this-encryption-key-before-production}
       CMDB_INITIAL_ADMIN_PASSWORD: ${CMDB_INITIAL_ADMIN_PASSWORD:-ChangeMe123}
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost","http://127.0.0.1"]}

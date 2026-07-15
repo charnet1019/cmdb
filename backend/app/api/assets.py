@@ -18,13 +18,13 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models import Asset, Authorization, Credential, Organization, User, AssetHostRelation, StorageLocation, PasswordChangeLog, AssetConfigFile, AssetConfigVersion
 from app.schemas import (
-    AssetCreate, AssetUpdate, AssetResponse, AssetSimple,
-    AssetListResponse, PaginationMeta,
+    AssetCreate, AssetUpdate,
     CredentialCreate, CredentialUpdate, CredentialResponse, CredentialDecryptResponse,
     ResponseBase, BulkUpdateRequest, BulkDeleteRequest
 )
 from app.api.deps import get_user_permissions, PermissionChecker, check_resource_permission, get_authorized_asset_ids
 from app.core.encryption import encrypt_value, decrypt_value
+from app.core.asset_categories import asset_category_label
 from app.services.import_service import (
     generate_category_template,
     parse_import_file,
@@ -34,14 +34,14 @@ from app.services.import_service import (
     get_created_orgs,
 )
 from app.services.export_service import (
-    export_assets_to_excel,
-    export_assets_to_csv,
     _export_excel_stream,
     _export_csv_stream,
     CATEGORY_COLUMNS,
     DEFAULT_COLUMNS,
 )
 from app.utils.audit import log_operation
+from app.utils.authorization_cleanup import cleanup_authorization_targets
+from app.utils.pagination import get_pagination_meta
 from app.utils.rate_limit import check_credential_decrypt_rate_limit
 
 
@@ -95,15 +95,6 @@ ASSET_TYPE_FIELDS: Dict[str, List[str]] = {
     "gpt": [],
 }
 
-ASSET_CATEGORY_LABELS = {
-    "host": "主机",
-    "network": "网络设备",
-    "database": "数据库",
-    "cloud": "云服务",
-    "web": "网站服务",
-    "gpt": "AI服务",
-}
-
 # Common fields for all asset types
 COMMON_FIELDS = [
     "id", "name", "asset_code", "category", "internal_address",
@@ -117,13 +108,10 @@ def _client_ip(request: Request | None) -> Optional[str]:
     return request.client.host if request and request.client else None
 
 
-def _asset_category_label(category: Optional[str]) -> str:
-    return ASSET_CATEGORY_LABELS.get(category or "", category or "全部")
-
 
 def _export_target_name(scope: str, category: Optional[str], organization_id: Optional[int], search: Optional[str]) -> str:
     if category:
-        return f"{_asset_category_label(category)}资产"
+        return f"{asset_category_label(category)}资产"
     if scope == "selected":
         return "选中资产"
     if scope == "filtered" or search or organization_id is not None:
@@ -476,10 +464,7 @@ async def list_assets(
     if authorized_ids is not None:
         query = query.where(Asset.id.in_(authorized_ids))
 
-    # Count total
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await db.execute(count_query)
-    total = total_result.scalar()
+    meta = await get_pagination_meta(db, query, page, limit)
 
     # Apply pagination
     query = query.offset((page - 1) * limit).limit(limit)
@@ -533,18 +518,11 @@ async def list_assets(
             owner_name=owner_name_val
         ))
 
-    pages = (total + limit - 1) // limit if total > 0 else 0
-
     return {
         "code": 0,
         "message": "success",
         "data": asset_responses,
-        "meta": {
-            "total": total,
-            "page": page,
-            "limit": limit,
-            "pages": pages
-        }
+        "meta": meta.model_dump(),
     }
 
 
@@ -1084,7 +1062,10 @@ async def create_asset(
 
     # Auto-authorize creator with "manage" on the new asset
     if not current_user.is_superuser:
-        # Try to append to existing asset-level authorization with "manage"
+        # Only reuse an existing asset-level "manage" authorization that is permanent
+        # (no valid_from/valid_until window). Appending the new asset into a
+        # time-boxed authorization would silently inherit an unrelated expiry —
+        # either locking the creator out early or granting access past its intended window.
         existing = await db.execute(
             select(Authorization)
             .where(Authorization.entity_type == "user")
@@ -1092,6 +1073,8 @@ async def create_asset(
             .where(Authorization.target_type == "asset")
             .where(Authorization.is_active == True)
             .where(Authorization.permissions.contains(["manage"]))
+            .where(Authorization.valid_from.is_(None))
+            .where(Authorization.valid_until.is_(None))
             .order_by(Authorization.id.desc())
             .limit(1)
         )
@@ -1252,6 +1235,9 @@ async def bulk_delete_assets(
             organization_id=asset.organization_id,
         )
 
+    # Remove dangling references from authorizations that target these assets
+    await cleanup_authorization_targets(db, "asset", [a.id for a in assets])
+
     # Delete each asset
     for asset in assets:
         await db.delete(asset)
@@ -1294,7 +1280,7 @@ async def download_import_template(
         )
 
     buffer, filename = generate_category_template(category, mode)
-    category_label = _asset_category_label(category)
+    category_label = asset_category_label(category)
     mode_label = "创建" if mode == "create" else "更新"
     await log_operation(
         db=db,
@@ -1415,11 +1401,11 @@ async def import_assets(
             resource_type="asset",
             resource_id=0,
             details={
-                "name": f"{_asset_category_label(category)}资产",
-                "target_name": f"{_asset_category_label(category)}资产",
+                "name": f"{asset_category_label(category)}资产",
+                "target_name": f"{asset_category_label(category)}资产",
                 "action": "import_assets",
                 "category": category,
-                "category_label": _asset_category_label(category),
+                "category_label": asset_category_label(category),
                 "mode": mode,
                 "total_rows": len(valid_records) + len(parse_errors),
                 "success_count": success_count,
@@ -1560,7 +1546,6 @@ async def export_assets(
     creator_names: Dict[int, str] = {}
 
     async def _asset_data_gen():
-        nonlocal org_map, creator_names
         offset = 0
         while True:
             chunk_query = query.offset(offset).order_by(Asset.id)
@@ -1673,7 +1658,7 @@ async def export_assets(
             "format": format,
             "scope": scope,
             "category": export_category,
-            "category_label": _asset_category_label(export_category) if export_category else None,
+            "category_label": asset_category_label(export_category) if export_category else None,
             "organization_id": organization_id,
             "search": search,
             "include_passwords": can_export_passwords,
@@ -1958,6 +1943,9 @@ async def delete_asset(
     asset_category = asset.category
     asset_code = asset.asset_code
 
+    # Remove dangling references from authorizations that target this asset
+    await cleanup_authorization_targets(db, "asset", [asset_id])
+
     await db.delete(asset)
     await db.commit()
 
@@ -2208,6 +2196,9 @@ async def delete_organization(
     org_parent_id = org.parent_id
     org_path = org.path
 
+    # Remove dangling references from authorizations that target this organization
+    await cleanup_authorization_targets(db, "organization", [str(org_id)])
+
     await db.delete(org)
     await db.commit()
 
@@ -2381,37 +2372,14 @@ async def decrypt_oob_password(
         organization_id=asset.organization_id,
     )
 
-    # Check new column first, fallback to extra_data for backward compatibility
-    oob_password_value = asset.oob_password_encrypted
-    source = "column"
-
-    if not oob_password_value and asset.extra_data:
-        oob_password_value = asset.extra_data.get("oob_password")
-        source = "metadata"
-
-    if not oob_password_value:
+    if not asset.oob_password_encrypted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="未找到 OOB 密码"
         )
 
-    # Check if value is encrypted (Fernet encrypted strings start with 'gAAAA')
-    is_encrypted = oob_password_value.startswith('gAAAA') if oob_password_value else False
-
     try:
-        if is_encrypted:
-            decrypted_password = decrypt_value(oob_password_value)
-        else:
-            # Password is in plaintext (legacy data from metadata), return as-is
-            # and migrate to encrypted column for security
-            decrypted_password = oob_password_value
-
-            # Migrate plaintext to encrypted column
-            if source == "metadata" and not asset.oob_password_encrypted:
-                from app.core.encryption import encrypt_value
-                encrypted = encrypt_value(oob_password_value)
-                asset.oob_password_encrypted = encrypted
-                await db.flush()
+        decrypted_password = decrypt_value(asset.oob_password_encrypted)
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

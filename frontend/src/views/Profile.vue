@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { message, Modal } from 'ant-design-vue'
+import { message } from 'ant-design-vue'
 import { UserOutlined, LockOutlined, MailOutlined, PhoneOutlined, IdcardOutlined, TeamOutlined, KeyOutlined, ClockCircleOutlined, EnvironmentOutlined, SafetyOutlined, EyeOutlined, EyeInvisibleOutlined, CameraOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { getUser, updateUser } from '@/api/users'
 import { changePassword, uploadAvatar, deleteAvatar } from '@/api/auth'
 import { formatDateTime } from '@/utils/datetime'
+import { PERMISSION_LABELS } from '@/utils/permissions'
+import { confirmAction } from '@/utils/confirmAction'
+import { validateImageFile } from '@/utils/fileValidation'
 
 const authStore = useAuthStore()
 
@@ -54,13 +57,9 @@ function triggerAvatarUpload() {
 }
 
 async function handleAvatarUpload(file: File) {
-  const allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
-  if (!allowedTypes.includes(file.type)) {
-    message.warning('仅支持 PNG、JPG、GIF、WebP 格式')
-    return
-  }
-  if (file.size > 10 * 1024 * 1024) {
-    message.warning('头像大小不能超过 10MB')
+  const validationError = validateImageFile(file)
+  if (validationError) {
+    message.warning(validationError)
     return
   }
   avatarUploading.value = true
@@ -91,20 +90,17 @@ async function handleAvatarUpload(file: File) {
 }
 
 async function removeAvatar() {
-  Modal.confirm({
+  confirmAction({
     title: '确认移除',
     content: '移除后将恢复为默认头像，确定继续吗？',
     okText: '确认',
-    cancelText: '取消',
+    danger: false,
+    successMessage: '头像已移除',
+    errorMessage: '移除失败',
     onOk: async () => {
-      try {
-        await deleteAvatar()
-        await fetchUserDetail()
-        authStore.user = { ...(authStore.user as any), avatar_url: null }
-        message.success('头像已移除')
-      } catch (error: any) {
-        message.error(error.response?.data?.detail || '移除失败')
-      }
+      await deleteAvatar()
+      await fetchUserDetail()
+      authStore.user = { ...(authStore.user as any), avatar_url: null }
     },
   })
 }
@@ -129,17 +125,7 @@ function togglePassword(field: keyof typeof showPassword.value) {
 }
 
 // Permission label map
-const permLabels: Record<string, string> = {
-  view: '查看资产',
-  manage: '管理资产',
-  view_users: '查看用户',
-  user_mgmt: '用户管理',
-  sys_config: '系统设置',
-  audit_log: '日志审计',
-  view_pwd: '查看密码',
-  export: '导出资产',
-  export_pwd: '导出密码',
-}
+const permLabels = PERMISSION_LABELS
 
 async function fetchUserDetail() {
   const userId = authStore.user?.id

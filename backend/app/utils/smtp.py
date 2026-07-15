@@ -91,6 +91,20 @@ def build_password_email(config: dict, recipient_email: str, username: str, temp
     return msg
 
 
+def build_mfa_security_email(config: dict, recipient_email: str, username: str, action: str) -> EmailMessage:
+    action_label = "重置" if action == "reset" else "禁用"
+    msg = EmailMessage()
+    msg["Subject"] = f"CMDB 安全提醒：您的多因素认证(MFA)已被{action_label}"
+    msg["From"] = formataddr((config["from_name"], config["from_email"]))
+    msg["To"] = recipient_email
+    msg.set_content(
+        f"您好，\n\n"
+        f"管理员已{action_label}您的账号（用户名：{username}）的多因素认证(MFA)绑定。\n\n"
+        f"如果这不是您本人或您授权的操作，请立即联系系统管理员核实账号安全。\n"
+    )
+    return msg
+
+
 def build_test_email(config: dict, recipient_email: str) -> EmailMessage:
     msg = EmailMessage()
     msg["Subject"] = "CMDB 邮件服务器测试"

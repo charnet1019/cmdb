@@ -256,7 +256,7 @@ class AssetResponse(AssetBase):
     oob_address: Optional[str] = None
     oob_username: Optional[str] = None
     # Database asset fields
-    runs_on_hosts: List["AssetSimple"] = []  # Hosts this database runs on
+    runs_on_hosts: List[dict] = []  # Hosts this database runs on
     storage_locations: List["StorageLocationResponse"] = []  # Storage paths
 
     model_config = ConfigDict(from_attributes=True, exclude_none=True)
@@ -270,16 +270,6 @@ class AssetResponse(AssetBase):
         # Return a copy without sensitive fields
         filtered = {k: v for k, v in v.items() if k not in ("oob_password",)}
         return filtered if filtered else None
-
-
-class AssetSimple(BaseModel):
-    """Simple asset schema"""
-    id: str
-    name: str
-    category: str
-    address: Optional[str]
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 # ============== Credential Schemas ==============
@@ -427,6 +417,10 @@ class MFAVerifyRequest(BaseModel):
     code: str = Field(..., min_length=6, max_length=6)
     setup: bool = False  # True = first-time binding
 
+class MFASetupQRRequest(BaseModel):
+    """Request body for generating a temporary TOTP secret during setup"""
+    challenge_token: str
+
 class MustChangePasswordData(BaseModel):
     """Must change password data"""
     must_change_password: bool = True
@@ -440,47 +434,6 @@ class MFASetupQRData(BaseModel):
     """MFA setup QR data"""
     qr_code: str
     mfa_secret: Optional[str] = None
-
-
-# ============== Log Schemas ==============
-class LoginLogResponse(BaseModel):
-    """Login log response"""
-    id: int
-    username: Optional[str]
-    ip_address: Optional[str]
-    user_agent: Optional[str]
-    status: str
-    failure_reason: Optional[str]
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class OperationLogResponse(BaseModel):
-    """Operation log response"""
-    id: int
-    user_id: Optional[int]
-    action: str
-    resource_type: Optional[str]
-    resource_id: Optional[int]
-    details: Optional[dict]
-    ip_address: Optional[str]
-    status: str
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-# ============== Dashboard Schemas ==============
-class DashboardStats(BaseModel):
-    """Dashboard statistics"""
-    is_authorized: bool = True
-    total_assets: int
-    total_users: int
-    online_users: int
-    alerts: int
-    asset_type_distribution: List[dict]
-    recent_logins: List[dict]
 
 
 # ============== List Responses ==============
@@ -511,12 +464,6 @@ class BulkUpdateRequest(BaseModel):
 class BulkDeleteRequest(BaseModel):
     """Bulk delete request schema"""
     ids: List[str]
-
-
-class AuthorizationListResponse(ResponseBase):
-    """Authorization list response"""
-    data: List[AuthorizationResponse]
-    meta: PaginationMeta
 
 
 # Update forward references

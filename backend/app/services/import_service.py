@@ -522,20 +522,6 @@ def generate_category_template(category: str, mode: str) -> Tuple[BytesIO, str]:
 
     return _generate_template(category, mode, title, fields, example), filename
 
-# Backward-compatible aliases — kept so existing imports still work
-generate_host_create_template = lambda: generate_category_template("host", "create")[0]
-generate_host_update_template = lambda: generate_category_template("host", "update")[0]
-generate_network_create_template = lambda: generate_category_template("network", "create")[0]
-generate_network_update_template = lambda: generate_category_template("network", "update")[0]
-generate_database_create_template = lambda: generate_category_template("database", "create")[0]
-generate_database_update_template = lambda: generate_category_template("database", "update")[0]
-generate_cloud_create_template = lambda: generate_category_template("cloud", "create")[0]
-generate_cloud_update_template = lambda: generate_category_template("cloud", "update")[0]
-generate_web_create_template = lambda: generate_category_template("web", "create")[0]
-generate_web_update_template = lambda: generate_category_template("web", "update")[0]
-generate_gpt_create_template = lambda: generate_category_template("gpt", "create")[0]
-generate_gpt_update_template = lambda: generate_category_template("gpt", "update")[0]
-
 # ─── Helpers ─────────────────────────────────────────────────────────
 
 async def resolve_or_create_organization(db: AsyncSession, path_str: str) -> int:
@@ -849,44 +835,6 @@ async def batch_update_assets(
         await db.commit()
 
     return success_count, failed_records
-
-# ─── Backward-compatible aliases ─────────────────────────────────────
-
-async def batch_create_hosts(records, db, user_id=None):
-    return await batch_create_assets("host", records, db, user_id)
-
-async def batch_update_hosts(records, db):
-    return await batch_update_assets("host", records, db)
-
-async def batch_create_networks(records, db, user_id=None):
-    return await batch_create_assets("network", records, db, user_id)
-
-async def batch_update_networks(records, db):
-    return await batch_update_assets("network", records, db)
-
-async def batch_create_databases(records, db, user_id=None):
-    return await batch_create_assets("database", records, db, user_id)
-
-async def batch_update_databases(records, db):
-    return await batch_update_assets("database", records, db)
-
-async def batch_create_clouds(records, db, user_id=None):
-    return await batch_create_assets("cloud", records, db, user_id)
-
-async def batch_update_clouds(records, db):
-    return await batch_update_assets("cloud", records, db)
-
-async def batch_create_webs(records, db, user_id=None):
-    return await batch_create_assets("web", records, db, user_id)
-
-async def batch_update_webs(records, db):
-    return await batch_update_assets("web", records, db)
-
-async def batch_create_gpts(records, db, user_id=None):
-    return await batch_create_assets("gpt", records, db, user_id)
-
-async def batch_update_gpts(records, db):
-    return await batch_update_assets("gpt", records, db)
 
 # ─── Parse import file ───────────────────────────────────────────────
 

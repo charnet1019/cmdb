@@ -3,7 +3,7 @@ Settings API Routes
 """
 import asyncio
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import timedelta
 from typing import Dict, Any, Optional
 from email.utils import parseaddr
 from urllib.parse import urlparse
@@ -13,8 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db
-from app.api.deps import AUTH_COOKIE_NAME, PermissionChecker
+from app.api.deps import PermissionChecker, set_auth_cookie
 from app.utils.audit import log_operation
+from app.utils.datetime_utils import format_datetime_utc
 from app.utils.rate_limit import check_smtp_test_email_rate_limit
 from app.utils.smtp import load_smtp_config, build_test_email, send_smtp_message, raise_smtp_config_incomplete, SMTP_ENCRYPTION_MODES
 from app.models import Setting, User
@@ -23,13 +24,6 @@ from app.core.session import load_user_session, set_user_session_timeout
 
 
 logger = logging.getLogger(__name__)
-
-
-def format_datetime_utc(dt: datetime | None) -> str | None:
-    """Format datetime as ISO 8601 with Z suffix for UTC"""
-    if dt is None:
-        return None
-    return dt.replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z')
 
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
@@ -50,6 +44,7 @@ SETTING_SCHEMA: Dict[str, tuple[type, int | None]] = {
     "password_require_lowercase": (bool, None),
     "password_require_digit": (bool, None),
     "password_require_special": (bool, None),
+    "password_history_count": (int, None),
     "max_login_attempts": (int, None),
     "lockout_duration": (int, None),
     "session_timeout": (int, None),
@@ -72,6 +67,7 @@ INT_RANGES = {
     "operation_log_retention": (1, 3650),
     "password_log_retention": (1, 3650),
     "password_min_length": (8, 128),
+    "password_history_count": (0, 20),
     "max_login_attempts": (1, 50),
     "lockout_duration": (1, 1440),
     "session_timeout": (1, 10080),
@@ -113,18 +109,6 @@ def _response_setting_value(key: str, value: Any) -> Any:
     return value
 
 
-def _set_auth_cookie(response: Response, request: Request, token: str, ttl_seconds: int) -> None:
-    response.set_cookie(
-        key=AUTH_COOKIE_NAME,
-        value=token,
-        max_age=ttl_seconds,
-        httponly=True,
-        secure=request.url.scheme == "https",
-        samesite="lax",
-        path="/",
-    )
-
-
 async def _apply_current_session_timeout(
     request: Request | None,
     response: Response,
@@ -147,7 +131,7 @@ async def _apply_current_session_timeout(
     if not session_payload:
         return None
 
-    _set_auth_cookie(response, request, session_id, ttl_seconds)
+    set_auth_cookie(response, request, session_id, ttl_seconds)
     return session_payload.get("expires_at")
 
 
@@ -289,97 +273,6 @@ async def get_public_settings(
         "code": 0,
         "message": "success",
         "data": settings_dict,
-    }
-
-
-@router.get("/{key}")
-async def get_setting(
-    key: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(PermissionChecker("sys_config")),
-) -> Dict[str, Any]:
-    """
-    Get a single setting by key
-    Requires sys_config permission
-    """
-    result = await db.execute(select(Setting).where(Setting.key == key))
-    setting = result.scalar_one_or_none()
-
-    if not setting:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Setting '{key}' not found"
-        )
-
-    return {
-        "data": {
-            "id": setting.id,
-            "key": setting.key,
-            "value": {"value": _response_setting_value(setting.key, setting.value.get("value") if setting.value else None)},
-            "description": setting.description,
-            "updated_at": format_datetime_utc(setting.updated_at)
-        }
-    }
-
-
-@router.put("/{key}")
-async def update_setting(
-    key: str,
-    value: Dict[str, Any],
-    response: Response,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(PermissionChecker("sys_config")),
-    request: Request = None,
-) -> Dict[str, Any]:
-    """
-    Update a single setting
-    Requires sys_config permission
-    """
-    ip = request.client.host if request and request.client else None
-    result = await db.execute(select(Setting).where(Setting.key == key))
-    setting = result.scalar_one_or_none()
-
-    incoming_value = value.get("value") if isinstance(value, dict) and "value" in value else value
-    previous_value = setting.value.get("value") if setting and setting.value else None
-    normalized_value = _normalize_setting(key, incoming_value, previous_value)
-    changes = {}
-    if previous_value != normalized_value:
-        changes[key] = [_audit_setting_value(key, previous_value), _audit_setting_value(key, normalized_value)]
-
-    if not setting:
-        setting = Setting(key=key, value={"value": normalized_value})
-        db.add(setting)
-    else:
-        setting.value = {"value": normalized_value}
-
-    await db.commit()
-    await db.refresh(setting)
-
-    session_expires_at = None
-    if key == "session_timeout":
-        session_expires_at = await _apply_current_session_timeout(request, response, normalized_value)
-
-    # Audit log
-    if changes:
-        await log_operation(
-            db, current_user.id, "update", "setting", 0,
-            details={
-                "name": key,
-                "value": _audit_setting_value(key, normalized_value),
-                "changes": changes,
-            },
-            ip_address=ip,
-        )
-
-    return {
-        "data": {
-            "id": setting.id,
-            "key": setting.key,
-            "value": {"value": _response_setting_value(setting.key, setting.value.get("value") if setting.value else None)},
-            "description": setting.description,
-            "updated_at": format_datetime_utc(setting.updated_at),
-            "session_expires_at": session_expires_at,
-        }
     }
 
 

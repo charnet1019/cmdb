@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { message, Modal } from 'ant-design-vue'
+import { message } from 'ant-design-vue'
 import { PlusOutlined, EditOutlined, BlockOutlined, CheckCircleOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-vue'
 import { formatDateTime } from '@/utils/datetime'
+import { PERMISSION_OPTIONS } from '@/utils/permissions'
+import { confirmAction } from '@/utils/confirmAction'
 import {
   getAuthorizations,
   createAuthorization,
@@ -101,18 +103,7 @@ const orgTreeData = ref<OrgTreeNode[]>([])
 
 
 // Permission options
-const permissionOptions = [
-  { key: 'view', label: '查看资产' },
-  { key: 'manage', label: '管理资产' },
-  { key: 'authorize', label: '资产授权' },
-  { key: 'view_users', label: '查看用户' },
-  { key: 'user_mgmt', label: '用户管理' },
-  { key: 'sys_config', label: '系统设置' },
-  { key: 'audit_log', label: '日志审计' },
-  { key: 'view_pwd', label: '查看密码' },
-  { key: 'export', label: '导出资产' },
-  { key: 'export_pwd', label: '导出密码' }
-]
+const permissionOptions = PERMISSION_OPTIONS
 
 // Format organization name path (e.g. "Default/开发部/数据库")
 function formatOrgPath(org: { id: number | null; name: string; name_path: string }): string {
@@ -382,22 +373,16 @@ async function handleSubmit() {
 
 // Delete authorization
 async function handleDelete(auth: any) {
-  Modal.confirm({
+  confirmAction({
     title: '确认删除',
     content: `确定要删除对 "${auth.entity_name}" 的授权吗？`,
     okText: '删除',
-    okType: 'danger',
-    cancelText: '取消',
-    centered: true,
-    async onOk() {
-      try {
-        await deleteAuthorization(auth.id)
-        message.success('授权已删除')
-        fetchAuthorizations()
-      } catch {
-        message.error('删除失败')
-      }
-    }
+    successMessage: '授权已删除',
+    errorMessage: '删除失败',
+    onOk: async () => {
+      await deleteAuthorization(auth.id)
+      fetchAuthorizations()
+    },
   })
 }
 
