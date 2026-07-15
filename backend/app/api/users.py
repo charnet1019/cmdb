@@ -4,11 +4,9 @@ CRUD operations for users and user groups
 """
 from typing import Optional, List
 from datetime import datetime
-from email.message import EmailMessage
-from email.utils import formataddr
 import asyncio
+import logging
 import secrets
-import smtplib
 import string
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +15,8 @@ from sqlalchemy import select, func, or_
 from app.database import get_db
 from app.models import User, Group, UserGroup, Authorization, Asset, Organization, PasswordChangeLog, Setting
 from app.utils.audit import log_operation
+from app.utils.rate_limit import check_password_email_rate_limit
+from app.utils.smtp import load_smtp_config, build_password_email, send_smtp_message, raise_smtp_config_incomplete
 from app.schemas import (
     UserCreate, UserUpdate, UserResponse, UserSimple, UserDetailResponse,
     UserListResponse, PaginationMeta,
@@ -28,9 +28,10 @@ from app.core.security import get_password_hash, verify_password
 from app.core.password_policy import validate_password_strength_from_settings
 from app.core.session import force_logout_user
 from app.core.events import publish_user_event
-from app.core.encryption import decrypt_value
 from app.config import settings
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users", tags=["用户管理"])
 
@@ -41,16 +42,6 @@ async def _publish_force_logout_event(user_id: int, reason: str, message: str) -
     except Exception:
         # Session invalidation remains authoritative; API 401 handling is the fallback.
         pass
-
-SMTP_SETTING_KEYS = (
-    "smtp_host",
-    "smtp_port",
-    "smtp_use_ssl",
-    "smtp_username",
-    "smtp_password",
-    "smtp_from_email",
-    "smtp_from_name",
-)
 
 
 def _setting_plain_value(setting: Setting | None, default=None):
@@ -80,53 +71,16 @@ async def generate_temporary_password(db: AsyncSession) -> str:
     return "".join(chars)
 
 
-def _decrypt_smtp_password(value: str | None) -> str:
-    if not value:
-        return ""
-    if isinstance(value, str) and value.startswith("gAAAA"):
-        return decrypt_value(value)
-    return str(value)
-
-
-async def _load_smtp_config(db: AsyncSession) -> dict:
-    result = await db.execute(select(Setting).where(Setting.key.in_(SMTP_SETTING_KEYS)))
-    setting_map = {setting.key: _setting_plain_value(setting, "") for setting in result.scalars().all()}
-    return {
-        "host": str(setting_map.get("smtp_host") or "").strip(),
-        "port": int(setting_map.get("smtp_port") or 465),
-        "use_ssl": bool(setting_map.get("smtp_use_ssl", True)),
-        "username": str(setting_map.get("smtp_username") or "").strip(),
-        "password": _decrypt_smtp_password(setting_map.get("smtp_password")),
-        "from_email": str(setting_map.get("smtp_from_email") or "").strip(),
-        "from_name": str(setting_map.get("smtp_from_name") or "CMDB").strip() or "CMDB",
-    }
-
-
 def _send_password_email_sync(config: dict, recipient_email: str, username: str, temp_password: str, action: str) -> None:
-    action_label = "创建" if action == "create" else "重置"
-    msg = EmailMessage()
-    msg["Subject"] = f"CMDB 账号密码已{action_label}"
-    msg["From"] = formataddr((config["from_name"], config["from_email"]))
-    msg["To"] = recipient_email
-    msg.set_content(
-        f"您好，\n\n"
-        f"您的 CMDB 账号密码已{action_label}。\n\n"
-        f"用户名：{username}\n"
-        f"临时密码：{temp_password}\n\n"
-        f"请登录后立即修改密码。\n"
-    )
-
-    smtp_cls = smtplib.SMTP_SSL if config["use_ssl"] else smtplib.SMTP
-    with smtp_cls(config["host"], config["port"], timeout=10) as server:
-        if config["username"]:
-            server.login(config["username"], config["password"])
-        server.send_message(msg)
+    msg = build_password_email(config, recipient_email, username, temp_password, action)
+    send_smtp_message(config, msg)
 
 
 async def send_user_password_email(db: AsyncSession, target_user: User, temp_password: str, action: str) -> None:
-    config = await _load_smtp_config(db)
+    config = await load_smtp_config(db)
     if not config["host"] or not config["from_email"]:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="邮件服务器未配置完整，请先在系统设置中配置 SMTP 服务器和发件人邮箱")
+        raise_smtp_config_incomplete()
+    await check_password_email_rate_limit(target_user.id)
     try:
         await asyncio.to_thread(
             _send_password_email_sync,
@@ -139,7 +93,8 @@ async def send_user_password_email(db: AsyncSession, target_user: User, temp_pas
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"邮件发送失败: {exc}") from exc
+        logger.warning("Password email send failed for user_id=%s action=%s: %s", target_user.id, action, exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="邮件发送失败，请检查邮件服务器配置") from exc
 
 
 async def _resolve_user_names(db: AsyncSession, user_ids: List[int]) -> dict[int, str]:
@@ -338,9 +293,6 @@ async def create_user(
                 user_group = UserGroup(user_id=user.id, group_id=group_id)
                 db.add(user_group)
 
-        if temp_password and data.send_email:
-            await send_user_password_email(db, user, temp_password, "create")
-
         await db.commit()
         await db.refresh(user)
 
@@ -362,23 +314,6 @@ async def create_user(
             },
             ip_address=ip,
         )
-
-        return UserDetailResponse(
-            data=UserResponse(
-                id=user.id,
-                username=user.username,
-                email=user.email,
-                full_name=user.full_name,
-                phone=user.phone,
-                is_active=user.is_active,
-                mfa_enabled=user.mfa_enabled,
-                mfa_bound=bool(user.mfa_secret),
-                avatar_url=user.avatar_url,
-                last_login_at=user.last_login_at,
-                created_at=user.created_at,
-                groups=[{"id": g.id, "name": g.name} for g in groups],
-            )
-        )
     except HTTPException:
         await db.rollback()
         raise
@@ -390,6 +325,36 @@ async def create_user(
             ip_address=ip, status="failed",
         )
         raise
+
+    # User is already committed at this point. Email sending happens on a
+    # separate, already-closed-transaction path — a failure here must not
+    # undo the user that was just created; report it back to the admin instead.
+    email_sent = None
+    if temp_password and data.send_email:
+        try:
+            await send_user_password_email(db, user, temp_password, "create")
+            email_sent = True
+        except HTTPException:
+            email_sent = False
+
+    return UserDetailResponse(
+        data=UserResponse(
+            id=user.id,
+            username=user.username,
+            email=user.email,
+            full_name=user.full_name,
+            phone=user.phone,
+            is_active=user.is_active,
+            mfa_enabled=user.mfa_enabled,
+            mfa_bound=bool(user.mfa_secret),
+            avatar_url=user.avatar_url,
+            last_login_at=user.last_login_at,
+            created_at=user.created_at,
+            groups=[{"id": g.id, "name": g.name} for g in groups],
+        ),
+        email_sent=email_sent,
+        temp_password=temp_password if email_sent is False else None,
+    )
 
 
 @router.get("/{user_id}", response_model=UserDetailResponse)
@@ -769,7 +734,12 @@ async def reset_user_password(
             detail="用户不存在"
         )
 
-    if data.method == "manual" and data.new_password:
+    if data.method not in {"manual", "auto"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不支持的密码重置方式")
+
+    if data.method == "manual":
+        if not data.new_password:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请输入新密码")
         # Validate password
         is_valid, errors = await validate_password_strength_from_settings(data.new_password, db)
         if not is_valid:
@@ -791,15 +761,6 @@ async def reset_user_password(
     if data.force_change:
         user.must_change_password = True
 
-    email_sent = False
-    if temp_password and data.send_email:
-        try:
-            await send_user_password_email(db, user, temp_password, "reset")
-        except HTTPException:
-            await db.rollback()
-            raise
-        email_sent = True
-
     await db.commit()
 
     # Log as password change (not operation)
@@ -811,6 +772,17 @@ async def reset_user_password(
     )
     db.add(password_log)
     await db.commit()
+
+    # Password is already committed at this point. Email sending happens after
+    # the transaction closes — a failure here must not undo the password reset;
+    # report it back to the admin instead so they can relay the password manually.
+    email_sent = False
+    if temp_password and data.send_email:
+        try:
+            await send_user_password_email(db, user, temp_password, "reset")
+            email_sent = True
+        except HTTPException:
+            email_sent = False
 
     return ResponseBase(
         message="密码重置成功",

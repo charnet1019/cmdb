@@ -42,6 +42,7 @@ from app.services.export_service import (
     DEFAULT_COLUMNS,
 )
 from app.utils.audit import log_operation
+from app.utils.rate_limit import check_credential_decrypt_rate_limit
 
 
 # Request models
@@ -2361,6 +2362,8 @@ async def decrypt_oob_password(
     request: Request = None,
 ):
     """Decrypt OOB password for host asset (requires view_pwd permission)"""
+    await check_credential_decrypt_rate_limit(db, current_user.id)
+
     result = await db.execute(
         select(Asset).where(Asset.id == asset_id)
     )
@@ -2439,6 +2442,8 @@ async def decrypt_credential(
     request: Request = None,
 ):
     """Decrypt credential password (requires view_pwd permission)"""
+    await check_credential_decrypt_rate_limit(db, current_user.id)
+
     result = await db.execute(
         select(Credential).where(Credential.id == credential_id)
     )

@@ -294,7 +294,7 @@ async function handleSubmit() {
       })
       message.success('用户更新成功')
     } else {
-      await createUser({
+      const created = await createUser({
         username: userForm.value.username,
         email: userForm.value.email,
         password: userForm.value.password_method === 'manual' ? userForm.value.password : undefined,
@@ -306,7 +306,14 @@ async function handleSubmit() {
         is_active: userForm.value.is_active,
         mfa_enabled: userForm.value.mfa_enabled
       })
-      message.success('用户创建成功')
+      if (created.email_sent === false && created.temp_password) {
+        Modal.success({
+          title: '用户创建成功，但邮件发送失败',
+          content: `临时密码：${created.temp_password}。该密码仅在本次创建后显示，请通过安全渠道发送给用户。`,
+        })
+      } else {
+        message.success('用户创建成功')
+      }
     }
     showUserModal.value = false
     fetchUsers()

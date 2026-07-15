@@ -139,6 +139,7 @@ ACTION_LABELS = {
     "decrypt": "解密",
     "import": "导入",
     "export": "导出",
+    "test": "测试",
     "add_group_members": "添加组成员",
     "remove_group_member": "移除组成员",
 }
@@ -163,6 +164,7 @@ SETTING_FIELD_LABELS = {
     "login_log_retention": "登录日志保留天数",
     "login_subtitle": "登录页副标题",
     "logo_image": "Logo 图片",
+    "decrypt_rate_limit": "凭证解密频率限制",
     "lockout_duration": "锁定时长",
     "max_login_attempts": "最大登录尝试次数",
     "operation_log_retention": "操作日志保留天数",
@@ -177,7 +179,7 @@ SETTING_FIELD_LABELS = {
 }
 
 BRANDING_SETTING_KEYS = {"site_title", "login_subtitle", "logo_image", "login_background_image", "copyright_text", "beian_number", "beian_url"}
-SECURITY_SETTING_KEYS = {"login_log_retention", "operation_log_retention", "password_log_retention", "password_min_length", "password_require_uppercase", "password_require_lowercase", "password_require_digit", "password_require_special", "max_login_attempts", "lockout_duration", "session_timeout", "otp_issuer_name"}
+SECURITY_SETTING_KEYS = {"login_log_retention", "operation_log_retention", "password_log_retention", "password_min_length", "password_require_uppercase", "password_require_lowercase", "password_require_digit", "password_require_special", "max_login_attempts", "lockout_duration", "session_timeout", "decrypt_rate_limit", "otp_issuer_name"}
 
 DETAIL_ACTION_LABELS = {
     "bulk_delete": "批量删除资产",
@@ -206,6 +208,7 @@ DETAIL_ACTION_LABELS = {
     "create_credential": "创建凭据",
     "update_credential": "更新凭据",
     "upload_config": "上传配置文件",
+    "send_test_email": "发送测试邮件",
 }
 
 PERMISSION_LABELS = {
@@ -262,10 +265,10 @@ FIELD_LABELS = {
     "session_timeout": "会话超时时间",
     "smtp_from_email": "发件人邮箱",
     "smtp_from_name": "发件人名称",
+    "smtp_encryption": "SMTP 加密方式",
     "smtp_host": "SMTP 服务器",
     "smtp_password": "SMTP 密码",
     "smtp_port": "SMTP 端口",
-    "smtp_use_ssl": "SMTP SSL",
     "smtp_username": "SMTP 用户名",
     "status": "状态",
     "storage_locations": "存储位置",

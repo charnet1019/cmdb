@@ -353,6 +353,11 @@ async def test_decrypt_oob_password_migrates_legacy_plaintext(monkeypatch):
 
     monkeypatch.setattr(asset_api, "check_resource_permission", allow)
 
+    async def no_rate_limit(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(asset_api, "check_credential_decrypt_rate_limit", no_rate_limit)
+
     legacy_asset = asset(oob_password_encrypted=None, extra_data={"oob_password": "legacy-pass"})
     db = FakeDB(FakeResult(scalar_one_or_none=legacy_asset))
 

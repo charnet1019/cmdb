@@ -59,8 +59,8 @@ async function handleAvatarUpload(file: File) {
     message.warning('仅支持 PNG、JPG、GIF、WebP 格式')
     return
   }
-  if (file.size > 5 * 1024 * 1024) {
-    message.warning('头像大小不能超过 5MB')
+  if (file.size > 10 * 1024 * 1024) {
+    message.warning('头像大小不能超过 10MB')
     return
   }
   avatarUploading.value = true

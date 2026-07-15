@@ -545,7 +545,7 @@ async def get_current_user_info(
 
 
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 
 def _normalize_avatar_image(content: bytes, ext: str) -> bytes:

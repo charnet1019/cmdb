@@ -88,6 +88,8 @@ class UserSimple(BaseModel):
 class UserDetailResponse(ResponseBase):
     """Single user detail response schema"""
     data: UserResponse
+    email_sent: Optional[bool] = None
+    temp_password: Optional[str] = None
 
 
 # ============== Group Schemas ==============

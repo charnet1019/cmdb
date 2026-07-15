@@ -1,20 +1,28 @@
 """
 Settings API Routes
 """
+import asyncio
+import logging
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from email.utils import parseaddr
 from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db
 from app.api.deps import AUTH_COOKIE_NAME, PermissionChecker
 from app.utils.audit import log_operation
+from app.utils.rate_limit import check_smtp_test_email_rate_limit
+from app.utils.smtp import load_smtp_config, build_test_email, send_smtp_message, raise_smtp_config_incomplete, SMTP_ENCRYPTION_MODES
 from app.models import Setting, User
 from app.core.encryption import encrypt_value
 from app.core.session import load_user_session, set_user_session_timeout
+
+
+logger = logging.getLogger(__name__)
 
 
 def format_datetime_utc(dt: datetime | None) -> str | None:
@@ -45,13 +53,14 @@ SETTING_SCHEMA: Dict[str, tuple[type, int | None]] = {
     "max_login_attempts": (int, None),
     "lockout_duration": (int, None),
     "session_timeout": (int, None),
+    "decrypt_rate_limit": (int, None),
     "otp_issuer_name": (str, 100),
     "login_subtitle": (str, 200),
     "logo_image": (str, 500),
     "login_background_image": (str, 500),
     "smtp_host": (str, 255),
     "smtp_port": (int, None),
-    "smtp_use_ssl": (bool, None),
+    "smtp_encryption": (str, 20),
     "smtp_username": (str, 255),
     "smtp_password": (str, 500),
     "smtp_from_email": (str, 255),
@@ -66,13 +75,29 @@ INT_RANGES = {
     "max_login_attempts": (1, 50),
     "lockout_duration": (1, 1440),
     "session_timeout": (1, 10080),
+    "decrypt_rate_limit": (1, 100),
     "smtp_port": (1, 65535),
 }
 
 URL_KEYS = {"beian_url", "logo_image", "login_background_image"}
 EMAIL_KEYS = {"smtp_from_email"}
+ENUM_VALUES = {"smtp_encryption": {"ssl", "starttls", "none"}}
+HOSTNAME_KEYS = {"smtp_host"}
 SMTP_PASSWORD_MASK = "********"
 SENSITIVE_SETTING_KEY_PARTS = ("secret", "token", "credential", "private_key", "api_key", "smtp_password")
+
+
+class TestEmailRequest(BaseModel):
+    """Request body for sending a test email using the currently-edited (unsaved)
+    or currently-saved SMTP configuration."""
+    recipient: str = Field(..., max_length=255)
+    smtp_host: Optional[str] = Field(None, max_length=255)
+    smtp_port: Optional[int] = Field(None, ge=1, le=65535)
+    smtp_encryption: Optional[str] = Field(None, max_length=20)
+    smtp_username: Optional[str] = Field(None, max_length=255)
+    smtp_password: Optional[str] = Field(None, max_length=500)
+    smtp_from_email: Optional[str] = Field(None, max_length=255)
+    smtp_from_name: Optional[str] = Field(None, max_length=100)
 
 
 def _audit_setting_value(key: str, value: Any) -> Any:
@@ -140,6 +165,25 @@ def _validate_url(key: str, value: str) -> str:
     )
 
 
+def _validate_hostname(key: str, value: str) -> str:
+    """Reject obviously malformed values (URLs, whitespace, control chars) while
+    still allowing any legitimate hostname or IP, including private/internal
+    ranges commonly used for internal SMTP relays."""
+    if not value:
+        return value
+    if "://" in value or "/" in value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"设置项 '{key}' 应为主机名或 IP 地址，不能包含协议前缀或路径",
+        )
+    if any(ch.isspace() or ord(ch) < 0x20 for ch in value):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"设置项 '{key}' 不能包含空白或控制字符",
+        )
+    return value
+
+
 def _normalize_setting(key: str, value: Any, existing_value: Any = None) -> Any:
     if key not in SETTING_SCHEMA:
         raise HTTPException(
@@ -182,6 +226,15 @@ def _normalize_setting(key: str, value: Any, existing_value: Any = None) -> Any:
         )
     if key in URL_KEYS:
         normalized = _validate_url(key, normalized)
+    if key in HOSTNAME_KEYS:
+        normalized = _validate_hostname(key, normalized)
+    if key in ENUM_VALUES:
+        normalized = normalized.lower()
+        if normalized not in ENUM_VALUES[key]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"设置项 '{key}' 必须是 {', '.join(sorted(ENUM_VALUES[key]))} 之一",
+            )
     if key in EMAIL_KEYS and normalized:
         _, parsed_email = parseaddr(normalized)
         if not parsed_email or "@" not in parsed_email:
@@ -389,3 +442,76 @@ async def update_settings(
             "session_expires_at": session_expires_at,
         }
     }
+
+
+@router.post("/email/test")
+async def send_test_email(
+    data: TestEmailRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(PermissionChecker("sys_config")),
+) -> Dict[str, Any]:
+    """
+    Send a test email using the currently-edited (unsaved) SMTP fields if provided,
+    falling back to the saved settings for any field left blank.
+    Requires sys_config permission.
+    """
+    ip = request.client.host if request.client else None
+
+    recipient = data.recipient.strip()
+    _, parsed_email = parseaddr(recipient)
+    if not parsed_email or "@" not in parsed_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请输入有效的收件人邮箱地址")
+
+    await check_smtp_test_email_rate_limit(current_user.id)
+
+    saved_config = await load_smtp_config(db)
+    config = dict(saved_config)
+    if data.smtp_host is not None:
+        config["host"] = data.smtp_host.strip()
+    if data.smtp_port is not None:
+        config["port"] = data.smtp_port
+    if data.smtp_encryption is not None:
+        encryption = data.smtp_encryption.strip().lower()
+        if encryption not in SMTP_ENCRYPTION_MODES:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="加密方式必须是 ssl、starttls 或 none 之一")
+        config["encryption"] = encryption
+    if data.smtp_username is not None:
+        config["username"] = data.smtp_username.strip()
+    if data.smtp_password:
+        # A literal mask means "keep the saved password" — already the default in config.
+        if data.smtp_password != SMTP_PASSWORD_MASK:
+            config["password"] = data.smtp_password
+    if data.smtp_from_email is not None:
+        config["from_email"] = data.smtp_from_email.strip()
+    if data.smtp_from_name is not None:
+        config["from_name"] = data.smtp_from_name.strip() or "CMDB"
+
+    if not config["host"] or not config["from_email"]:
+        raise_smtp_config_incomplete()
+
+    log_details = {
+        "action": "send_test_email",
+        "recipient": recipient,
+        "smtp_host": config["host"],
+        "smtp_port": config["port"],
+        "smtp_encryption": config["encryption"],
+    }
+
+    try:
+        msg = build_test_email(config, recipient)
+        await asyncio.to_thread(send_smtp_message, config, msg)
+    except Exception as exc:
+        logger.warning("Test email send failed for user_id=%s host=%s: %s", current_user.id, config["host"], exc)
+        await log_operation(
+            db, current_user.id, "test", "setting", 0,
+            details=log_details, ip_address=ip, status="failed",
+        )
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="测试邮件发送失败，请检查邮件服务器配置") from exc
+
+    await log_operation(
+        db, current_user.id, "test", "setting", 0,
+        details=log_details, ip_address=ip,
+    )
+
+    return {"code": 0, "message": "测试邮件已发送", "data": {"recipient": recipient}}

@@ -72,3 +72,20 @@ export async function getPublicSettings(): Promise<Record<string, any>> {
   const data = await publicApi.get('/settings/public')
   return data.data
 }
+
+export interface TestEmailPayload {
+  recipient: string
+  smtp_host?: string
+  smtp_port?: number
+  smtp_encryption?: string
+  smtp_username?: string
+  smtp_password?: string
+  smtp_from_email?: string
+  smtp_from_name?: string
+}
+
+// Send a test email using the currently-edited (unsaved) or saved SMTP config
+export async function sendTestEmail(payload: TestEmailPayload): Promise<{ recipient: string }> {
+  const response = await api.post('/settings/email/test', payload)
+  return response.data.data
+}

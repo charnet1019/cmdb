@@ -2,8 +2,8 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { SettingOutlined, SafetyCertificateOutlined, LoadingOutlined, SaveOutlined, InfoCircleOutlined, PictureOutlined, DatabaseOutlined, MailOutlined } from '@ant-design/icons-vue'
-import { getSettings, updateSettings, uploadImage, deleteImage } from '@/api/settings'
+import { SettingOutlined, SafetyCertificateOutlined, LoadingOutlined, SaveOutlined, InfoCircleOutlined, PictureOutlined, DatabaseOutlined, MailOutlined, SendOutlined } from '@ant-design/icons-vue'
+import { getSettings, updateSettings, uploadImage, deleteImage, sendTestEmail } from '@/api/settings'
 import { useAuthStore } from '@/stores/auth'
 
 // Loading states
@@ -34,6 +34,7 @@ const form = ref({
   max_login_attempts: 5,
   lockout_duration: 30,
   session_timeout: 30,
+  decrypt_rate_limit: 3,
   // OTP 设置
   otp_issuer_name: 'CMDB',
   // 品牌设置
@@ -43,7 +44,7 @@ const form = ref({
   // 邮件设置
   smtp_host: '',
   smtp_port: 465,
-  smtp_use_ssl: true,
+  smtp_encryption: 'ssl' as 'ssl' | 'starttls' | 'none',
   smtp_username: '',
   smtp_password: '',
   smtp_from_email: '',
@@ -53,6 +54,10 @@ const form = ref({
 // Upload states
 const logoUploading = ref(false)
 const bgUploading = ref(false)
+
+// Test email state
+const testEmailRecipient = ref('')
+const testEmailSending = ref(false)
 
 // File input refs for resetting after upload/clear
 const logoInput = ref<HTMLInputElement | null>(null)
@@ -145,6 +150,7 @@ async function fetchSettings() {
     if (response.data.password_require_special !== undefined) form.value.password_require_special = response.data.password_require_special
     if (response.data.max_login_attempts !== undefined) form.value.max_login_attempts = response.data.max_login_attempts
     if (response.data.lockout_duration !== undefined) form.value.lockout_duration = response.data.lockout_duration
+    if (response.data.decrypt_rate_limit !== undefined) form.value.decrypt_rate_limit = response.data.decrypt_rate_limit
     if (response.data.login_subtitle !== undefined) form.value.login_subtitle = response.data.login_subtitle
     if (response.data.logo_image !== undefined) form.value.logo_image = response.data.logo_image
     if (response.data.login_background_image !== undefined) form.value.login_background_image = response.data.login_background_image
@@ -157,7 +163,7 @@ async function fetchSettings() {
     if (response.data.otp_issuer_name !== undefined) form.value.otp_issuer_name = response.data.otp_issuer_name
     if (response.data.smtp_host !== undefined) form.value.smtp_host = response.data.smtp_host
     if (response.data.smtp_port !== undefined) form.value.smtp_port = response.data.smtp_port
-    if (response.data.smtp_use_ssl !== undefined) form.value.smtp_use_ssl = response.data.smtp_use_ssl
+    if (response.data.smtp_encryption !== undefined) form.value.smtp_encryption = response.data.smtp_encryption
     if (response.data.smtp_username !== undefined) form.value.smtp_username = response.data.smtp_username
     if (response.data.smtp_password !== undefined) form.value.smtp_password = response.data.smtp_password
     if (response.data.smtp_from_email !== undefined) form.value.smtp_from_email = response.data.smtp_from_email
@@ -188,6 +194,7 @@ async function saveSettings() {
       data.max_login_attempts = form.value.max_login_attempts
       data.lockout_duration = form.value.lockout_duration
       data.session_timeout = form.value.session_timeout
+      data.decrypt_rate_limit = form.value.decrypt_rate_limit
       data.otp_issuer_name = form.value.otp_issuer_name
     } else if (activeTab.value === 'branding') {
       data.site_title = form.value.site_title
@@ -200,7 +207,7 @@ async function saveSettings() {
     } else if (activeTab.value === 'email') {
       data.smtp_host = form.value.smtp_host
       data.smtp_port = form.value.smtp_port
-      data.smtp_use_ssl = form.value.smtp_use_ssl
+      data.smtp_encryption = form.value.smtp_encryption
       data.smtp_username = form.value.smtp_username
       data.smtp_password = form.value.smtp_password
       data.smtp_from_email = form.value.smtp_from_email
@@ -225,6 +232,32 @@ async function saveSettings() {
   }
 }
 
+// Send a test email using the current (possibly unsaved) form values
+async function handleSendTestEmail() {
+  if (!testEmailRecipient.value) {
+    message.error('请输入测试邮箱地址')
+    return
+  }
+  testEmailSending.value = true
+  try {
+    await sendTestEmail({
+      recipient: testEmailRecipient.value,
+      smtp_host: form.value.smtp_host,
+      smtp_port: form.value.smtp_port,
+      smtp_encryption: form.value.smtp_encryption,
+      smtp_username: form.value.smtp_username,
+      smtp_password: form.value.smtp_password,
+      smtp_from_email: form.value.smtp_from_email,
+      smtp_from_name: form.value.smtp_from_name,
+    })
+    message.success('测试邮件已发送，请检查收件箱')
+  } catch (error: any) {
+    message.error(error.response?.data?.detail || '测试邮件发送失败')
+  } finally {
+    testEmailSending.value = false
+  }
+}
+
 // Reset to defaults
 function resetToDefaults() {
   if (activeTab.value === "system") {
@@ -240,6 +273,7 @@ function resetToDefaults() {
     form.value.max_login_attempts = 5
     form.value.lockout_duration = 30
     form.value.session_timeout = 30
+    form.value.decrypt_rate_limit = 3
     form.value.otp_issuer_name = "CMDB"
   } else if (activeTab.value === "branding") {
     const previousLogo = form.value.logo_image
@@ -260,7 +294,7 @@ function resetToDefaults() {
   } else if (activeTab.value === "email") {
     form.value.smtp_host = ""
     form.value.smtp_port = 465
-    form.value.smtp_use_ssl = true
+    form.value.smtp_encryption = "ssl"
     form.value.smtp_username = ""
     form.value.smtp_password = ""
     form.value.smtp_from_email = ""
@@ -591,6 +625,22 @@ onMounted(() => {
               <p class="text-xs text-slate-500 mt-1">用户登录后，无操作自动登出的时间 (1-10080分钟)</p>
             </div>
 
+            <!-- Credential Decrypt Rate Limit -->
+            <div class="mt-4">
+              <label class="block text-sm font-medium text-slate-700 mb-1">凭证解密频率限制</label>
+              <div class="flex items-center gap-4">
+                <input
+                  v-model.number="form.decrypt_rate_limit"
+                  type="number"
+                  min="1"
+                  max="100"
+                  class="input-field w-32"
+                />
+                <span class="text-slate-600">次/秒</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-1">单个用户每秒可解密凭证密码的最大次数，超过将被限流 (1-100次/秒)</p>
+            </div>
+
             <!-- OTP Issuer Name -->
             <div class="border-t border-slate-100 pt-4 mt-4">
               <h3 class="text-sm font-medium text-slate-700 mb-4">MFA 设置</h3>
@@ -849,10 +899,14 @@ onMounted(() => {
                 <input v-model.number="form.smtp_port" type="number" min="1" max="65535" class="input-field" placeholder="465" />
               </div>
             </div>
-            <label class="flex items-center gap-2 cursor-pointer mt-4">
-              <input v-model="form.smtp_use_ssl" type="checkbox" class="w-4 h-4 text-primary rounded focus:ring-primary" />
-              <span class="text-sm text-slate-700">开启 SSL 安全连接</span>
-            </label>
+            <div class="mt-4">
+              <label class="block text-sm font-medium text-slate-700 mb-1">加密方式</label>
+              <select v-model="form.smtp_encryption" class="input-field max-w-xs">
+                <option value="ssl">SSL/TLS (隐式加密，端口 465)</option>
+                <option value="starttls">STARTTLS (显式加密，端口 587)</option>
+                <option value="none">不加密 (不推荐)</option>
+              </select>
+            </div>
           </div>
 
           <div class="border-t border-slate-100 pt-6">
@@ -881,6 +935,27 @@ onMounted(() => {
                 <input v-model="form.smtp_from_name" type="text" class="input-field" placeholder="CMDB" />
               </div>
             </div>
+          </div>
+
+          <div class="border-t border-slate-100 pt-6">
+            <h3 class="text-sm font-medium text-slate-700 mb-4">测试邮件</h3>
+            <div class="flex items-end gap-3">
+              <div class="flex-1">
+                <label class="block text-sm font-medium text-slate-700 mb-1">测试收件邮箱</label>
+                <input v-model="testEmailRecipient" type="email" class="input-field" placeholder="test@example.com" />
+              </div>
+              <button
+                type="button"
+                :disabled="testEmailSending"
+                @click="handleSendTestEmail"
+                class="btn-secondary flex items-center gap-2 h-[42px]"
+              >
+                <LoadingOutlined v-if="testEmailSending" class="animate-spin text-lg" />
+                <SendOutlined v-else class="text-lg" />
+                {{ testEmailSending ? '发送中...' : '发送测试邮件' }}
+              </button>
+            </div>
+            <p class="text-xs text-slate-500 mt-1">使用当前表单中的配置发送测试邮件（无需先保存），用于验证 SMTP 是否可用</p>
           </div>
         </div>
 

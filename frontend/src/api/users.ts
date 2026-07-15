@@ -27,9 +27,9 @@ export async function createUser(data: {
   mfa_enabled?: boolean
   password_method?: 'manual' | 'auto'
   send_email?: boolean
-}): Promise<User> {
+}): Promise<User & { email_sent?: boolean | null; temp_password?: string | null }> {
   const response = await api.post('/users', data)
-  return response.data.data
+  return { ...response.data.data, email_sent: response.data.email_sent, temp_password: response.data.temp_password }
 }
 
 export async function updateUser(id: number, data: Partial<User> & { group_ids?: number[] }): Promise<User> {
