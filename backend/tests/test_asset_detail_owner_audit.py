@@ -8,7 +8,8 @@ import pytest
 
 from tests.factories import FakeDB, FakeResult, asset_with_credentials, user
 
-from app.api import assets as asset_api
+from app.api import asset_detail as asset_api
+from app.schemas import AssetUpdate
 
 
 @pytest.mark.asyncio
@@ -33,7 +34,7 @@ async def test_update_asset_owner_by_id_logs_single_consolidated_change(monkeypa
 
     await asset_api.update_asset(
         asset_id="asset-1",
-        data=asset_api.AssetUpdate(owner_id=4),
+        data=AssetUpdate(owner_id=4),
         db=db,
         current_user=user(is_superuser=True),
         request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
@@ -69,7 +70,7 @@ async def test_update_asset_owner_by_name_logs_single_consolidated_change(monkey
 
     await asset_api.update_asset(
         asset_id="asset-1",
-        data=asset_api.AssetUpdate(owner_name="test"),
+        data=AssetUpdate(owner_name="test"),
         db=db,
         current_user=user(is_superuser=True),
         request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
@@ -96,7 +97,7 @@ async def test_update_asset_owner_id_not_found_raises_400():
     with pytest.raises(HTTPException) as exc:
         await asset_api.update_asset(
             asset_id="asset-1",
-            data=asset_api.AssetUpdate(owner_id=999),
+            data=AssetUpdate(owner_id=999),
             db=db,
             current_user=user(is_superuser=True),
             request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),

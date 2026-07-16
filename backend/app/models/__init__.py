@@ -405,7 +405,7 @@ class PasswordChangeLog(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)
-    credential_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("credentials.id"))
+    credential_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("credentials.id", ondelete="SET NULL"))
     change_type: Mapped[str] = mapped_column(String(20))  # user_password, asset_credential
     changed_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)
     ip_address: Mapped[Optional[str]] = mapped_column(String(45))

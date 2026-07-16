@@ -11,7 +11,8 @@ from fastapi.responses import StreamingResponse
 
 from tests.factories import FakeDB, FakeResult, asset, user
 
-from app.api import assets as asset_api
+from app.api import asset_config as asset_api
+from app.core.encryption import encrypt_value as asset_config_encrypt_value, decrypt_value as asset_config_decrypt_value
 from app.models import AssetConfigFile, AssetConfigVersion
 
 
@@ -42,7 +43,7 @@ def _config_version(**kwargs):
         "config_file_id": 1,
         "version_no": 1,
         "filename": "switch.cfg",
-        "content_encrypted": asset_api.encrypt_value("interface eth0\n"),
+        "content_encrypted": asset_config_encrypt_value("interface eth0\n"),
         "size": 16,
         "checksum": asset_api._content_checksum("interface eth0\n"),
         "change_summary": "上传配置文件",
@@ -396,7 +397,7 @@ async def test_upload_asset_config_file_creates_file_and_first_version(monkeypat
     created_version = next(obj for obj in db.added if isinstance(obj, AssetConfigVersion))
     assert created_file.filename == "switch.cfg"
     assert created_version.version_no == 1
-    assert asset_api.decrypt_value(created_version.content_encrypted) == "interface eth0\n"
+    assert asset_config_decrypt_value(created_version.content_encrypted) == "interface eth0\n"
     assert response["message"] == "配置文件已上传"
     assert audit_calls[0][1]["details"]["action"] == "upload_config"
 
@@ -464,7 +465,7 @@ async def test_save_asset_config_content_creates_new_version(monkeypatch):
     monkeypatch.setattr(asset_api, "log_operation", fake_log)
 
     config_file = _config_file(current_version_id=10)
-    existing_version = _config_version(id=10, filename="switch.cfg", content_encrypted=asset_api.encrypt_value("old content"))
+    existing_version = _config_version(id=10, filename="switch.cfg", content_encrypted=asset_config_encrypt_value("old content"))
     db = FakeDB(
         FakeResult(scalar_one_or_none=config_file),
         FakeResult(scalar_one_or_none=existing_version),
@@ -480,7 +481,7 @@ async def test_save_asset_config_content_creates_new_version(monkeypatch):
     )
 
     created_version = next(obj for obj in db.added if isinstance(obj, AssetConfigVersion))
-    assert asset_api.decrypt_value(created_version.content_encrypted) == "new content"
+    assert asset_config_decrypt_value(created_version.content_encrypted) == "new content"
     assert response["message"] == "配置已保存"
 
 
@@ -548,8 +549,8 @@ async def test_rollback_asset_config_creates_new_version_from_target(monkeypatch
     monkeypatch.setattr(asset_api, "log_operation", fake_log)
 
     config_file = _config_file(current_version_id=20)
-    target_version = _config_version(id=5, version_no=1, filename="switch.cfg", content_encrypted=asset_api.encrypt_value("old content"))
-    current_version = _config_version(id=20, version_no=2, filename="switch.cfg", content_encrypted=asset_api.encrypt_value("newer content"))
+    target_version = _config_version(id=5, version_no=1, filename="switch.cfg", content_encrypted=asset_config_encrypt_value("old content"))
+    current_version = _config_version(id=20, version_no=2, filename="switch.cfg", content_encrypted=asset_config_encrypt_value("newer content"))
 
     db = FakeDB(
         FakeResult(scalar_one_or_none=config_file),   # _get_config_file
@@ -567,7 +568,7 @@ async def test_rollback_asset_config_creates_new_version_from_target(monkeypatch
     )
 
     created_version = next(obj for obj in db.added if isinstance(obj, AssetConfigVersion))
-    assert asset_api.decrypt_value(created_version.content_encrypted) == "old content"
+    assert asset_config_decrypt_value(created_version.content_encrypted) == "old content"
     assert response["message"] == "已回滚配置"
     assert audit_calls[0][1]["details"]["action"] == "rollback_config"
     assert audit_calls[0][1]["details"]["from_version_no"] == 1
@@ -614,3 +615,75 @@ async def test_delete_asset_config_removes_existing_file(monkeypatch):
     assert response["data"]["deleted"] is True
     assert config_file in db.deleted
     assert audit_calls[0][1]["details"]["action"] == "delete_config"
+
+
+# ---- Filename/content decoding/checksum helpers ----
+
+def test_config_filename_rejects_paths_and_invalid_extensions():
+    assert asset_api._config_filename("running.cfg") == "running.cfg"
+    with pytest.raises(HTTPException):
+        asset_api._config_filename("../running.cfg")
+    with pytest.raises(HTTPException):
+        asset_api._config_filename("running.txt")
+
+
+def test_decode_config_content_accepts_utf8_and_gbk():
+    assert asset_api._decode_config_content("interface Gi0/1".encode("utf-8")) == "interface Gi0/1"
+    assert asset_api._decode_config_content("接口配置".encode("gbk")) == "接口配置"
+    with pytest.raises(HTTPException):
+        asset_api._decode_config_content(b"\xff\xfe\xfa")
+
+
+@pytest.mark.asyncio
+async def test_create_config_version_skips_unchanged_current_content():
+    checksum = asset_api._content_checksum("same")
+    config_file = AssetConfigFile(id=3, asset_id="asset-1", filename="running.cfg", current_version_id=11)
+    current = AssetConfigVersion(
+        id=11,
+        config_file_id=3,
+        version_no=2,
+        filename="running.cfg",
+        content_encrypted="encrypted",
+        size=4,
+        checksum=checksum,
+        created_by=1,
+    )
+    db = FakeDB(FakeResult(scalar_one_or_none=current))
+
+    version, created = await asset_api._create_config_version(
+        db, config_file, "running.cfg", "same", 1, "编辑保存"
+    )
+
+    assert version is current
+    assert created is False
+    assert db.added == []
+    assert config_file.current_version_id == 11
+
+
+@pytest.mark.asyncio
+async def test_create_config_version_force_new_creates_rollback_version():
+    checksum = asset_api._content_checksum("same")
+    config_file = AssetConfigFile(id=3, asset_id="asset-1", filename="running.cfg", current_version_id=11)
+    current = AssetConfigVersion(
+        id=11,
+        config_file_id=3,
+        version_no=2,
+        filename="running.cfg",
+        content_encrypted="encrypted",
+        size=4,
+        checksum=checksum,
+        created_by=1,
+    )
+    db = FakeDB(FakeResult(scalar_one_or_none=current), FakeResult(scalar=2))
+
+    version, created = await asset_api._create_config_version(
+        db, config_file, "running.cfg", "same", 7, "回滚到版本 2", force_new=True
+    )
+
+    assert created is True
+    assert version.version_no == 3
+    assert version.checksum == checksum
+    assert version.size == 4
+    assert version.created_by == 7
+    assert config_file.current_version_id == version.id
+    assert config_file.updated_by == 7

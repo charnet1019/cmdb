@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from tests.factories import FakeDB, FakeResult, asset, user
+from tests.factories import FakeDB, user
 
 from app.api import assets as asset_api
 
@@ -72,24 +72,6 @@ async def test_create_asset_rejects_network_field_on_web_category():
     assert db.added == []
 
 
-@pytest.mark.asyncio
-async def test_update_asset_rejects_field_not_matching_existing_category(monkeypatch):
-    async def allow(*args, **kwargs):
-        return True
-
-    monkeypatch.setattr(asset_api, "check_resource_permission", allow)
-
-    existing = asset(category="gpt")
-    db = FakeDB(FakeResult(scalar_one_or_none=existing))
-
-    with pytest.raises(HTTPException) as exc:
-        await asset_api.update_asset(
-            asset_id="asset-1",
-            data=asset_api.AssetUpdate(vendor="Cisco"),
-            db=db,
-            current_user=user(is_superuser=True),
-            request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
-        )
-
-    assert exc.value.status_code == 400
-    assert "vendor" in exc.value.detail
+# test_update_asset_rejects_field_not_matching_existing_category lives in
+# tests/test_asset_detail.py alongside the rest of update_asset's coverage
+# (update_asset moved to app.api.asset_detail during the router split).

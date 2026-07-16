@@ -1,11 +1,10 @@
 from datetime import datetime
-from io import BytesIO
 from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException, Response
 
-from tests.factories import FakeDB, FakeRedisSessionStore, FakeResult, asset, asset_with_credentials, auth, group, organization, user
+from tests.factories import FakeDB, FakeRedisSessionStore, FakeResult, asset, auth, group, organization, user
 
 from app.api import assets as asset_api
 from app.api import auth as auth_api
@@ -16,8 +15,8 @@ from app.api import logs as logs_api
 from app.api import settings as settings_api
 from app.api import notifications as notifications_api
 from app.api import users as users_api
-from app.models import Asset, AssetConfigFile, AssetConfigVersion, Authorization, Credential, Notification, NotificationReceipt, OperationLog, Setting, User
-from app.schemas import AuthorizationCreate, CredentialCreate, GroupCreate, UserCreate, PasswordResetRequest, UserUpdate
+from app.models import Asset, Authorization, Notification, NotificationReceipt, OperationLog, Setting, User
+from app.schemas import AuthorizationCreate, GroupCreate, UserCreate, PasswordResetRequest, UserUpdate
 
 
 @pytest.mark.asyncio
@@ -114,83 +113,6 @@ async def test_create_asset_rejects_invalid_category_without_db_write():
 
     assert exc.value.status_code == 400
     assert "无效的资产类型" in exc.value.detail
-
-
-@pytest.mark.asyncio
-async def test_decrypt_oob_password_returns_decrypted_value(monkeypatch):
-    checked = {}
-
-    async def allow(user_obj, permission, target_type, resource_id, db, organization_id=None):
-        checked.update(
-            permission=permission,
-            target_type=target_type,
-            resource_id=resource_id,
-            organization_id=organization_id,
-        )
-
-    monkeypatch.setattr(asset_api, "check_resource_permission", allow)
-
-    async def no_rate_limit(*args, **kwargs):
-        return None
-
-    monkeypatch.setattr(asset_api, "check_credential_decrypt_rate_limit", no_rate_limit)
-    monkeypatch.setattr(asset_api, "decrypt_value", lambda v: "oob-pass")
-
-    encrypted_asset = asset(oob_password_encrypted="gAAAA-fake-ciphertext")
-    db = FakeDB(FakeResult(scalar_one_or_none=encrypted_asset))
-
-    response = await asset_api.decrypt_oob_password("asset-1", db=db, current_user=user())
-
-    assert response.oob_password == "oob-pass"
-    assert checked == {
-        "permission": "view_pwd",
-        "target_type": "asset",
-        "resource_id": "asset-1",
-        "organization_id": 7,
-    }
-
-
-@pytest.mark.asyncio
-async def test_decrypt_oob_password_404_when_not_set(monkeypatch):
-    async def allow(*args, **kwargs):
-        return None
-
-    async def no_rate_limit(*args, **kwargs):
-        return None
-
-    monkeypatch.setattr(asset_api, "check_resource_permission", allow)
-    monkeypatch.setattr(asset_api, "check_credential_decrypt_rate_limit", no_rate_limit)
-
-    no_oob_asset = asset(oob_password_encrypted=None)
-    db = FakeDB(FakeResult(scalar_one_or_none=no_oob_asset))
-
-    with pytest.raises(HTTPException) as exc:
-        await asset_api.decrypt_oob_password("asset-1", db=db, current_user=user())
-
-    assert exc.value.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_create_credential_encrypts_password_and_logs_change(monkeypatch):
-    async def allow(*args, **kwargs):
-        return True
-
-    monkeypatch.setattr(asset_api, "check_resource_permission", allow)
-    db = FakeDB(FakeResult(scalar_one_or_none=asset(category="host")))
-
-    response = await asset_api.create_credential(
-        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
-        data=CredentialCreate(username="root", password="plain-pass", credential_type="password"),
-        asset_id="asset-1",
-        db=db,
-        current_user=user(),
-    )
-
-    created = next(obj for obj in db.added if isinstance(obj, Credential))
-    assert response.username == "root"
-    assert created.password_encrypted != "plain-pass"
-    assert created.password_encrypted.startswith("gAAAA")
-    assert any(getattr(obj, "change_type", None) == "asset_credential" for obj in db.added)
 
 
 @pytest.mark.asyncio
@@ -687,15 +609,6 @@ async def test_check_resource_permission_allows_superuser_without_query():
     assert db.executed == []
 
 
-class FakeUploadFile:
-    def __init__(self, filename="assets.xlsx", content=b"PK\x03\x04data"):
-        self.filename = filename
-        self._content = content
-
-    async def read(self):
-        return self._content
-
-
 @pytest.mark.asyncio
 async def test_create_asset_success_encrypts_oob_and_auto_authorizes_creator(monkeypatch):
     audit_calls = []
@@ -778,282 +691,10 @@ async def _noop():
     return None
 
 
-@pytest.mark.asyncio
-async def test_update_asset_success_updates_fields_encrypts_oob_and_checks_manage(monkeypatch):
-    checked = {}
-    audit_calls = []
-
-    async def allow(current_user, permission, target_type, resource_id, db, organization_id=None):
-        checked.update(
-            permission=permission,
-            target_type=target_type,
-            resource_id=resource_id,
-            organization_id=organization_id,
-        )
-        return True
-
-    async def fake_log(*args, **kwargs):
-        audit_calls.append((args, kwargs))
-
-    existing = asset_with_credentials(category="host", name="old", owner_id=None, owner_name=None)
-    reloaded = existing
-    db = FakeDB(
-        FakeResult(scalar_one_or_none=existing),
-        FakeResult(scalar_one_or_none=2),
-        FakeResult(scalar_one=reloaded),
-    )
-    monkeypatch.setattr(asset_api, "check_resource_permission", allow)
-    monkeypatch.setattr(asset_api, "log_operation", fake_log)
-
-    response = await asset_api.update_asset(
-        asset_id="asset-1",
-        data=asset_api.AssetUpdate(
-            name="new-name",
-            owner_name="bob",
-            oob_password="new-oob",
-            status="maintenance",
-        ),
-        db=db,
-        current_user=user(is_superuser=True),
-        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
-    )
-
-    assert response["name"] == "new-name"
-    assert existing.owner_id == 2
-    assert existing.oob_password_encrypted.startswith("gAAAA")
-    assert existing.status == "maintenance"
-    assert checked == {
-        "permission": "manage",
-        "target_type": "asset",
-        "resource_id": "asset-1",
-        "organization_id": 7,
-    }
-    assert audit_calls
-    assert audit_calls[0][0][2] == "update"
-
-
-@pytest.mark.asyncio
-async def test_delete_asset_success_checks_manage_and_deletes(monkeypatch):
-    checked = {}
-    audit_calls = []
-
-    async def allow(current_user, permission, target_type, resource_id, db, organization_id=None):
-        checked["permission"] = permission
-        checked["resource_id"] = resource_id
-        checked["organization_id"] = organization_id
-        return True
-
-    async def fake_log(*args, **kwargs):
-        audit_calls.append((args, kwargs))
-
-    existing = asset(category="host", asset_code="CI-001")
-    db = FakeDB(
-        FakeResult(scalar_one_or_none=existing),
-        FakeResult(scalars=[]),  # cleanup_authorization_targets: no matching authorizations
-    )
-    monkeypatch.setattr(asset_api, "check_resource_permission", allow)
-    monkeypatch.setattr(asset_api, "log_operation", fake_log)
-
-    response = await asset_api.delete_asset(
-        asset_id="asset-1",
-        db=db,
-        current_user=user(is_superuser=True),
-        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
-    )
-
-    assert response.message == "资产已删除"
-    assert db.deleted == [existing]
-    assert checked == {"permission": "manage", "resource_id": "asset-1", "organization_id": 7}
-    assert audit_calls
-
-
-@pytest.mark.asyncio
-async def test_import_assets_create_mode_dispatches_batch_and_audits(monkeypatch):
-    audit_calls = []
-
-    async def fake_parse(content, category, mode, db):
-        return ([{"name": "web-1"}, {"name": "web-2"}], [{"row": 3, "error": "bad"}])
-
-    async def fake_batch(category, records, db, user_id):
-        assert category == "host"
-        assert records == [{"name": "web-1"}, {"name": "web-2"}]
-        assert user_id == 1
-        return 2, []
-
-    async def fake_log(*args, **kwargs):
-        audit_calls.append((args, kwargs))
-
-    monkeypatch.setattr(asset_api, "parse_import_file", fake_parse)
-    monkeypatch.setattr(asset_api, "batch_create_assets", fake_batch)
-    monkeypatch.setattr(asset_api, "get_created_orgs", lambda: {"Default / Ops"})
-    monkeypatch.setattr(asset_api, "log_operation", fake_log)
-
-    response = await asset_api.import_assets(
-        category="host",
-        mode="create",
-        file=FakeUploadFile(),
-        db=FakeDB(),
-        current_user=user(is_superuser=True),
-    )
-
-    assert response.data.total_rows == 3
-    assert response.data.success_count == 2
-    assert response.data.failed_count == 1
-    assert response.data.errors == [{"row": 3, "error": "bad"}]
-    assert audit_calls
-    assert audit_calls[0][1]["action"] == "import"
-    assert audit_calls[0][1]["resource_type"] == "asset"
-
-
-@pytest.mark.asyncio
-async def test_import_assets_update_mode_filters_by_type_and_manage_permission(monkeypatch):
-    allowed_records_seen = []
-    audit_calls = []
-
-    async def fake_parse(content, category, mode, db):
-        return ([{"id": "asset-1"}, {"id": "asset-2"}, {"id": "missing"}], [])
-
-    async def allow(current_user, permission, target_type, resource_id, db, organization_id=None):
-        if resource_id == "asset-1":
-            return True
-        raise AssertionError("unexpected permission check")
-
-    async def fake_batch(category, records, db):
-        allowed_records_seen.extend(records)
-        return len(records), []
-
-    monkeypatch.setattr(asset_api, "parse_import_file", fake_parse)
-    monkeypatch.setattr(asset_api, "check_resource_permission", allow)
-    monkeypatch.setattr(asset_api, "batch_update_assets", fake_batch)
-    monkeypatch.setattr(asset_api, "get_created_orgs", lambda: set())
-    async def fake_log(*args, **kwargs):
-        audit_calls.append((args, kwargs))
-
-    monkeypatch.setattr(asset_api, "log_operation", fake_log)
-    db = FakeDB(
-        FakeResult(scalar_one_or_none=asset(id="asset-1", category="host")),
-        FakeResult(scalar_one_or_none=asset(id="asset-2", category="database")),
-        FakeResult(scalar_one_or_none=None),
-    )
-
-    response = await asset_api.import_assets(
-        category="host",
-        mode="update",
-        file=FakeUploadFile(),
-        db=db,
-        current_user=user(is_superuser=True),
-    )
-
-    assert allowed_records_seen == [{"id": "asset-1"}, {"id": "missing"}]
-    assert response.data.success_count == 2
-    assert response.data.failed_count == 1
-    assert response.data.errors == [{"id": "asset-2", "error": "资产类型不匹配"}]
-    assert audit_calls
-    assert audit_calls[0][1]["action"] == "import"
-    assert audit_calls[0][1]["details"]["mode"] == "update"
-
-
-@pytest.mark.asyncio
-async def test_import_assets_rejects_invalid_file_magic_bytes():
-    with pytest.raises(HTTPException) as exc:
-        await asset_api.import_assets(
-            category="host",
-            mode="create",
-            file=FakeUploadFile(content=b"not-xlsx"),
-            db=FakeDB(),
-            current_user=user(is_superuser=True),
-        )
-
-    assert exc.value.status_code == 400
-    assert "文件格式不正确" in exc.value.detail
-
-
-@pytest.mark.asyncio
-async def test_export_assets_selected_csv_includes_passwords_when_authorized(monkeypatch):
-    exported_rows = []
-    audit_calls = []
-
-    async def fake_authorized_ids(current_user, db, permission="view"):
-        assert permission in {"view", "export_pwd"}
-        return {"asset-1"}
-
-    async def fake_permissions(current_user, db):
-        return ["export", "export_pwd"]
-
-    async def fake_csv_stream(row_gen, columns):
-        async for row in row_gen:
-            exported_rows.append(row)
-        return BytesIO(b"csv"), len(exported_rows)
-
-    async def fake_log(*args, **kwargs):
-        audit_calls.append((args, kwargs))
-
-    item = asset_with_credentials(category="host", created_by_id=1)
-    item.oob_password_encrypted = asset_api.encrypt_value("oob-secret")
-    item.credentials = [
-        Credential(
-            id=1,
-            asset_id="asset-1",
-            username="root",
-            password_encrypted=asset_api.encrypt_value("cred-secret"),
-            credential_type="password",
-        )
-    ]
-
-    monkeypatch.setattr(asset_api, "get_authorized_asset_ids", fake_authorized_ids)
-    monkeypatch.setattr(asset_api, "get_user_permissions", fake_permissions)
-    monkeypatch.setattr(asset_api, "_export_csv_stream", fake_csv_stream)
-    monkeypatch.setattr(asset_api, "log_operation", fake_log)
-
-    db = FakeDB(
-        FakeResult(scalar=1),
-        FakeResult(scalars=[item]),
-        FakeResult(all_rows=[SimpleNamespace(id=7, name="Ops", parent_id=None)]),
-        FakeResult(all_rows=[SimpleNamespace(id=1, username="alice")]),
-        FakeResult(scalars=[]),
-    )
-
-    response = await asset_api.export_assets(
-        format="csv",
-        scope="selected",
-        ids="asset-1",
-        include_passwords=True,
-        db=db,
-        current_user=user(is_superuser=True),
-    )
-
-    assert response.media_type == "text/csv"
-    assert exported_rows[0]["credentials"] == [{"username": "root", "password": "cred-secret"}]
-    assert exported_rows[0]["oob_password"] == "oob-secret"
-    assert exported_rows[0]["creator_name"] == "alice"
-    assert audit_calls
-    assert audit_calls[0][1]["action"] == "export"
-    assert audit_calls[0][1]["resource_type"] == "asset"
-
-
-@pytest.mark.asyncio
-async def test_export_assets_rejects_password_export_without_export_pwd(monkeypatch):
-    async def all_authorized(current_user, db, permission="view"):
-        return None
-
-    async def missing_password_permission(current_user, db):
-        return ["export"]
-
-    monkeypatch.setattr(asset_api, "get_authorized_asset_ids", all_authorized)
-    monkeypatch.setattr(asset_api, "get_user_permissions", missing_password_permission)
-
-    with pytest.raises(HTTPException) as exc:
-        await asset_api.export_assets(
-            format="csv",
-            scope="all",
-            organization_id=None,
-            include_passwords=True,
-            db=FakeDB(),
-            current_user=user(is_superuser=True),
-        )
-
-    assert exc.value.status_code == 403
-    assert "export_pwd" in exc.value.detail
+# test_update_asset_success_updates_fields_encrypts_oob_and_checks_manage and
+# test_delete_asset_success_checks_manage_and_deletes live in
+# tests/test_asset_detail.py (update_asset/delete_asset moved to
+# app.api.asset_detail during the router split).
 
 
 @pytest.mark.asyncio
@@ -1802,73 +1443,4 @@ async def test_force_logout_user_sessions_publishes_sse_event(monkeypatch):
     assert response.data == {"terminated_sessions": 1}
     assert published == [(2, "force_logout", {"reason": "admin_forced", "message": "账号已被管理员强制离线"})]
 
-
-def test_config_filename_rejects_paths_and_invalid_extensions():
-    assert asset_api._config_filename("running.cfg") == "running.cfg"
-    with pytest.raises(HTTPException):
-        asset_api._config_filename("../running.cfg")
-    with pytest.raises(HTTPException):
-        asset_api._config_filename("running.txt")
-
-
-def test_decode_config_content_accepts_utf8_and_gbk():
-    assert asset_api._decode_config_content("interface Gi0/1".encode("utf-8")) == "interface Gi0/1"
-    assert asset_api._decode_config_content("接口配置".encode("gbk")) == "接口配置"
-    with pytest.raises(HTTPException):
-        asset_api._decode_config_content(b"\xff\xfe\xfa")
-
-
-@pytest.mark.asyncio
-async def test_create_config_version_skips_unchanged_current_content():
-    checksum = asset_api._content_checksum("same")
-    config_file = AssetConfigFile(id=3, asset_id="asset-1", filename="running.cfg", current_version_id=11)
-    current = AssetConfigVersion(
-        id=11,
-        config_file_id=3,
-        version_no=2,
-        filename="running.cfg",
-        content_encrypted="encrypted",
-        size=4,
-        checksum=checksum,
-        created_by=1,
-    )
-    db = FakeDB(FakeResult(scalar_one_or_none=current))
-
-    version, created = await asset_api._create_config_version(
-        db, config_file, "running.cfg", "same", 1, "编辑保存"
-    )
-
-    assert version is current
-    assert created is False
-    assert db.added == []
-    assert config_file.current_version_id == 11
-
-
-@pytest.mark.asyncio
-async def test_create_config_version_force_new_creates_rollback_version():
-    checksum = asset_api._content_checksum("same")
-    config_file = AssetConfigFile(id=3, asset_id="asset-1", filename="running.cfg", current_version_id=11)
-    current = AssetConfigVersion(
-        id=11,
-        config_file_id=3,
-        version_no=2,
-        filename="running.cfg",
-        content_encrypted="encrypted",
-        size=4,
-        checksum=checksum,
-        created_by=1,
-    )
-    db = FakeDB(FakeResult(scalar_one_or_none=current), FakeResult(scalar=2))
-
-    version, created = await asset_api._create_config_version(
-        db, config_file, "running.cfg", "same", 7, "回滚到版本 2", force_new=True
-    )
-
-    assert created is True
-    assert version.version_no == 3
-    assert version.checksum == checksum
-    assert version.size == 4
-    assert version.created_by == 7
-    assert config_file.current_version_id == version.id
-    assert config_file.updated_by == 7
 

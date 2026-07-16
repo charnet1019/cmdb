@@ -1270,7 +1270,7 @@ onMounted(async () => {
           </button>
         </div>
         <div class="p-3">
-          <form @submit.prevent="handleSubmit" autocomplete="off" class="space-y-3">
+          <div class="space-y-3">
             <!-- Row 1: 资产名称、资产编号 -->
             <div class="grid grid-cols-2 gap-3">
               <div>
@@ -1475,7 +1475,18 @@ onMounted(async () => {
                   </div>
                 </div>
                 <!-- 添加新凭证 -->
-                <div class="flex items-end gap-2">
+                <form class="flex items-end gap-2" autocomplete="off" @submit.prevent="addCredentialToForm">
+                  <label for="new-credential-username-a11y" class="sr-only">用户名</label>
+                  <input
+                    id="new-credential-username-a11y"
+                    name="username"
+                    type="text"
+                    class="sr-only"
+                    autocomplete="username"
+                    :value="newCredentialForm.username"
+                    readonly
+                    tabindex="-1"
+                  />
                   <div class="flex-1">
                     <label class="block text-xs text-slate-500 mb-1">用户名</label>
                     <input
@@ -1484,7 +1495,6 @@ onMounted(async () => {
                       class="input-field text-sm"
                       placeholder="输入用户名"
                       autocomplete="section-credential username"
-                      @keyup.enter.prevent="addCredentialToForm"
                     />
                   </div>
                   <div class="flex-1 relative">
@@ -1495,7 +1505,6 @@ onMounted(async () => {
                       class="input-field text-sm w-full pr-8"
                       placeholder="输入密码"
                       autocomplete="new-password"
-                      @keyup.enter.prevent="addCredentialToForm"
                     />
                     <button type="button" @click="showPassword = !showPassword" class="absolute right-2 top-[calc(50%+10px)] -translate-y-1/2 text-slate-400 hover:text-slate-600">
                       <EyeOutlined v-if="!showPassword" class="text-sm" />
@@ -1503,13 +1512,12 @@ onMounted(async () => {
                     </button>
                   </div>
                   <button
-                    type="button"
-                    @click="addCredentialToForm"
+                    type="submit"
                     class="bg-primary text-white px-3 py-1.5 rounded text-sm hover:bg-blue-600 transition-colors h-8"
                   >
                     <PlusCircleOutlined class="mr-1" /> 添加
                   </button>
-                </div>
+                </form>
               </div>
             </div>
 
@@ -1695,9 +1703,20 @@ onMounted(async () => {
               </div>
               <div>
                 <label class="block text-xs font-medium text-slate-600 mb-1">OOB</label>
-                <input v-model="form.oob" type="text" class="input-field" placeholder="带外管理地址" />
+                <input v-model="form.oob" type="text" class="input-field" placeholder="带外管理地址" autocomplete="off" />
               </div>
-              <div class="grid grid-cols-2 gap-3">
+              <form class="grid grid-cols-2 gap-3" autocomplete="off" @submit.prevent>
+                <label for="oob-username-a11y" class="sr-only">用户名</label>
+                <input
+                  id="oob-username-a11y"
+                  name="username"
+                  type="text"
+                  class="sr-only"
+                  autocomplete="username"
+                  :value="form.oob_username"
+                  readonly
+                  tabindex="-1"
+                />
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1">OOB用户名</label>
                   <input v-model="form.oob_username" type="search" class="input-field" placeholder="OOB 用户名" autocomplete="section-oob username" />
@@ -1712,7 +1731,7 @@ onMounted(async () => {
                     </button>
                   </div>
                 </div>
-              </div>
+              </form>
               <div>
                 <label class="block text-xs font-medium text-slate-600 mb-1">状态</label>
                 <select v-model="form.status" class="input-field">
@@ -1748,11 +1767,11 @@ onMounted(async () => {
               <button type="button" @click="showModal = false" class="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors">
                 取消
               </button>
-              <button type="submit" :disabled="modalLoading" class="btn-primary" autocomplete="off">
+              <button type="button" @click="handleSubmit" :disabled="modalLoading" class="btn-primary">
                 {{ modalLoading ? '处理中...' : '保存' }}
               </button>
             </div>
-          </form>
+          </div>
         </div>
       </div>
     </div>
