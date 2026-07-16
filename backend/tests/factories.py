@@ -98,6 +98,25 @@ class FakeResult:
         return iter(self._all_rows)
 
 
+class _FakeNestedTransaction:
+    """Simulates db.begin_nested()'s SAVEPOINT semantics: on exception, only
+    objects added/deleted since entering are unwound; earlier state stands."""
+
+    def __init__(self, db):
+        self.db = db
+
+    async def __aenter__(self):
+        self._added_mark = len(self.db.added)
+        self._deleted_mark = len(self.db.deleted)
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        if exc_type is not None:
+            del self.db.added[self._added_mark:]
+            del self.db.deleted[self._deleted_mark:]
+        return False
+
+
 class FakeDB:
     def __init__(self, *results):
         self.results = list(results)
@@ -135,6 +154,9 @@ class FakeDB:
 
     async def rollback(self):
         self.rollbacks += 1
+
+    def begin_nested(self):
+        return _FakeNestedTransaction(self)
 
     async def refresh(self, obj):
         self._hydrate(obj)

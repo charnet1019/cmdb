@@ -219,7 +219,10 @@ def format_field_value(field: str, asset: Dict[str, Any]) -> Any:
         return ASSET_CATEGORY_LABELS.get(value, value)
     if field == "status":
         return STATUS_LABELS.get(value, value) if value else ""
-    if field == "vendor" and value is None:
+    if field == "vendor" and value is None and asset.get("category") == "network":
+        # Only network-device assets have no dedicated "vendor" field of their
+        # own; falling back to platform for other categories would mislabel
+        # e.g. a host's OS platform ("Linux") as its hardware vendor.
         return asset.get("platform")
     if field in ("created_at", "updated_at") and value:
         if isinstance(value, datetime):
@@ -256,6 +259,25 @@ def format_field_value(field: str, asset: Dict[str, Any]) -> Any:
     return value
 
 
+# Leading characters that Excel/LibreOffice/Google Sheets interpret as the
+# start of a formula. A cell value beginning with one of these, when opened
+# by a spreadsheet app, can execute as a formula (CSV/formula injection).
+_FORMULA_TRIGGER_CHARS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _sanitize_cell(value: Any) -> Any:
+    """Neutralize formula-injection payloads in exported cell values.
+
+    Asset name/notes/credentials/etc. are free-text fields a user controls,
+    and get written verbatim into Excel/CSV. Prefixing a leading trigger
+    character with a single quote keeps the value visible as plain text
+    instead of being evaluated as a formula when the file is opened.
+    """
+    if isinstance(value, str) and value.startswith(_FORMULA_TRIGGER_CHARS):
+        return "'" + value
+    return value
+
+
 async def _export_excel_stream(
     data_gen,  # async generator yielding Dict[str, Any]
     export_columns: List[tuple],
@@ -288,7 +310,7 @@ async def _export_excel_stream(
                 row.append("")
                 continue
             value = format_field_value(field, asset)
-            row.append(value if value else "")
+            row.append(_sanitize_cell(value) if value else "")
         ws.append(row)
         count += 1
 
@@ -320,7 +342,7 @@ async def _export_csv_stream(
                 row.append("")
                 continue
             value = format_field_value(field, asset)
-            row.append(value if value else "")
+            row.append(_sanitize_cell(value) if value else "")
         writer.writerow(row)
         count += 1
 

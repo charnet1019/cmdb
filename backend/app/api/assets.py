@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, delete, inspect, false
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
@@ -94,6 +95,44 @@ ASSET_TYPE_FIELDS: Dict[str, List[str]] = {
     "web": [],
     "gpt": [],
 }
+
+# Fields on AssetCreate/AssetUpdate that only make sense for specific asset
+# categories. Used to reject e.g. a "web" asset silently storing network
+# hardware fields (device_type/vendor/...) with no validation error.
+CATEGORY_ONLY_FIELDS: Dict[str, set] = {
+    "host": {
+        "cpu", "memory", "system_disk", "data_disk", "model", "serial_number", "vendor",
+        "oob_address", "oob_username", "oob_password",
+    },
+    "network": {"device_type", "vendor", "model", "serial_number"},
+    "database": {"db_type", "namespace", "host_ids", "storage_locations"},
+    "cloud": set(),
+    "web": set(),
+    "gpt": set(),
+}
+
+# The union of every category-restricted field above — anything in this set
+# that isn't in the target category's own allowed set is out of place.
+_ALL_CATEGORY_RESTRICTED_FIELDS: set = set().union(*CATEGORY_ONLY_FIELDS.values())
+
+
+def _validate_category_fields(category: str, fields: Dict[str, Any]) -> None:
+    """Reject category-specific fields (network/host hardware fields, OOB
+    fields, database runs_on/storage_locations) that don't belong to `category`.
+
+    Only flags fields with a truthy value — an unset/None/empty field is not
+    an error, since schemas share these fields across all categories.
+    """
+    allowed = CATEGORY_ONLY_FIELDS.get(category, set())
+    invalid = sorted(
+        field for field in _ALL_CATEGORY_RESTRICTED_FIELDS - allowed
+        if fields.get(field)
+    )
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"字段 {', '.join(invalid)} 不适用于{asset_category_label(category)}类型资产",
+        )
 
 # Common fields for all asset types
 COMMON_FIELDS = [
@@ -555,6 +594,52 @@ def _content_checksum(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
+def _encrypt_oob_password(value: Optional[str]) -> Optional[str]:
+    """Encrypt a plaintext OOB password, or clear it: an empty/None value
+    means "no password" and must never be encrypted into a non-empty ciphertext."""
+    return encrypt_value(value) if value else None
+
+
+async def _sync_host_relations(db: AsyncSession, asset_id: str, host_ids: Optional[List[str]], *, replace: bool = False) -> None:
+    """Create AssetHostRelation rows linking a database asset to its runs_on hosts.
+
+    If replace=True, existing relations are deleted first — used by update_asset,
+    where an empty host_ids list means "clear all relations" rather than "no change".
+    """
+    if replace:
+        await db.execute(delete(AssetHostRelation).where(AssetHostRelation.asset_id == asset_id))
+    for host_id in host_ids or []:
+        # Validate host exists and is category='host'
+        host_result = await db.execute(
+            select(Asset).where(Asset.id == host_id, Asset.category == "host")
+        )
+        if host_result.scalar_one_or_none():
+            db.add(AssetHostRelation(asset_id=asset_id, host_id=host_id))
+    await db.commit()
+
+
+async def _sync_storage_locations(db: AsyncSession, asset_id: str, locations, *, replace: bool = False) -> None:
+    """Create StorageLocation rows for a database asset.
+
+    Accepts either StorageLocationCreate-like objects (attribute access) or
+    plain dicts (as produced by Pydantic's model_dump()) — update_asset's
+    update_data always carries dicts, while create_asset's schema objects
+    still carry the original Pydantic models.
+
+    If replace=True, existing storage locations are deleted first — used by
+    update_asset, where an empty list means "clear all" rather than "no change".
+    """
+    if replace:
+        await db.execute(delete(StorageLocation).where(StorageLocation.asset_id == asset_id))
+    for loc in locations or []:
+        if isinstance(loc, dict):
+            path, path_type, description = loc.get("path"), loc.get("path_type"), loc.get("description")
+        else:
+            path, path_type, description = loc.path, loc.path_type, loc.description
+        db.add(StorageLocation(asset_id=asset_id, path=path, path_type=path_type, description=description))
+    await db.commit()
+
+
 async def _get_network_asset_or_404(db: AsyncSession, asset_id: str, current_user: User, permission: str = "view") -> Asset:
     result = await db.execute(select(Asset).where(Asset.id == asset_id))
     asset = result.scalar_one_or_none()
@@ -983,10 +1068,12 @@ async def create_asset(
             detail=f"无效的资产类型: {data.category}"
         )
 
+    _validate_category_fields(data.category, data.model_dump(exclude_unset=True))
+
     # Validate and get owner info
     owner_id = data.owner_id
     owner_name = data.owner_name
-    if owner_id and not owner_name:
+    if owner_id is not None and owner_name is None:
         # Fetch owner name from database
         result = await db.execute(select(User.username).where(User.id == owner_id))
         owner_result = result.scalar_one_or_none()
@@ -997,7 +1084,7 @@ async def create_asset(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="负责人 ID 不存在"
             )
-    elif owner_name and not owner_id:
+    elif owner_name is not None and owner_id is None:
         # Try to find user by username
         result = await db.execute(select(User.id, User.username).where(User.username == owner_name))
         owner_result = result.first()
@@ -1010,9 +1097,7 @@ async def create_asset(
             )
 
     # Encrypt OOB password if provided
-    oob_password_encrypted = None
-    if data.oob_password:
-        oob_password_encrypted = encrypt_value(data.oob_password)
+    oob_password_encrypted = _encrypt_oob_password(data.oob_password)
 
     asset = Asset(
         name=data.name,
@@ -1046,7 +1131,11 @@ async def create_asset(
     )
 
     db.add(asset)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="资产编号已存在")
     await db.refresh(asset)
 
     # Audit log
@@ -1097,30 +1186,12 @@ async def create_asset(
             db.add(existing)
         await db.commit()
 
-    # Handle database asset relations (runs_on hosts)
-    if data.host_ids and data.category == "database":
-        for host_id in data.host_ids:
-            # Validate host exists and is category='host'
-            host_result = await db.execute(
-                select(Asset).where(Asset.id == host_id, Asset.category == "host")
-            )
-            host_asset = host_result.scalar_one_or_none()
-            if host_asset:
-                relation = AssetHostRelation(asset_id=asset.id, host_id=host_id)
-                db.add(relation)
-        await db.commit()
-
-    # Handle storage locations for database assets
-    if data.storage_locations and data.category == "database":
-        for loc in data.storage_locations:
-            storage = StorageLocation(
-                asset_id=asset.id,
-                path=loc.path,
-                path_type=loc.path_type,
-                description=loc.description
-            )
-            db.add(storage)
-        await db.commit()
+    # Handle database asset relations (runs_on hosts) and storage locations
+    if data.category == "database":
+        if data.host_ids:
+            await _sync_host_relations(db, asset.id, data.host_ids)
+        if data.storage_locations:
+            await _sync_storage_locations(db, asset.id, data.storage_locations)
 
     # Reload asset with relations
     # For database assets, load database_hosts and storage_locations to include in response
@@ -1165,7 +1236,38 @@ async def bulk_update_assets(
     result = await db.execute(
         select(Asset).where(Asset.id.in_(body.ids))
     )
-    assets = result.scalars().all()
+    fetched_assets = result.scalars().all()
+
+    # This endpoint only supports bulk status changes (activate/deactivate).
+    # Reject unsupported keys instead of silently dropping them — a caller
+    # asking to bulk-set organization_id/owner_id etc. would otherwise get a
+    # 200 "success" response with nothing actually changed.
+    unsupported_keys = set(body.data.keys()) - {"status"}
+    if unsupported_keys:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"批量操作不支持以下字段: {', '.join(sorted(unsupported_keys))}",
+        )
+    if "status" not in body.data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="请提供要更新的字段",
+        )
+
+    # Silently drop IDs the caller isn't authorized for, the same way
+    # nonexistent IDs are silently dropped — treating "exists but forbidden"
+    # differently from "doesn't exist" would let a caller enumerate real
+    # asset IDs by comparing 403 vs. "excluded from the batch" responses.
+    assets = []
+    for asset in fetched_assets:
+        try:
+            await check_resource_permission(
+                current_user, "manage", "asset", asset.id, db,
+                organization_id=asset.organization_id,
+            )
+            assets.append(asset)
+        except HTTPException:
+            continue
 
     if not assets:
         raise HTTPException(
@@ -1173,17 +1275,9 @@ async def bulk_update_assets(
             detail="未找到任何资产"
         )
 
-    # Check resource-level permission for each asset
-    for asset in assets:
-        await check_resource_permission(
-            current_user, "manage", "asset", asset.id, db,
-            organization_id=asset.organization_id,
-        )
-
     # Update each asset
     for asset in assets:
-        if "status" in body.data:
-            asset.status = body.data["status"]
+        asset.status = body.data["status"]
 
     await db.commit()
 
@@ -1220,19 +1314,27 @@ async def bulk_delete_assets(
     result = await db.execute(
         select(Asset).where(Asset.id.in_(body.ids))
     )
-    assets = result.scalars().all()
+    fetched_assets = result.scalars().all()
+
+    # Silently drop IDs the caller isn't authorized for, the same way
+    # nonexistent IDs are silently dropped — treating "exists but forbidden"
+    # differently from "doesn't exist" would let a caller enumerate real
+    # asset IDs by comparing 403 vs. "excluded from the batch" responses.
+    assets = []
+    for asset in fetched_assets:
+        try:
+            await check_resource_permission(
+                current_user, "manage", "asset", asset.id, db,
+                organization_id=asset.organization_id,
+            )
+            assets.append(asset)
+        except HTTPException:
+            continue
 
     if not assets:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="未找到任何资产"
-        )
-
-    # Check resource-level permission for each asset
-    for asset in assets:
-        await check_resource_permission(
-            current_user, "manage", "asset", asset.id, db,
-            organization_id=asset.organization_id,
         )
 
     # Remove dangling references from authorizations that target these assets
@@ -1758,6 +1860,7 @@ async def update_asset(
 
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
+    _validate_category_fields(asset.category, update_data)
     changes = {}
 
     def record_change(field: str, before, after) -> None:
@@ -1797,10 +1900,7 @@ async def update_asset(
         before_password_state = "已设置" if asset.oob_password_encrypted else "未设置"
         after_password_state = "已设置" if update_data["oob_password"] else "未设置"
         record_change("oob_password", before_password_state, after_password_state)
-        if update_data["oob_password"]:
-            asset.oob_password_encrypted = encrypt_value(update_data["oob_password"])
-        else:
-            asset.oob_password_encrypted = None
+        asset.oob_password_encrypted = _encrypt_oob_password(update_data["oob_password"])
         del update_data["oob_password"]
 
     # Extract database-specific fields before generic update
@@ -1828,51 +1928,20 @@ async def update_asset(
         model_field = "extra_data" if field == "extra_data" else field
         record_change(field, getattr(asset, model_field, None), value)
         setattr(asset, model_field, value)
- 
-    await db.commit()
 
-    # Handle database asset relations (runs_on hosts)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="资产编号已存在")
+
+    # Handle database asset relations (runs_on hosts) and storage locations.
+    # host_ids/storage_locations_data being present-but-empty means "clear all".
     if host_ids is not None and asset.category == "database":
-        # Delete existing relations
-        await db.execute(
-            delete(AssetHostRelation).where(AssetHostRelation.asset_id == asset_id)
-        )
-        # Create new relations
-        if host_ids:
-            for host_id in host_ids:
-                host_result = await db.execute(
-                    select(Asset).where(Asset.id == host_id, Asset.category == "host")
-                )
-                host_asset = host_result.scalar_one_or_none()
-                if host_asset:
-                    relation = AssetHostRelation(asset_id=asset.id, host_id=host_id)
-                    db.add(relation)
-        await db.commit()
+        await _sync_host_relations(db, asset_id, host_ids, replace=True)
 
-    # Handle storage locations for database assets
     if storage_locations_data is not None and asset.category == "database":
-        # Delete existing storage locations
-        await db.execute(
-            delete(StorageLocation).where(StorageLocation.asset_id == asset_id)
-        )
-        if storage_locations_data:
-            for loc in storage_locations_data:
-                if isinstance(loc, dict):
-                    storage = StorageLocation(
-                        asset_id=asset.id,
-                        path=loc.get("path"),
-                        path_type=loc.get("path_type"),
-                        description=loc.get("description")
-                    )
-                else:
-                    storage = StorageLocation(
-                        asset_id=asset.id,
-                        path=loc.path,
-                        path_type=loc.path_type,
-                        description=loc.description
-                    )
-                db.add(storage)
-        await db.commit()
+        await _sync_storage_locations(db, asset_id, storage_locations_data, replace=True)
 
     # Audit log
     if changes:

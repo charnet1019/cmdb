@@ -6,11 +6,17 @@ import re
 from io import BytesIO
 from typing import List, Dict, Any, Optional, Tuple
 
+# Hard cap on data rows per import to bound per-row DB work (org resolution,
+# duplicate checks, credential/host-relation writes) and prevent a small,
+# crafted XLSX file from expanding into an unbounded amount of processing.
+MAX_IMPORT_ROWS = 5000
+
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
+from app.core.asset_categories import ASSET_CATEGORY_LABELS
 from app.core.encryption import encrypt_value
 from app.models import Asset, Organization, AssetHostRelation, StorageLocation, Credential
 
@@ -199,7 +205,7 @@ GPT_CREATE_FIELDS = [
     ("platform", "*平台", True),
     ("external_address", "*外网地址", True),
     ("internal_address", "内网地址", False),
-    ("credentials", "用户名密码", True),
+    ("credentials", "*用户名密码", True),
     ("applicant", "申请人", False),
     ("status", "状态", False),
     ("notes", "描述", False),
@@ -226,15 +232,6 @@ CATEGORY_FIELDS = {
     "cloud": {"create": CLOUD_CREATE_FIELDS, "update": CLOUD_UPDATE_FIELDS},
     "web": {"create": WEB_CREATE_FIELDS, "update": WEB_UPDATE_FIELDS},
     "gpt": {"create": GPT_CREATE_FIELDS, "update": GPT_UPDATE_FIELDS},
-}
-
-CATEGORY_NAMES = {
-    "host": "主机",
-    "network": "网络设备",
-    "database": "数据库",
-    "cloud": "云服务",
-    "web": "网站服务",
-    "gpt": "AI 服务",
 }
 
 # ─── Category-specific metadata ──────────────────────────────────────
@@ -647,8 +644,8 @@ async def _replace_credentials(asset_id, record: Dict[str, Any], cred_type: str,
             ))
 
 
-async def _handle_database_relations(asset, record: Dict[str, Any], db):
-    """Handle runs_on hosts and storage_locations for database assets."""
+async def _handle_database_relations(asset_id, record: Dict[str, Any], db):
+    """Create runs_on hosts and storage_locations for a database asset."""
     if record.get("runs_on"):
         for host_name in record["runs_on"]:
             host_result = await db.execute(
@@ -659,12 +656,12 @@ async def _handle_database_relations(asset, record: Dict[str, Any], db):
             )
             host = host_result.scalar_one_or_none()
             if host:
-                db.add(AssetHostRelation(asset_id=asset.id, host_id=host.id))
+                db.add(AssetHostRelation(asset_id=asset_id, host_id=host.id))
 
     if record.get("storage_locations"):
         for loc in record["storage_locations"]:
             db.add(StorageLocation(
-                asset_id=asset.id,
+                asset_id=asset_id,
                 path=loc["path"],
                 path_type=loc["path_type"],
                 description=loc.get("description"),
@@ -672,31 +669,21 @@ async def _handle_database_relations(asset, record: Dict[str, Any], db):
 
 
 async def _replace_database_relations(asset_id, record: Dict[str, Any], db):
-    """Replace runs_on hosts and storage_locations for database assets."""
+    """Replace runs_on hosts and storage_locations for database assets.
+
+    Unlike _handle_database_relations (create mode, where an absent field
+    just means "nothing to add"), update mode must distinguish "field not
+    provided" (leave existing relations alone) from "field provided but
+    empty" (explicitly clear them) — hence the presence checks before
+    delegating the actual (re)creation to _handle_database_relations.
+    """
     if "runs_on" in record:
         await db.execute(delete(AssetHostRelation).where(AssetHostRelation.asset_id == asset_id))
-        if record.get("runs_on"):
-            for host_name in record["runs_on"]:
-                host_result = await db.execute(
-                    select(Asset).where(
-                        Asset.category == "host",
-                        Asset.name == host_name,
-                    )
-                )
-                host = host_result.scalar_one_or_none()
-                if host:
-                    db.add(AssetHostRelation(asset_id=asset_id, host_id=host.id))
 
     if "storage_locations" in record:
         await db.execute(delete(StorageLocation).where(StorageLocation.asset_id == asset_id))
-        if record.get("storage_locations"):
-            for loc in record["storage_locations"]:
-                db.add(StorageLocation(
-                    asset_id=asset_id,
-                    path=loc["path"],
-                    path_type=loc["path_type"],
-                    description=loc.get("description"),
-                ))
+
+    await _handle_database_relations(asset_id, record, db)
 
 # ─── Generic batch operations ────────────────────────────────────────
 
@@ -726,6 +713,21 @@ async def batch_create_assets(
     )
     existing_names = {row.name for row in existing_result.fetchall()}
 
+    # asset_code is unique across the whole assets table (not per-category), so
+    # check it the same way. Without this, a duplicate asset_code only surfaces
+    # as a raw IntegrityError at flush time — which SAVEPOINT-isolates the row
+    # correctly, but still reports a confusing driver error instead of a clean
+    # "already exists" message.
+    codes = [r["asset_code"] for r in records if r.get("asset_code")]
+    existing_codes: set = set()
+    if codes:
+        existing_codes_result = await db.execute(
+            select(Asset.asset_code).where(Asset.asset_code.in_(codes))
+        )
+        existing_codes = {row.asset_code for row in existing_codes_result.fetchall()}
+
+    seen_codes_in_batch: set = set()
+
     for record in records:
         try:
             if record["name"] in existing_names:
@@ -735,36 +737,50 @@ async def batch_create_assets(
                 })
                 continue
 
-            kwargs: Dict[str, Any] = {
-                "name": record["name"],
-                "category": category,
-                "created_by_id": user_id,
-            }
-            for field in create_fields:
-                val = record.get(field)
-                if val is not None:
-                    kwargs[field] = val
+            asset_code = record.get("asset_code")
+            if asset_code:
+                if asset_code in existing_codes or asset_code in seen_codes_in_batch:
+                    failed_records.append({
+                        "name": record["name"],
+                        "error": f"资产编号'{asset_code}'已存在",
+                    })
+                    continue
+                seen_codes_in_batch.add(asset_code)
 
-            # OOB password encryption (host only)
-            if record.get("oob_password"):
-                kwargs["oob_password_encrypted"] = encrypt_value(record["oob_password"])
+            # A SAVEPOINT scopes this record's writes: if it fails, only its own
+            # changes are rolled back, so earlier successful rows in this batch
+            # (already flushed but not yet committed) and later rows are unaffected.
+            async with db.begin_nested():
+                kwargs: Dict[str, Any] = {
+                    "name": record["name"],
+                    "category": category,
+                    "created_by_id": user_id,
+                }
+                for field in create_fields:
+                    val = record.get(field)
+                    if val is not None:
+                        kwargs[field] = val
 
-            # Database: version → extra_data
-            if category == "database" and record.get("version"):
-                kwargs["extra_data"] = {"version": record["version"]}
+                # OOB password encryption (host only)
+                if record.get("oob_password"):
+                    kwargs["oob_password_encrypted"] = encrypt_value(record["oob_password"])
 
-            asset = Asset(**kwargs)
-            db.add(asset)
-            await db.flush()
+                # Database: version → extra_data
+                if category == "database" and record.get("version"):
+                    kwargs["extra_data"] = {"version": record["version"]}
 
-            status = parse_status(record.get("status"))
-            if status:
-                asset.status = status
+                asset = Asset(**kwargs)
+                db.add(asset)
+                await db.flush()
 
-            _create_credentials(asset, record, cred_type, db)
+                status = parse_status(record.get("status"))
+                if status:
+                    asset.status = status
 
-            if category == "database":
-                await _handle_database_relations(asset, record, db)
+                _create_credentials(asset, record, cred_type, db)
+
+                if category == "database":
+                    await _handle_database_relations(asset.id, record, db)
 
             success_count += 1
         except Exception as e:
@@ -798,34 +814,38 @@ async def batch_update_assets(
                 failed_records.append({"id": record.get("id"), "error": "资产不存在"})
                 continue
 
-            for field in update_fields:
-                if record.get(field) is not None:
-                    setattr(asset, field, record[field])
+            # A SAVEPOINT scopes this record's writes: if it fails, only its own
+            # changes are rolled back, so earlier successful rows in this batch
+            # (already flushed but not yet committed) and later rows are unaffected.
+            async with db.begin_nested():
+                for field in update_fields:
+                    if record.get(field) is not None:
+                        setattr(asset, field, record[field])
 
-            if record.get("organization_id"):
-                asset.organization_id = record["organization_id"]
+                if record.get("organization_id"):
+                    asset.organization_id = record["organization_id"]
 
-            # Host: OOB password
-            if category == "host" and record.get("oob_password") is not None:
-                if record["oob_password"]:
-                    asset.oob_password_encrypted = encrypt_value(record["oob_password"])
-                else:
-                    asset.oob_password_encrypted = None
+                # Host: OOB password
+                if category == "host" and record.get("oob_password") is not None:
+                    if record["oob_password"]:
+                        asset.oob_password_encrypted = encrypt_value(record["oob_password"])
+                    else:
+                        asset.oob_password_encrypted = None
 
-            # Database: version → extra_data
-            if category == "database" and record.get("version"):
-                current_extra = asset.extra_data or {}
-                asset.extra_data = {**current_extra, "version": record["version"]}
+                # Database: version → extra_data
+                if category == "database" and record.get("version"):
+                    current_extra = asset.extra_data or {}
+                    asset.extra_data = {**current_extra, "version": record["version"]}
 
-            status = parse_status(record.get("status"))
-            if status:
-                asset.status = status
+                status = parse_status(record.get("status"))
+                if status:
+                    asset.status = status
 
-            if "credentials" in record:
-                await _replace_credentials(asset.id, record, cred_type, db)
+                if "credentials" in record:
+                    await _replace_credentials(asset.id, record, cred_type, db)
 
-            if category == "database":
-                await _replace_database_relations(asset.id, record, db)
+                if category == "database":
+                    await _replace_database_relations(asset.id, record, db)
 
             success_count += 1
         except Exception as e:
@@ -923,8 +943,15 @@ async def parse_import_file(
         auto-created org paths during parsing for audit reporting.
     """
     CreatedOrgs.clear()
-    wb = load_workbook(BytesIO(file_content))
+    # data_only=True: read each cell's last-computed value instead of its
+    # formula string, so a formula cell (e.g. from copy-pasting a computed
+    # column) imports the value a user actually sees in Excel.
+    wb = load_workbook(BytesIO(file_content), data_only=True)
     ws = wb.active
+
+    data_row_count = max(ws.max_row - 1, 0)  # exclude header row
+    if data_row_count > MAX_IMPORT_ROWS:
+        raise ValueError(f"导入行数不能超过 {MAX_IMPORT_ROWS} 行（当前 {data_row_count} 行）")
 
     if category not in CATEGORY_FIELDS:
         raise ValueError(f"不支持的资产类型：{category}")
@@ -968,7 +995,7 @@ async def parse_import_file(
         return [], [{
             "row": 1,
             "errors": [error_msg],
-            "data": {"提示": f"请检查是否使用了正确的{CATEGORY_NAMES.get(category, category)}{'创建' if mode == 'create' else '更新'}模板"},
+            "data": {"提示": f"请检查是否使用了正确的{ASSET_CATEGORY_LABELS.get(category, category)}{'创建' if mode == 'create' else '更新'}模板"},
         }]
 
     # Scan data rows for organization values (before loading from DB)
@@ -1107,10 +1134,7 @@ async def parse_import_file(
                     record["storage_locations"] = locations
 
             elif field_name == "id" and value:
-                value = str(value).strip()
-                if not value:
-                    errors.append("ID 不能为空")
-                elif mode == "update" and not UUID_PATTERN.match(value.lower()):
+                if mode == "update" and not UUID_PATTERN.match(value.lower()):
                     errors.append(f"ID 格式无效：'{value}'，应为 UUID 格式")
                 record["id"] = value
 

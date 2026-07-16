@@ -110,6 +110,42 @@ async def test_bulk_update_assets_rejects_empty_ids():
 
 
 @pytest.mark.asyncio
+async def test_bulk_update_assets_rejects_unsupported_fields():
+    """Only 'status' is supported. Other fields must be rejected with 400
+    instead of silently doing nothing, which would look like success."""
+    items = [asset(id="asset-1")]
+    db = FakeDB(FakeResult(scalars=items))
+
+    with pytest.raises(HTTPException) as exc:
+        await asset_api.bulk_update_assets(
+            body=BulkUpdateRequest(ids=["asset-1"], data={"organization_id": 7}),
+            db=db,
+            current_user=user(is_superuser=True),
+            request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+        )
+
+    assert exc.value.status_code == 400
+    assert "organization_id" in exc.value.detail
+    assert db.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_assets_rejects_empty_data():
+    items = [asset(id="asset-1")]
+    db = FakeDB(FakeResult(scalars=items))
+
+    with pytest.raises(HTTPException) as exc:
+        await asset_api.bulk_update_assets(
+            body=BulkUpdateRequest(ids=["asset-1"], data={}),
+            db=db,
+            current_user=user(is_superuser=True),
+            request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+        )
+
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_bulk_update_assets_404_when_no_assets_found():
     db = FakeDB(FakeResult(scalars=[]))
 
@@ -160,6 +196,62 @@ async def test_bulk_update_assets_checks_permission_and_updates_status(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_bulk_update_assets_silently_excludes_unauthorized_ids(monkeypatch):
+    """An asset the caller isn't authorized for is dropped from the batch the
+    same way a nonexistent ID would be — not surfaced as a distinct 403 —
+    so the two cases aren't distinguishable by response shape (ID enumeration)."""
+    from fastapi import HTTPException as FastAPIHTTPException
+
+    async def fake_permission(current_user, permission, target_type, resource_id, db, organization_id=None):
+        if resource_id == "asset-2":
+            raise FastAPIHTTPException(status_code=403, detail="缺少资源 'manage' 权限")
+
+    monkeypatch.setattr(asset_api, "check_resource_permission", fake_permission)
+    monkeypatch.setattr(asset_api, "log_operation", lambda *a, **k: _noop())
+
+    items = [asset(id="asset-1", status="running"), asset(id="asset-2", status="running")]
+    db = FakeDB(FakeResult(scalars=items))
+
+    response = await asset_api.bulk_update_assets(
+        body=BulkUpdateRequest(ids=["asset-1", "asset-2"], data={"status": "deactivated"}),
+        db=db,
+        current_user=user(is_superuser=True),
+        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+    )
+
+    assert items[0].status == "deactivated"
+    assert items[1].status == "running"  # unauthorized asset left untouched
+    assert "已更新 1 个资产" in response.message
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_assets_404_when_all_ids_unauthorized(monkeypatch):
+    from fastapi import HTTPException as FastAPIHTTPException
+
+    async def deny(*args, **kwargs):
+        raise FastAPIHTTPException(status_code=403, detail="缺少资源 'manage' 权限")
+
+    monkeypatch.setattr(asset_api, "check_resource_permission", deny)
+
+    items = [asset(id="asset-1")]
+    db = FakeDB(FakeResult(scalars=items))
+
+    with pytest.raises(HTTPException) as exc:
+        await asset_api.bulk_update_assets(
+            body=BulkUpdateRequest(ids=["asset-1"], data={"status": "deactivated"}),
+            db=db,
+            current_user=user(is_superuser=True),
+            request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+        )
+
+    assert exc.value.status_code == 404
+
+
+async def _noop():
+    return None
+
+
+@pytest.mark.asyncio
 async def test_bulk_delete_assets_rejects_empty_ids():
     with pytest.raises(HTTPException) as exc:
         await asset_api.bulk_delete_assets(
@@ -205,3 +297,52 @@ async def test_bulk_delete_assets_checks_permission_and_deletes(monkeypatch):
     details = audit_calls[0][1]["details"]
     assert details["action"] == "bulk_delete"
     assert details["count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_assets_silently_excludes_unauthorized_ids(monkeypatch):
+    """Same ID-enumeration concern as bulk_update: an unauthorized asset must
+    be dropped from the batch, not surfaced as a distinct 403."""
+    async def fake_permission(current_user, permission, target_type, resource_id, db, organization_id=None):
+        if resource_id == "asset-2":
+            raise HTTPException(status_code=403, detail="缺少资源 'manage' 权限")
+
+    monkeypatch.setattr(asset_api, "check_resource_permission", fake_permission)
+    monkeypatch.setattr(asset_api, "log_operation", lambda *a, **k: _noop())
+
+    items = [asset(id="asset-1"), asset(id="asset-2")]
+    db = FakeDB(
+        FakeResult(scalars=items),
+        FakeResult(scalars=[]),  # cleanup_authorization_targets: no matching authorizations
+    )
+
+    response = await asset_api.bulk_delete_assets(
+        body=BulkDeleteRequest(ids=["asset-1", "asset-2"]),
+        db=db,
+        current_user=user(is_superuser=True),
+        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+    )
+
+    assert db.deleted == [items[0]]
+    assert "已删除 1 个资产" in response.message
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_assets_404_when_all_ids_unauthorized(monkeypatch):
+    async def deny(*args, **kwargs):
+        raise HTTPException(status_code=403, detail="缺少资源 'manage' 权限")
+
+    monkeypatch.setattr(asset_api, "check_resource_permission", deny)
+
+    items = [asset(id="asset-1")]
+    db = FakeDB(FakeResult(scalars=items))
+
+    with pytest.raises(HTTPException) as exc:
+        await asset_api.bulk_delete_assets(
+            body=BulkDeleteRequest(ids=["asset-1"]),
+            db=db,
+            current_user=user(is_superuser=True),
+            request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+        )
+
+    assert exc.value.status_code == 404
