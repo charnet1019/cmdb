@@ -234,6 +234,7 @@ FIELD_LABELS = {
     "oob_address": "OOB 地址",
     "oob_password": "OOB 密码",
     "oob_username": "OOB 用户名",
+    "owner": "负责人",
     "owner_id": "负责人",
     "owner_name": "负责人",
     "password": "密码",

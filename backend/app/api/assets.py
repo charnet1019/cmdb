@@ -1867,17 +1867,21 @@ async def update_asset(
         if before != after:
             changes[field] = [before, after]
  
-    # Handle owner validation
+    # Handle owner validation. owner_id/owner_name are extracted and applied
+    # together (one "负责人" audit entry) instead of going through the
+    # generic per-field loop below — otherwise they'd each log their own
+    # before/after diff under the same "负责人" label, producing two
+    # confusing "将负责人从空修改为X" lines for a single owner change.
     if "owner_id" in update_data or "owner_name" in update_data:
-        owner_id = update_data.get("owner_id")
-        owner_name = update_data.get("owner_name")
+        owner_id = update_data.pop("owner_id", None)
+        owner_name = update_data.pop("owner_name", None)
 
         if owner_id is not None and owner_name is None:
             # Fetch owner name from database
             result = await db.execute(select(User.username).where(User.id == owner_id))
             owner_result = result.scalar_one_or_none()
             if owner_result:
-                update_data["owner_name"] = owner_result
+                owner_name = owner_result
             else:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -1888,12 +1892,16 @@ async def update_asset(
             result = await db.execute(select(User.id).where(User.username == owner_name))
             owner_result = result.scalar_one_or_none()
             if owner_result:
-                update_data["owner_id"] = owner_result
+                owner_id = owner_result
             else:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="负责人不存在"
                 )
+
+        record_change("owner", asset.owner_name, owner_name)
+        asset.owner_id = owner_id
+        asset.owner_name = owner_name
 
     # Handle OOB password encryption. Never write the password value into audit logs.
     if "oob_password" in update_data and update_data["oob_password"] is not None:
