@@ -28,12 +28,14 @@ from app.api.assets import (
 from app.core.encryption import decrypt_value
 from app.core.asset_categories import asset_category_label
 from app.services.import_service import (
-    generate_category_template,
     parse_import_file,
     batch_create_assets,
     batch_update_assets,
-    CATEGORY_FIELDS,
     get_created_orgs,
+)
+from app.services.template_service import (
+    generate_category_template,
+    CATEGORY_FIELDS,
 )
 from app.services.export_service import (
     _export_excel_stream,

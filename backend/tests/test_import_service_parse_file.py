@@ -8,6 +8,7 @@ from openpyxl import Workbook
 from tests.factories import FakeDB
 
 from app.services import import_service
+from app.services import template_service
 
 
 def _build_workbook(headers, rows):
@@ -27,11 +28,11 @@ def _host_create_row(name):
     values_by_field = {
         "name": name, "platform": "Linux", "internal_address": "10.0.0.1", "credentials": "u:p",
     }
-    return [values_by_field.get(field_name, "") for field_name, _label, _required in import_service.HOST_CREATE_FIELDS]
+    return [values_by_field.get(field_name, "") for field_name, _label, _required in template_service.HOST_CREATE_FIELDS]
 
 
 def _host_create_headers():
-    return [label for _field_name, label, _required in import_service.HOST_CREATE_FIELDS]
+    return [label for _field_name, label, _required in template_service.HOST_CREATE_FIELDS]
 
 
 @pytest.mark.asyncio

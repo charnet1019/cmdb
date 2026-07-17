@@ -8,13 +8,16 @@ from tests.factories import FakeDB, FakeRedisSessionStore, FakeResult, asset, au
 
 from app.api import assets as asset_api
 from app.api import auth as auth_api
+from app.api import auth_mfa as auth_mfa_api
 from app.api import authorizations as authz_api
 from app.api import deps
 from app.api import dashboard as dashboard_api
-from app.api import logs as logs_api
+from app.api import logs_operation as logs_operation_api
 from app.api import settings as settings_api
 from app.api import notifications as notifications_api
 from app.api import users as users_api
+from app.api import groups as groups_api
+from app.api import user_account as account_api
 from app.models import Asset, Authorization, Notification, NotificationReceipt, OperationLog, Setting, User
 from app.schemas import AuthorizationCreate, GroupCreate, UserCreate, PasswordResetRequest, UserUpdate
 
@@ -142,10 +145,10 @@ async def test_create_group_adds_initial_members_and_audit_log(monkeypatch):
     async def fake_log(*args, **kwargs):
         audit_calls.append((args, kwargs))
 
-    monkeypatch.setattr(users_api, "log_operation", fake_log)
+    monkeypatch.setattr(groups_api, "log_operation", fake_log)
     db = FakeDB(FakeResult(scalar_one_or_none=None))
 
-    response = await users_api.create_group(
+    response = await groups_api.create_group(
         data=GroupCreate(name="dba", description="DBA", initial_member_ids=[1, 2]),
         request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
         db=db,
@@ -163,7 +166,7 @@ async def test_delete_group_rejects_default_group():
     db = FakeDB(FakeResult(scalar_one_or_none=group(is_default=True)))
 
     with pytest.raises(HTTPException) as exc:
-        await users_api.delete_group(
+        await groups_api.delete_group(
             group_id=10,
             request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
             db=db,
@@ -290,7 +293,7 @@ def test_operation_log_formatter_uses_concise_mfa_action_summary():
         created_at=datetime(2026, 1, 1, 12, 0, 0),
     )
 
-    formatted = logs_api._format_operation_log(log, "admin")
+    formatted = logs_operation_api._format_operation_log(log, "admin")
 
     assert formatted["action_label"] == "更新"
     assert formatted["resource_type_label"] == "用户"
@@ -318,7 +321,7 @@ def test_operation_log_formatter_promotes_user_enable_disable_summary():
         created_at=datetime(2026, 1, 1, 12, 0, 0),
     )
 
-    formatted = logs_api._format_operation_log(log, "admin")
+    formatted = logs_operation_api._format_operation_log(log, "admin")
 
     assert formatted["operation_summary"] == "启用用户"
     assert formatted["change_items"] == []
@@ -340,7 +343,7 @@ def test_operation_log_formatter_promotes_user_disable_summary():
         created_at=datetime(2026, 1, 1, 12, 0, 0),
     )
 
-    formatted = logs_api._format_operation_log(log, "admin")
+    formatted = logs_operation_api._format_operation_log(log, "admin")
 
     assert formatted["operation_summary"] == "禁用用户"
     assert formatted["change_items"] == []
@@ -362,7 +365,7 @@ def test_operation_log_formatter_promotes_mfa_enable_summary():
         created_at=datetime(2026, 1, 1, 12, 0, 0),
     )
 
-    formatted = logs_api._format_operation_log(log, "admin")
+    formatted = logs_operation_api._format_operation_log(log, "admin")
 
     assert formatted["operation_summary"] == "启用MFA"
     assert formatted["change_items"] == []
@@ -381,7 +384,7 @@ def test_operation_log_formatter_names_logout_cleanly():
         created_at=datetime(2026, 1, 1, 12, 0, 0),
     )
 
-    formatted = logs_api._format_operation_log(log, "alice")
+    formatted = logs_operation_api._format_operation_log(log, "alice")
 
     assert formatted["resource_type_label"] == "认证"
     assert formatted["detail_action_label"] == "用户登出"
@@ -401,7 +404,7 @@ def test_operation_log_formatter_omits_group_target_from_summary():
         created_at=datetime(2026, 1, 1, 12, 0, 0),
     )
 
-    formatted = logs_api._format_operation_log(log, "admin")
+    formatted = logs_operation_api._format_operation_log(log, "admin")
 
     assert formatted["resource_name"] == "ops"
     assert formatted["operation_summary"] == "添加组成员: 2 名"
@@ -424,7 +427,7 @@ def test_operation_log_formatter_omits_config_target_and_resolves_resource_name(
         created_at=datetime(2026, 1, 1, 12, 0, 0),
     )
 
-    formatted = logs_api._format_operation_log(log, "admin")
+    formatted = logs_operation_api._format_operation_log(log, "admin")
 
     assert formatted["resource_name"] == "network-1 / network.cfg"
     assert formatted["operation_summary"] == "上传配置文件 network.cfg"
@@ -446,7 +449,7 @@ def test_operation_log_formatter_describes_group_description_change_naturally():
         created_at=datetime(2026, 1, 1, 12, 0, 0),
     )
 
-    formatted = logs_api._format_operation_log(log, "admin")
+    formatted = logs_operation_api._format_operation_log(log, "admin")
 
     assert formatted["resource_name"] == "rd"
     assert formatted["operation_summary"] == "将描述从测试qq修改为测试qq55"
@@ -469,7 +472,7 @@ def test_operation_log_formatter_summarizes_setting_changes():
         created_at=datetime(2026, 1, 1, 12, 0, 0),
     )
 
-    formatted = logs_api._format_operation_log(log, "admin")
+    formatted = logs_operation_api._format_operation_log(log, "admin")
 
     assert formatted["resource_type_label"] == "系统设置"
     assert formatted["resource_name"] == "会话超时时间"
@@ -501,7 +504,7 @@ def test_operation_log_formatter_uses_setting_labels_for_login_log_retention():
         created_at=datetime(2026, 1, 1, 12, 0, 0),
     )
 
-    formatted = logs_api._format_operation_log(log, "admin")
+    formatted = logs_operation_api._format_operation_log(log, "admin")
 
     assert formatted["resource_name"] == "登录日志保留天数"
     assert formatted["operation_summary"] == "将登录日志保留天数从30修改为29"
@@ -523,7 +526,7 @@ def test_operation_log_formatter_uses_setting_labels_for_password_complexity():
         created_at=datetime(2026, 1, 1, 12, 0, 0),
     )
 
-    formatted = logs_api._format_operation_log(log, "admin")
+    formatted = logs_operation_api._format_operation_log(log, "admin")
 
     assert formatted["resource_name"] == "密码至少包含特殊字符"
     assert formatted["operation_summary"] == "将密码至少包含特殊字符从否修改为是"
@@ -545,7 +548,7 @@ def test_operation_log_formatter_uses_setting_labels_for_otp_issuer_name():
         created_at=datetime(2026, 1, 1, 12, 0, 0),
     )
 
-    formatted = logs_api._format_operation_log(log, "admin")
+    formatted = logs_operation_api._format_operation_log(log, "admin")
 
     assert formatted["resource_name"] == "OTP 验证器名称"
     assert formatted["operation_summary"] == "将OTP 验证器名称从CMDB智昌修改为CMDB"
@@ -572,7 +575,7 @@ def test_operation_log_formatter_groups_brand_settings_batch_updates():
         created_at=datetime(2026, 1, 1, 12, 0, 0),
     )
 
-    formatted = logs_api._format_operation_log(log, "admin")
+    formatted = logs_operation_api._format_operation_log(log, "admin")
 
     assert formatted["resource_name"] == "品牌设置"
     assert formatted["operation_summary"] == "更新品牌设置"
@@ -1109,10 +1112,10 @@ async def test_reset_mfa_logs_target_and_state(monkeypatch):
     async def fake_log(*args, **kwargs):
         audit_calls.append((args, kwargs))
 
-    monkeypatch.setattr(auth_api, "log_operation", fake_log)
+    monkeypatch.setattr(auth_mfa_api, "log_operation", fake_log)
     target = user(id=2, username="bob", mfa_enabled=True, mfa_secret="secret")
 
-    response = await auth_api.reset_mfa(
+    response = await auth_mfa_api.reset_mfa(
         request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
         user_id=2,
         db=FakeDB(FakeResult(scalar_one_or_none=target)),
@@ -1133,10 +1136,10 @@ async def test_disable_mfa_logs_target_and_state(monkeypatch):
     async def fake_log(*args, **kwargs):
         audit_calls.append((args, kwargs))
 
-    monkeypatch.setattr(auth_api, "log_operation", fake_log)
+    monkeypatch.setattr(auth_mfa_api, "log_operation", fake_log)
     target = user(id=2, username="bob", mfa_enabled=True, mfa_secret="secret")
 
-    response = await auth_api.disable_mfa(
+    response = await auth_mfa_api.disable_mfa(
         request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
         user_id=2,
         db=FakeDB(FakeResult(scalar_one_or_none=target)),
@@ -1180,24 +1183,24 @@ async def test_login_mfa_setup_logs_bind_without_secret(monkeypatch):
     async def no_rate_limit(*args, **kwargs):
         return None
 
-    monkeypatch.setattr(auth_api, "get_redis", lambda: FakeRedis())
-    monkeypatch.setattr(auth_api, "check_mfa_verify_rate_limit", no_rate_limit)
-    monkeypatch.setattr(auth_api, "_load_login_challenge", fake_load_challenge)
-    monkeypatch.setattr(auth_api, "_get_challenge_user", fake_get_challenge_user)
-    monkeypatch.setattr(auth_api, "_delete_login_challenge", fake_delete_challenge)
-    monkeypatch.setattr(auth_api, "verify_totp", lambda secret, code: True)
-    monkeypatch.setattr(auth_api, "_complete_login", fake_complete_login)
-    monkeypatch.setattr(auth_api, "log_operation", fake_log)
+    monkeypatch.setattr(auth_mfa_api, "get_redis", lambda: FakeRedis())
+    monkeypatch.setattr(auth_mfa_api, "check_mfa_verify_rate_limit", no_rate_limit)
+    monkeypatch.setattr(auth_mfa_api, "_load_login_challenge", fake_load_challenge)
+    monkeypatch.setattr(auth_mfa_api, "_get_challenge_user", fake_get_challenge_user)
+    monkeypatch.setattr(auth_mfa_api, "_delete_login_challenge", fake_delete_challenge)
+    monkeypatch.setattr(auth_mfa_api, "verify_totp", lambda secret, code: True)
+    monkeypatch.setattr(auth_mfa_api, "_complete_login", fake_complete_login)
+    monkeypatch.setattr(auth_mfa_api, "log_operation", fake_log)
 
-    response = await auth_api.login_mfa_verify(
+    response = await auth_mfa_api.login_mfa_verify(
         request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"), headers={}),
         response=SimpleNamespace(),
-        data=auth_api.MFAVerifyRequest(challenge_token="challenge", code="123456", setup=True),
+        data=auth_mfa_api.MFAVerifyRequest(challenge_token="challenge", code="123456", setup=True),
         db=FakeDB(),
     )
 
     assert response.ok is True
-    assert auth_api._decrypt_mfa_secret(target.mfa_secret) == "totp-secret"
+    assert auth_mfa_api._decrypt_mfa_secret(target.mfa_secret) == "totp-secret"
     details = audit_calls[0][1]["details"]
     assert details["action"] == "mfa_bind"
     assert details["username"] == "bob"
@@ -1217,10 +1220,10 @@ async def test_force_logout_user_sessions_endpoint(monkeypatch):
     async def fake_log(*args, **kwargs):
         audit_calls.append((args, kwargs))
 
-    monkeypatch.setattr(users_api, "force_logout_user", force_logout)
-    monkeypatch.setattr(users_api, "log_operation", fake_log)
+    monkeypatch.setattr(account_api, "force_logout_user", force_logout)
+    monkeypatch.setattr(account_api, "log_operation", fake_log)
 
-    response = await users_api.force_logout_user_sessions(
+    response = await account_api.force_logout_user_sessions(
         user_id=2,
         request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
         db=FakeDB(FakeResult(scalar_one_or_none=user(id=2, username="bob"))),
@@ -1236,7 +1239,7 @@ async def test_force_logout_user_sessions_endpoint(monkeypatch):
 @pytest.mark.asyncio
 async def test_force_logout_user_sessions_rejects_self():
     with pytest.raises(HTTPException) as exc:
-        await users_api.force_logout_user_sessions(
+        await account_api.force_logout_user_sessions(
             user_id=1,
             request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
             db=FakeDB(),
@@ -1322,7 +1325,7 @@ async def test_reset_user_password_auto_sends_email_and_hides_temp_password(monk
     async def fake_send(db, target_user, temp_password, action):
         sent.append((target_user.email, temp_password, action))
 
-    monkeypatch.setattr(users_api, "send_user_password_email", fake_send)
+    monkeypatch.setattr(account_api, "send_user_password_email", fake_send)
     target = user(id=2, username="bob", email="bob@example.com", password_hash="old-hash")
     db = FakeDB(
         FakeResult(scalar_one_or_none=target),
@@ -1331,7 +1334,7 @@ async def test_reset_user_password_auto_sends_email_and_hides_temp_password(monk
         FakeResult(),  # stale password_history ids to prune -> none
     )
 
-    response = await users_api.reset_user_password(
+    response = await account_api.reset_user_password(
         user_id=2,
         data=PasswordResetRequest(method="auto", force_change=True, send_email=True),
         request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
@@ -1429,11 +1432,11 @@ async def test_force_logout_user_sessions_publishes_sse_event(monkeypatch):
     async def fake_log(*args, **kwargs):
         return None
 
-    monkeypatch.setattr(users_api, "force_logout_user", force_logout)
+    monkeypatch.setattr(account_api, "force_logout_user", force_logout)
     monkeypatch.setattr(users_api, "publish_user_event", publish)
-    monkeypatch.setattr(users_api, "log_operation", fake_log)
+    monkeypatch.setattr(account_api, "log_operation", fake_log)
 
-    response = await users_api.force_logout_user_sessions(
+    response = await account_api.force_logout_user_sessions(
         user_id=2,
         request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
         db=FakeDB(FakeResult(scalar_one_or_none=user(id=2, username="bob"))),

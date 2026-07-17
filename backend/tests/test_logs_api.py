@@ -7,6 +7,9 @@ import pytest
 from tests.factories import FakeDB, FakeResult, user
 
 from app.api import logs as logs_api
+from app.api import logs_login as logs_login_api
+from app.api import logs_operation as logs_operation_api
+from app.api import logs_password as logs_password_api
 from app.models import LoginLog, OperationLog, PasswordChangeLog
 
 
@@ -22,7 +25,7 @@ async def test_list_login_logs_returns_items_meta_and_stats():
         FakeResult(scalars=items),
     )
 
-    response = await logs_api.list_login_logs(
+    response = await logs_login_api.list_login_logs(
         page=1, limit=20, search=None, status=None, date_from=None, date_to=None,
         db=db, current_user=user(is_superuser=True),
     )
@@ -44,7 +47,7 @@ async def test_list_login_logs_zero_logins_gives_zero_success_rate():
         FakeResult(scalars=[]),
     )
 
-    response = await logs_api.list_login_logs(
+    response = await logs_login_api.list_login_logs(
         page=1, limit=20, search=None, status=None, date_from=None, date_to=None,
         db=db, current_user=user(is_superuser=True),
     )
@@ -62,7 +65,7 @@ async def test_list_login_logs_ignores_malformed_date_filter():
     )
 
     # Should not raise despite an invalid ISO date string — silently ignored.
-    response = await logs_api.list_login_logs(
+    response = await logs_login_api.list_login_logs(
         page=1, limit=20, search=None, status=None, date_from="not-a-date", date_to=None,
         db=db, current_user=user(is_superuser=True),
     )
@@ -79,7 +82,7 @@ async def test_list_operation_logs_resolves_usernames():
         FakeResult(scalars=[user(id=1, username="alice")]),
     )
 
-    response = await logs_api.list_operation_logs(
+    response = await logs_operation_api.list_operation_logs(
         page=1, limit=20, search=None, action=None, user_id=None, date_from=None, date_to=None,
         db=db, current_user=user(is_superuser=True),
     )
@@ -96,7 +99,7 @@ async def test_list_operation_logs_skips_username_lookup_when_no_user_ids():
         FakeResult(scalars=items),
     )
 
-    response = await logs_api.list_operation_logs(
+    response = await logs_operation_api.list_operation_logs(
         page=1, limit=20, search=None, action=None, user_id=None, date_from=None, date_to=None,
         db=db, current_user=user(is_superuser=True),
     )
@@ -116,7 +119,7 @@ async def test_list_password_logs_returns_items_and_meta():
         FakeResult(scalars=[user(id=1, username="alice")]),
     )
 
-    response = await logs_api.list_password_logs(
+    response = await logs_password_api.list_password_logs(
         page=1, limit=20, search=None, user_id=None, change_type=None, date_from=None, date_to=None,
         db=db, current_user=user(is_superuser=True),
     )

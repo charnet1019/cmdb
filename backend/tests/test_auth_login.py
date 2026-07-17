@@ -12,6 +12,7 @@ from fastapi import HTTPException, Response
 from tests.factories import FakeDB, FakeRedisSessionStore, FakeResult, user
 
 from app.api import auth as auth_api
+from app.api import auth_helpers
 from app.core import session as session_core
 from app.schemas import LoginRequest
 
@@ -28,6 +29,7 @@ def _request(ip="127.0.0.1", ua="pytest"):
 async def test_login_rejects_unknown_username_without_leaking_existence(monkeypatch):
     redis_store = FakeRedisSessionStore()
     monkeypatch.setattr(auth_api, "get_redis", lambda: redis_store)
+    monkeypatch.setattr(auth_helpers, "get_redis", lambda: redis_store)
 
     db = FakeDB(
         FakeResult(scalar_one_or_none=None),  # user lookup -> not found
@@ -70,6 +72,7 @@ async def test_login_rejects_disabled_user():
 async def test_login_rejects_wrong_password(monkeypatch):
     redis_store = FakeRedisSessionStore()
     monkeypatch.setattr(auth_api, "get_redis", lambda: redis_store)
+    monkeypatch.setattr(auth_helpers, "get_redis", lambda: redis_store)
 
     target = user(username="bob", password_hash=auth_api.get_password_hash("Secret123!"))
     db = FakeDB(
@@ -94,6 +97,7 @@ async def test_login_rejects_wrong_password(monkeypatch):
 async def test_login_locks_account_after_max_attempts(monkeypatch):
     redis_store = FakeRedisSessionStore()
     monkeypatch.setattr(auth_api, "get_redis", lambda: redis_store)
+    monkeypatch.setattr(auth_helpers, "get_redis", lambda: redis_store)
 
     # Pre-seed the failure counters one below the (default) lockout threshold
     # for both the ip-scoped and username-scoped guard keys.
@@ -138,6 +142,7 @@ async def test_login_locks_account_after_max_attempts(monkeypatch):
 async def test_login_locked_account_blocks_before_password_check(monkeypatch):
     redis_store = FakeRedisSessionStore()
     monkeypatch.setattr(auth_api, "get_redis", lambda: redis_store)
+    monkeypatch.setattr(auth_helpers, "get_redis", lambda: redis_store)
 
     from app.api.auth import LOGIN_LOCK_KEY_PREFIX, _login_guard_key
 
@@ -163,6 +168,7 @@ async def test_login_locked_account_blocks_before_password_check(monkeypatch):
 async def test_login_success_returns_token_for_normal_user(monkeypatch):
     redis_store = FakeRedisSessionStore()
     monkeypatch.setattr(auth_api, "get_redis", lambda: redis_store)
+    monkeypatch.setattr(auth_helpers, "get_redis", lambda: redis_store)
     monkeypatch.setattr(session_core, "get_redis", lambda: redis_store)
 
     target = user(
@@ -191,6 +197,7 @@ async def test_login_success_returns_token_for_normal_user(monkeypatch):
 async def test_login_requires_forced_password_change_before_session(monkeypatch):
     redis_store = FakeRedisSessionStore()
     monkeypatch.setattr(auth_api, "get_redis", lambda: redis_store)
+    monkeypatch.setattr(auth_helpers, "get_redis", lambda: redis_store)
 
     target = user(
         id=5, username="bob",
@@ -214,6 +221,7 @@ async def test_login_requires_forced_password_change_before_session(monkeypatch)
 async def test_login_requires_mfa_when_enabled(monkeypatch):
     redis_store = FakeRedisSessionStore()
     monkeypatch.setattr(auth_api, "get_redis", lambda: redis_store)
+    monkeypatch.setattr(auth_helpers, "get_redis", lambda: redis_store)
 
     target = user(
         id=5, username="bob",
