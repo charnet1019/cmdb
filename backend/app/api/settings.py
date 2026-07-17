@@ -16,10 +16,10 @@ from app.database import get_db
 from app.api.deps import PermissionChecker, set_auth_cookie
 from app.utils.audit import log_operation
 from app.utils.datetime_utils import format_datetime_utc
-from app.utils.rate_limit import check_smtp_test_email_rate_limit
+from app.utils.rate_limit import check_smtp_test_email_rate_limit, check_credential_decrypt_rate_limit
 from app.utils.smtp import load_smtp_config, build_test_email, send_smtp_message, raise_smtp_config_incomplete, SMTP_ENCRYPTION_MODES
 from app.models import Setting, User
-from app.core.encryption import encrypt_value
+from app.core.encryption import encrypt_value, decrypt_value
 from app.core.session import load_user_session, set_user_session_timeout
 
 
@@ -251,6 +251,42 @@ async def get_settings(
         "data": settings_dict,
         "raw": [{"id": s.id, "key": s.key, "value": {"value": _response_setting_value(s.key, s.value.get("value") if s.value else None)}, "description": s.description, "updated_at": format_datetime_utc(s.updated_at)} for s in settings_list]
     }
+
+
+@router.post("/smtp-password/reveal")
+async def reveal_smtp_password(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(PermissionChecker("sys_config")),
+) -> Dict[str, Any]:
+    """
+    Decrypt and return the currently-saved SMTP password so the admin can
+    view it in plain text. Requires sys_config permission.
+    """
+    ip = request.client.host if request.client else None
+    await check_credential_decrypt_rate_limit(db, current_user.id)
+
+    result = await db.execute(select(Setting).where(Setting.key == "smtp_password"))
+    setting = result.scalar_one_or_none()
+    encrypted = setting.value.get("value") if setting and setting.value else None
+    if not encrypted:
+        return {"code": 0, "message": "success", "data": {"password": ""}}
+
+    try:
+        decrypted_password = decrypt_value(encrypted)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="解密失败"
+        )
+
+    await log_operation(
+        db, current_user.id, "decrypt", "setting", 0,
+        details={"name": "smtp_password", "action": "decrypt_smtp_password"},
+        ip_address=ip,
+    )
+
+    return {"code": 0, "message": "success", "data": {"password": decrypted_password}}
 
 
 @router.get("/public")

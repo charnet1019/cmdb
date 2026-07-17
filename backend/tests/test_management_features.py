@@ -1319,6 +1319,79 @@ async def test_create_user_auto_password_sends_email_before_commit(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_create_user_must_change_password_defaults_to_false(monkeypatch):
+    async def fake_log(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(users_api, "log_operation", fake_log)
+
+    db = FakeDB(
+        FakeResult(scalar_one_or_none=None),
+        FakeResult(scalar_one_or_none=None),
+        FakeResult(scalar_one_or_none=setting("password_min_length", 8)),
+        FakeResult(scalar_one_or_none=None),
+        FakeResult(scalar_one_or_none=None),
+        FakeResult(scalar_one_or_none=None),
+        FakeResult(scalar_one_or_none=None),
+        FakeResult(scalar_one_or_none=None),
+        FakeResult(),
+        FakeResult(scalars=[]),
+    )
+
+    await users_api.create_user(
+        data=UserCreate(
+            username="new-user",
+            email="new-user@example.com",
+            password="Secret123!",
+            password_method="manual",
+        ),
+        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+        db=db,
+        current_user=user(is_superuser=True),
+    )
+
+    created = next(obj for obj in db.added if isinstance(obj, User))
+    assert created.must_change_password is False
+
+
+@pytest.mark.asyncio
+async def test_create_user_must_change_password_honors_explicit_true(monkeypatch):
+    async def fake_log(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(users_api, "log_operation", fake_log)
+
+    db = FakeDB(
+        FakeResult(scalar_one_or_none=None),
+        FakeResult(scalar_one_or_none=None),
+        FakeResult(scalar_one_or_none=setting("password_min_length", 8)),
+        FakeResult(scalar_one_or_none=None),
+        FakeResult(scalar_one_or_none=None),
+        FakeResult(scalar_one_or_none=None),
+        FakeResult(scalar_one_or_none=None),
+        FakeResult(scalar_one_or_none=None),
+        FakeResult(),
+        FakeResult(scalars=[]),
+    )
+
+    await users_api.create_user(
+        data=UserCreate(
+            username="new-user",
+            email="new-user@example.com",
+            password="Secret123!",
+            password_method="manual",
+            must_change_password=True,
+        ),
+        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+        db=db,
+        current_user=user(is_superuser=True),
+    )
+
+    created = next(obj for obj in db.added if isinstance(obj, User))
+    assert created.must_change_password is True
+
+
+@pytest.mark.asyncio
 async def test_reset_user_password_auto_sends_email_and_hides_temp_password(monkeypatch):
     sent = []
 

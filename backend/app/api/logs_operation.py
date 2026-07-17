@@ -169,6 +169,7 @@ DETAIL_ACTION_LABELS = {
     "delete_user_authorizations": "删除用户授权",
     "decrypt_credential": "解密凭据",
     "decrypt_oob_password": "解密OOB密码",
+    "decrypt_smtp_password": "查看SMTP密码",
     "disable_mfa": "禁用MFA",
     "download_config": "下载配置文件",
     "download_import_template": "下载导入模板",

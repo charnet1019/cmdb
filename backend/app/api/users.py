@@ -245,7 +245,7 @@ async def create_user(
             password_hash=initial_password_hash,
             is_active=data.is_active,
             mfa_enabled=data.mfa_enabled,
-            must_change_password=True,
+            must_change_password=data.must_change_password,
         )
 
         db.add(user)
@@ -275,6 +275,7 @@ async def create_user(
                 "is_active": user.is_active,
                 "mfa_enabled": user.mfa_enabled,
                 "mfa_bound": bool(user.mfa_secret),
+                "must_change_password": user.must_change_password,
                 "group_ids": data.group_ids or [],
             },
             ip_address=ip,

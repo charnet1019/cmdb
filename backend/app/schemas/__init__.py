@@ -42,6 +42,7 @@ class UserCreate(UserBase):
     group_ids: Optional[List[int]] = []
     is_active: bool = True
     mfa_enabled: bool = False
+    must_change_password: bool = False
 
 
 class UserUpdate(BaseModel):

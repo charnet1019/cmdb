@@ -61,7 +61,8 @@ const userForm = ref({
   send_email: true,
   group_ids: [] as number[],
   is_active: true,
-  mfa_enabled: false
+  mfa_enabled: false,
+  must_change_password: false
 })
 
 // Validation
@@ -213,7 +214,8 @@ function openCreateModal() {
     send_email: true,
     group_ids: [],
     is_active: true,
-    mfa_enabled: false
+    mfa_enabled: false,
+    must_change_password: false
   }
   emailError.value = ''
   phoneError.value = ''
@@ -240,7 +242,8 @@ function openEditModal(user: User) {
     send_email: true,
     group_ids: user.groups?.map(g => g.id) || [],
     is_active: user.is_active,
-    mfa_enabled: user.mfa_enabled
+    mfa_enabled: user.mfa_enabled,
+    must_change_password: false
   }
   emailError.value = ''
   phoneError.value = ''
@@ -306,7 +309,8 @@ async function handleSubmit() {
         phone: userForm.value.phone,
         group_ids: userForm.value.group_ids,
         is_active: userForm.value.is_active,
-        mfa_enabled: userForm.value.mfa_enabled
+        mfa_enabled: userForm.value.mfa_enabled,
+        must_change_password: userForm.value.must_change_password
       })
       if (created.email_sent === false && created.temp_password) {
         Modal.success({
@@ -587,7 +591,7 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
     </div>
 
     <!-- User Table -->
-    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
       <table class="data-table">
         <thead>
           <tr>
@@ -882,6 +886,19 @@ watch([() => usersStore.usersPage, searchQuery, statusFilter], () => {
                       <EyeInvisibleOutlined v-else />
                     </button>
                   </div>
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">初次登录重新设置密码</label>
+                <div class="flex gap-4 mt-2">
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" v-model="userForm.must_change_password" :value="true" class="text-primary" />
+                    <span class="text-sm text-slate-600">需要</span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" v-model="userForm.must_change_password" :value="false" class="text-primary" />
+                    <span class="text-sm text-slate-600">不需要</span>
+                  </label>
                 </div>
               </div>
             </template>

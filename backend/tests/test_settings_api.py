@@ -1,4 +1,4 @@
-"""Tests for GET/PUT /settings and POST /settings/email/test."""
+"""Tests for GET/PUT /settings, POST /settings/email/test, and POST /settings/smtp-password/reveal."""
 from types import SimpleNamespace
 
 import pytest
@@ -222,6 +222,49 @@ async def test_send_test_email_success_logs_and_returns_recipient(monkeypatch):
 
     assert response["data"]["recipient"] == "ok@example.com"
     assert audit_calls[0][1]["details"]["action"] == "send_test_email"
+
+
+@pytest.mark.asyncio
+async def test_reveal_smtp_password_returns_decrypted_value(monkeypatch):
+    from app.core.encryption import encrypt_value
+
+    async def no_rate_limit(*args, **kwargs):
+        return None
+
+    async def fake_log(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(settings_api, "check_credential_decrypt_rate_limit", no_rate_limit)
+    monkeypatch.setattr(settings_api, "log_operation", fake_log)
+
+    encrypted = encrypt_value("mail-secret")
+    db = FakeDB(FakeResult(scalar_one_or_none=_setting("smtp_password", encrypted)))
+
+    response = await settings_api.reveal_smtp_password(
+        request=_request(),
+        db=db,
+        current_user=user(is_superuser=True),
+    )
+
+    assert response["data"]["password"] == "mail-secret"
+
+
+@pytest.mark.asyncio
+async def test_reveal_smtp_password_returns_empty_when_unset(monkeypatch):
+    async def no_rate_limit(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(settings_api, "check_credential_decrypt_rate_limit", no_rate_limit)
+
+    db = FakeDB(FakeResult(scalar_one_or_none=None))
+
+    response = await settings_api.reveal_smtp_password(
+        request=_request(),
+        db=db,
+        current_user=user(is_superuser=True),
+    )
+
+    assert response["data"]["password"] == ""
 
 
 @pytest.mark.asyncio

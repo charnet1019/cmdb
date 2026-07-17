@@ -2,8 +2,8 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { SettingOutlined, SafetyCertificateOutlined, LoadingOutlined, SaveOutlined, InfoCircleOutlined, PictureOutlined, DatabaseOutlined, MailOutlined, SendOutlined } from '@ant-design/icons-vue'
-import { getSettings, updateSettings, sendTestEmail } from '@/api/settings'
+import { SettingOutlined, SafetyCertificateOutlined, LoadingOutlined, SaveOutlined, InfoCircleOutlined, PictureOutlined, DatabaseOutlined, MailOutlined, SendOutlined, EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons-vue'
+import { getSettings, updateSettings, sendTestEmail, revealSmtpPassword } from '@/api/settings'
 import { useAuthStore } from '@/stores/auth'
 import { useImageUploadField } from '@/composables/useImageUploadField'
 
@@ -56,6 +56,34 @@ const form = ref({
 // Test email state
 const testEmailRecipient = ref('')
 const testEmailSending = ref(false)
+
+// SMTP password visibility
+const showSmtpPassword = ref(false)
+const revealingSmtpPassword = ref(false)
+const SMTP_PASSWORD_MASK = '********'
+
+// Toggle SMTP password visibility. If the field still holds the saved-password
+// mask, fetch the real decrypted value first (once) before revealing it.
+async function toggleSmtpPasswordVisibility() {
+  if (showSmtpPassword.value) {
+    showSmtpPassword.value = false
+    return
+  }
+  if (form.value.smtp_password !== SMTP_PASSWORD_MASK) {
+    showSmtpPassword.value = true
+    return
+  }
+  revealingSmtpPassword.value = true
+  try {
+    const { password } = await revealSmtpPassword()
+    form.value.smtp_password = password
+    showSmtpPassword.value = true
+  } catch (error: any) {
+    message.error(error.response?.data?.detail || '查看密码失败')
+  } finally {
+    revealingSmtpPassword.value = false
+  }
+}
 
 // Logo / background image upload fields
 const logoImage = computed({
@@ -847,7 +875,27 @@ onMounted(() => {
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">SMTP 密码</label>
-                <input v-model="form.smtp_password" type="password" class="input-field" autocomplete="new-password" placeholder="留空则清除，保持 ******** 则不修改" />
+                <div class="relative">
+                  <input
+                    v-model="form.smtp_password"
+                    :type="showSmtpPassword ? 'text' : 'password'"
+                    class="input-field"
+                    :style="{ paddingRight: form.smtp_password ? '40px' : '' }"
+                    autocomplete="new-password"
+                    placeholder="邮箱密码或客户端授权码，留空则清除，保持 ******** 则不修改"
+                  />
+                  <button
+                    v-if="form.smtp_password"
+                    type="button"
+                    :disabled="revealingSmtpPassword"
+                    @click="toggleSmtpPasswordVisibility"
+                    style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #94a3b8; padding: 0;"
+                  >
+                    <LoadingOutlined v-if="revealingSmtpPassword" class="text-lg animate-spin" />
+                    <EyeOutlined v-else-if="showSmtpPassword" class="text-lg" />
+                    <EyeInvisibleOutlined v-else class="text-lg" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>

@@ -89,3 +89,9 @@ export async function sendTestEmail(payload: TestEmailPayload): Promise<{ recipi
   const response = await api.post('/settings/email/test', payload)
   return response.data.data
 }
+
+// Decrypt and reveal the currently-saved SMTP password
+export async function revealSmtpPassword(): Promise<{ password: string }> {
+  const response = await api.post('/settings/smtp-password/reveal')
+  return response.data.data
+}

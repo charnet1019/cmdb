@@ -27,6 +27,7 @@ export async function createUser(data: {
   mfa_enabled?: boolean
   password_method?: 'manual' | 'auto'
   send_email?: boolean
+  must_change_password?: boolean
 }): Promise<User & { email_sent?: boolean | null; temp_password?: string | null }> {
   const response = await api.post('/users', data)
   return { ...response.data.data, email_sent: response.data.email_sent, temp_password: response.data.temp_password }

@@ -333,7 +333,7 @@ watch([() => usersStore.groupsPage, searchQuery], () => {
     </div>
 
     <!-- Groups Table -->
-    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
       <table class="data-table">
         <thead>
           <tr>
