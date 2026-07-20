@@ -85,22 +85,36 @@ async def test_update_asset_owner_by_name_logs_single_consolidated_change(monkey
 
 
 @pytest.mark.asyncio
-async def test_update_asset_owner_id_not_found_raises_400():
-    from fastapi import HTTPException
+async def test_update_asset_owner_name_not_matching_any_user_still_succeeds(monkeypatch):
+    """owner_name is free text now — it doesn't need to match a real user
+    account, so a non-matching value should save rather than 400."""
+    async def allow(*args, **kwargs):
+        return True
+
+    audit_calls = []
+
+    async def fake_log(*args, **kwargs):
+        audit_calls.append((args, kwargs))
+
+    monkeypatch.setattr(asset_api, "check_resource_permission", allow)
+    monkeypatch.setattr(asset_api, "log_operation", fake_log)
 
     existing = asset_with_credentials(category="host", owner_id=None, owner_name=None)
     db = FakeDB(
         FakeResult(scalar_one_or_none=existing),
         FakeResult(scalar_one_or_none=None),  # username lookup: no such user
+        FakeResult(scalar_one=existing),
     )
 
-    with pytest.raises(HTTPException) as exc:
-        await asset_api.update_asset(
-            asset_id="asset-1",
-            data=AssetUpdate(owner_id=999),
-            db=db,
-            current_user=user(is_superuser=True),
-            request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
-        )
+    await asset_api.update_asset(
+        asset_id="asset-1",
+        data=AssetUpdate(owner_name="someone-not-a-user"),
+        db=db,
+        current_user=user(is_superuser=True),
+        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+    )
 
-    assert exc.value.status_code == 400
+    changes = audit_calls[0][1]["details"]["changes"]
+    assert changes.get("owner") == [None, "someone-not-a-user"]
+    assert existing.owner_id is None
+    assert existing.owner_name == "someone-not-a-user"

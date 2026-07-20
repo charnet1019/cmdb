@@ -31,7 +31,6 @@ import { useCredentials } from './composables/useCredentials'
 import { useTypeTree, categories, platformOptions, categoryOptions, dbTypeOptions } from './composables/useTypeTree'
 import { useColumnConfig } from './composables/useColumnConfig'
 import { createAsset, updateAsset, createCredential, updateCredential, getAssets, decryptOobPassword, downloadAssetConfig } from '@/api/assets'
-import { getUsersForAuth } from '@/api/authorizations'
 import { useAuthStore } from '@/stores/auth'
 import ColumnCustomizer from './components/ColumnCustomizer.vue'
 import { formatDateTime } from '@/utils/datetime'
@@ -260,6 +259,31 @@ function closePasswordPopover() {
   passwordPopover.value = null
 }
 
+// Toggle OOB password visibility in the edit form. If the field still holds
+// the masked placeholder, fetch the real decrypted value first (once) before
+// revealing it — mirrors the SMTP password reveal pattern in Settings.vue.
+async function toggleOobPasswordVisibility() {
+  if (showOobPassword.value) {
+    showOobPassword.value = false
+    return
+  }
+  if (form.value.oob_password !== OOB_PASSWORD_MASK) {
+    showOobPassword.value = true
+    return
+  }
+  if (!editingAsset.value) return
+  revealingOobPassword.value = true
+  try {
+    const data = await decryptOobPassword(editingAsset.value.id)
+    form.value.oob_password = data.oob_password || ''
+    showOobPassword.value = true
+  } catch (e: any) {
+    message.error(formatPasswordDecryptError(e))
+  } finally {
+    revealingOobPassword.value = false
+  }
+}
+
 async function showOobPasswordPopover(asset: any, event: MouseEvent) {
   if (!asset.oob_username && !asset.extra_data?.oob_username) return
   if (passwordPopover.value?.credId === -asset.id) {
@@ -286,6 +310,8 @@ const statusFilter = ref('')
 const showModal = ref(false)
 const showPassword = ref(false)
 const showOobPassword = ref(false)
+const revealingOobPassword = ref(false)
+const OOB_PASSWORD_MASK = '********'
 const modalLoading = ref(false)
 const editingAsset = ref<Asset | null>(null)
 const formSelectedOrgId = ref<number | null>(null)
@@ -326,10 +352,6 @@ function getStatusColor(value: string): string {
   return colors[value] || 'bg-slate-100 text-slate-600'
 }
 
-// User list for owner selection
-const userOptions = ref<Array<{ id: number; username: string; full_name: string | null }>>([])
-const loadingUsers = ref(false)
-
 // Host list for runs_on selection in database asset forms
 const hostOptions = ref<Array<{ id: string; name: string; internal_address: string | null }>>([])
 const hostSearchQuery = ref('')
@@ -348,24 +370,6 @@ const filteredHostOptions = computed(() => {
 
 function onHostSearch(value: string) {
   hostSearchQuery.value = value
-}
-
-// Load users for owner dropdown
-async function loadUsers() {
-  if (userOptions.value.length > 0) return
-  loadingUsers.value = true
-  try {
-    const users = await getUsersForAuth()
-    userOptions.value = users.map(u => ({
-      id: u.id,
-      username: u.name,
-      full_name: u.full_name
-    }))
-  } catch (error) {
-    console.error('Failed to load users:', error)
-  } finally {
-    loadingUsers.value = false
-  }
 }
 
 // Load hosts for runs_on dropdown in database asset forms
@@ -406,7 +410,7 @@ const form = ref({
   oob_username: '',
   oob_password: '',
   applicant: '',
-  owner_id: null as number | null,
+  owner_name: '',
   notes: '',
   host_ids: [] as string[],
   storage_locations: [] as { path: string; path_type: string; description: string }[]
@@ -585,7 +589,7 @@ async function openCreateModal() {
     oob_username: '',
     oob_password: '',
     applicant: '',
-    owner_id: null,
+    owner_name: '',
     notes: '',
     host_ids: [],
     storage_locations: []
@@ -602,7 +606,6 @@ async function openCreateModal() {
     }
   }
 
-  await loadUsers()
   resetFormCredentials()
   if (form.value.category === 'database') {
     await loadHostOptions()
@@ -614,6 +617,7 @@ async function openCreateModal() {
 async function openEditModal(asset: Asset) {
   editingAsset.value = asset
   showOobPassword.value = false
+  resetFormCredentials()
   form.value = {
     name: asset.name,
     asset_code: asset.asset_code || '',
@@ -634,9 +638,11 @@ async function openEditModal(asset: Asset) {
     db_type: asset.db_type || '',
     oob: asset.oob_address || asset.extra_data?.oob || '',
     oob_username: asset.oob_username || asset.extra_data?.oob_username || '',
-    oob_password: '', // Will be decrypted below if exists
+    // Masked placeholder when a password already exists — real value is only
+    // fetched on demand when the user clicks the eye icon (see toggleOobPasswordVisibility)
+    oob_password: asset.has_oob_password ? OOB_PASSWORD_MASK : '',
     applicant: asset.applicant || '',
-    owner_id: asset.owner_id || null,
+    owner_name: asset.owner_name || '',
     notes: asset.notes || '',
     host_ids: (asset.runs_on_hosts || []).map(h => h.id),
     storage_locations: (asset.storage_locations || []).map(sl => ({
@@ -651,18 +657,6 @@ async function openEditModal(asset: Asset) {
     username: c.username,
     password: ''
   }))
-  // Decrypt OOB password for host assets when editing
-  if (asset.category === 'host' && (asset.oob_username || asset.oob_address)) {
-    try {
-      const data = await decryptOobPassword(asset.id)
-      if (data.oob_password) {
-        form.value.oob_password = data.oob_password
-      }
-    } catch {
-      // Ignore — password field will remain empty
-    }
-  }
-  await loadUsers()
   if (asset.category === 'database') {
     await loadHostOptions()
   }
@@ -706,12 +700,16 @@ async function handleSubmit() {
       db_type: form.value.db_type || undefined,
       applicant: form.value.applicant || undefined,
       namespace: form.value.namespace || undefined,
-      owner_id: form.value.owner_id || undefined,
-      // Independent OOB fields for host assets
+      owner_name: form.value.owner_name || undefined,
+      // Independent OOB fields for host assets. Skip oob_password entirely
+      // when it still holds the masked placeholder (never revealed/edited)
+      // so we don't overwrite the real stored password with "********".
       ...(form.value.category === 'host' && {
         oob_address: form.value.oob || undefined,
         oob_username: form.value.oob_username || undefined,
-        oob_password: form.value.oob_password || undefined
+        oob_password: form.value.oob_password && form.value.oob_password !== OOB_PASSWORD_MASK
+          ? form.value.oob_password
+          : undefined
       }),
       extra_data: extraData,
       notes: form.value.notes || undefined,
@@ -1530,12 +1528,7 @@ onMounted(async () => {
                 </div>
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
-                  <select v-model="form.owner_id" class="input-field">
-                    <option value="">请选择</option>
-                    <option v-for="user in userOptions" :key="user.id" :value="user.id">
-                      {{ user.username }}{{ user.full_name ? ` (${user.full_name})` : '' }}
-                    </option>
-                  </select>
+                  <input v-model="form.owner_name" type="text" class="input-field" placeholder="负责人姓名" />
                 </div>
               </div>
             </template>
@@ -1557,12 +1550,7 @@ onMounted(async () => {
               </div>
               <div>
                 <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
-                <select v-model="form.owner_id" class="input-field">
-                  <option value="">请选择</option>
-                  <option v-for="user in userOptions" :key="user.id" :value="user.id">
-                    {{ user.username }}{{ user.full_name ? ` (${user.full_name})` : '' }}
-                  </option>
-                </select>
+                <input v-model="form.owner_name" type="text" class="input-field" placeholder="负责人姓名" />
               </div>
             </template>
 
@@ -1583,12 +1571,7 @@ onMounted(async () => {
               </div>
               <div>
                 <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
-                <select v-model="form.owner_id" class="input-field">
-                  <option value="">请选择</option>
-                  <option v-for="user in userOptions" :key="user.id" :value="user.id">
-                    {{ user.username }}{{ user.full_name ? ` (${user.full_name})` : '' }}
-                  </option>
-                </select>
+                <input v-model="form.owner_name" type="text" class="input-field" placeholder="负责人姓名" />
               </div>
               <div>
                 <label class="block text-xs font-medium text-slate-600 mb-1">运行于主机</label>
@@ -1637,12 +1620,7 @@ onMounted(async () => {
                 </div>
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
-                  <select v-model="form.owner_id" class="input-field">
-                    <option value="">请选择</option>
-                    <option v-for="user in userOptions" :key="user.id" :value="user.id">
-                      {{ user.username }}{{ user.full_name ? ` (${user.full_name})` : '' }}
-                    </option>
-                  </select>
+                  <input v-model="form.owner_name" type="text" class="input-field" placeholder="负责人姓名" />
                 </div>
               </div>
             </template>
@@ -1659,12 +1637,7 @@ onMounted(async () => {
                 </div>
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
-                  <select v-model="form.owner_id" class="input-field">
-                    <option value="">请选择</option>
-                    <option v-for="user in userOptions" :key="user.id" :value="user.id">
-                      {{ user.username }}{{ user.full_name ? ` (${user.full_name})` : '' }}
-                    </option>
-                  </select>
+                  <input v-model="form.owner_name" type="text" class="input-field" placeholder="负责人姓名" />
                 </div>
               </div>
             </template>
@@ -1725,7 +1698,7 @@ onMounted(async () => {
                   <label class="block text-xs font-medium text-slate-600 mb-1">OOB密码</label>
                   <div class="relative">
                     <input v-model="form.oob_password" :type="showOobPassword ? 'text' : 'password'" class="input-field pr-8" placeholder="OOB 密码" autocomplete="new-password" />
-                    <button type="button" @click="showOobPassword = !showOobPassword" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    <button type="button" @click="toggleOobPasswordVisibility" :disabled="revealingOobPassword" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 disabled:opacity-50">
                       <EyeOutlined v-if="!showOobPassword" class="text-sm" />
                       <EyeInvisibleOutlined v-else class="text-sm" />
                     </button>
@@ -1746,12 +1719,7 @@ onMounted(async () => {
                 </div>
                 <div>
                   <label class="block text-xs font-medium text-slate-600 mb-1">负责人</label>
-                  <select v-model="form.owner_id" class="input-field">
-                    <option value="">请选择</option>
-                    <option v-for="user in userOptions" :key="user.id" :value="user.id">
-                      {{ user.username }}{{ user.full_name ? ` (${user.full_name})` : '' }}
-                    </option>
-                  </select>
+                  <input v-model="form.owner_name" type="text" class="input-field" placeholder="负责人姓名" />
                 </div>
               </div>
             </template>

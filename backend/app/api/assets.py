@@ -206,6 +206,8 @@ def build_asset_response(
         data["oob_address"] = asset.oob_address
     if asset.oob_username:
         data["oob_username"] = asset.oob_username
+    if asset.oob_password_encrypted:
+        data["has_oob_password"] = True
     if oob_password is not None:
         data["oob_password"] = oob_password
     if asset.status:
@@ -582,31 +584,19 @@ async def create_asset(
 
     _validate_category_fields(data.category, data.model_dump(exclude_unset=True))
 
-    # Validate and get owner info
+    # Resolve owner info. owner_name is free text (not required to match a
+    # real user account) — owner_id is only set as a best-effort link when
+    # the text happens to match an existing username.
     owner_id = data.owner_id
     owner_name = data.owner_name
     if owner_id is not None and owner_name is None:
-        # Fetch owner name from database
         result = await db.execute(select(User.username).where(User.id == owner_id))
-        owner_result = result.scalar_one_or_none()
-        if owner_result:
-            owner_name = owner_result
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="负责人 ID 不存在"
-            )
+        owner_name = result.scalar_one_or_none()
     elif owner_name is not None and owner_id is None:
-        # Try to find user by username
         result = await db.execute(select(User.id, User.username).where(User.username == owner_name))
         owner_result = result.first()
         if owner_result:
             owner_id = owner_result[0]
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="负责人不存在"
-            )
 
     # Encrypt OOB password if provided
     oob_password_encrypted = _encrypt_oob_password(data.oob_password)

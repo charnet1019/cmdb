@@ -133,28 +133,15 @@ async def update_asset(
         owner_id = update_data.pop("owner_id", None)
         owner_name = update_data.pop("owner_name", None)
 
+        # owner_name is free text (not required to match a real user
+        # account) — owner_id is only set as a best-effort link when the
+        # text happens to match an existing username.
         if owner_id is not None and owner_name is None:
-            # Fetch owner name from database
             result = await db.execute(select(User.username).where(User.id == owner_id))
-            owner_result = result.scalar_one_or_none()
-            if owner_result:
-                owner_name = owner_result
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="负责人 ID 不存在"
-                )
+            owner_name = result.scalar_one_or_none()
         elif owner_name is not None and owner_id is None:
-            # Try to find user by username
             result = await db.execute(select(User.id).where(User.username == owner_name))
-            owner_result = result.scalar_one_or_none()
-            if owner_result:
-                owner_id = owner_result
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="负责人不存在"
-                )
+            owner_id = result.scalar_one_or_none()
 
         record_change("owner", asset.owner_name, owner_name)
         asset.owner_id = owner_id

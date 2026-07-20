@@ -256,6 +256,7 @@ class AssetResponse(AssetBase):
     # OOB fields (for host category, password not included in response)
     oob_address: Optional[str] = None
     oob_username: Optional[str] = None
+    has_oob_password: Optional[bool] = None  # OOB 密码是否已设置（不暴露密文/明文）
     # Database asset fields
     runs_on_hosts: List[dict] = []  # Hosts this database runs on
     storage_locations: List["StorageLocationResponse"] = []  # Storage paths
