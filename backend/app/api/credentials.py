@@ -137,6 +137,7 @@ async def create_credential(
             "action": "create_credential",
             "asset_id": credential.asset_id,
             "asset_name": asset.name,
+            "asset_category": asset.category,
             "credential_id": credential.id,
             "credential_username": credential.username,
             "credential_type": credential.credential_type,
@@ -201,6 +202,7 @@ async def decrypt_oob_password(
             "action": "decrypt_oob_password",
             "asset_id": asset.id,
             "asset_name": asset.name,
+            "asset_category": asset.category,
             "credential_username": asset.oob_username,
             "credential_type": "oob",
         },
@@ -255,6 +257,7 @@ async def decrypt_credential(
             "action": "decrypt_credential",
             "asset_id": credential.asset_id,
             "asset_name": asset.name if asset else None,
+            "asset_category": asset.category if asset else None,
             "credential_id": credential.id,
             "credential_username": credential.username,
             "credential_type": credential.credential_type,
@@ -335,6 +338,7 @@ async def update_credential(
                 "action": "update_credential",
                 "asset_id": credential.asset_id,
                 "asset_name": asset.name if asset else None,
+                "asset_category": asset.category if asset else None,
                 "credential_id": credential.id,
                 "credential_username": credential.username,
                 "credential_type": credential.credential_type,
@@ -383,6 +387,7 @@ async def delete_credential(
     credential_username = credential.username
     credential_type = credential.credential_type
     credential_asset_id = credential.asset_id
+    asset_category = asset.category if asset else None
     asset_name = asset.name if asset else None
 
     await db.delete(credential)
@@ -395,6 +400,7 @@ async def delete_credential(
             "action": "delete_credential",
             "asset_id": credential_asset_id,
             "asset_name": asset_name,
+            "asset_category": asset_category,
             "credential_id": credential_id,
             "credential_username": credential_username,
             "credential_type": credential_type,

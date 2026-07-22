@@ -302,6 +302,99 @@ def test_operation_log_formatter_uses_concise_mfa_action_summary():
     assert formatted["change_items"] == []
 
 
+def test_operation_log_formatter_labels_decrypt_credential_by_asset_category():
+    log = OperationLog(
+        id=10,
+        user_id=1,
+        action="decrypt",
+        resource_type="credential",
+        resource_id=5,
+        details={
+            "action": "decrypt_credential",
+            "asset_name": "rancher-host",
+            "asset_category": "host",
+            "credential_username": "root",
+        },
+        ip_address="127.0.0.1",
+        status="success",
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+    )
+
+    formatted = logs_operation_api._format_operation_log(log, "admin")
+
+    assert formatted["operation_summary"] == "解密主机凭据 rancher-host / root"
+
+
+def test_operation_log_formatter_labels_decrypt_credential_network_category():
+    log = OperationLog(
+        id=11,
+        user_id=1,
+        action="decrypt",
+        resource_type="credential",
+        resource_id=6,
+        details={
+            "action": "decrypt_credential",
+            "asset_name": "switch-1",
+            "asset_category": "network",
+            "credential_username": "admin",
+        },
+        ip_address="127.0.0.1",
+        status="success",
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+    )
+
+    formatted = logs_operation_api._format_operation_log(log, "admin")
+
+    assert formatted["operation_summary"] == "解密网络设备凭据 switch-1 / admin"
+
+
+def test_operation_log_formatter_labels_decrypt_oob_password_by_asset_category():
+    log = OperationLog(
+        id=12,
+        user_id=1,
+        action="decrypt",
+        resource_type="credential",
+        resource_id=0,
+        details={
+            "action": "decrypt_oob_password",
+            "asset_name": "rancher-host",
+            "asset_category": "host",
+            "credential_username": "oob-admin",
+        },
+        ip_address="127.0.0.1",
+        status="success",
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+    )
+
+    formatted = logs_operation_api._format_operation_log(log, "admin")
+
+    assert formatted["operation_summary"] == "解密主机OOB密码 rancher-host / oob-admin"
+
+
+def test_operation_log_formatter_falls_back_to_generic_credential_label_without_category():
+    """Older logs recorded before asset_category was added to details must
+    still render with the generic (non-category) label instead of erroring."""
+    log = OperationLog(
+        id=13,
+        user_id=1,
+        action="decrypt",
+        resource_type="credential",
+        resource_id=7,
+        details={
+            "action": "decrypt_credential",
+            "asset_name": "rancher-host",
+            "credential_username": "root",
+        },
+        ip_address="127.0.0.1",
+        status="success",
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+    )
+
+    formatted = logs_operation_api._format_operation_log(log, "admin")
+
+    assert formatted["operation_summary"] == "解密凭据 rancher-host / root"
+
+
 def test_operation_log_formatter_promotes_user_enable_disable_summary():
     log = OperationLog(
         id=3,

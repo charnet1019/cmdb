@@ -161,6 +161,30 @@ SETTING_FIELD_LABELS = {
 BRANDING_SETTING_KEYS = {"site_title", "login_subtitle", "logo_image", "login_background_image", "copyright_text", "beian_number", "beian_url"}
 SECURITY_SETTING_KEYS = {"login_log_retention", "operation_log_retention", "password_log_retention", "password_min_length", "password_require_uppercase", "password_require_lowercase", "password_require_digit", "password_require_special", "password_history_count", "max_login_attempts", "lockout_duration", "session_timeout", "decrypt_rate_limit", "otp_issuer_name"}
 
+CREDENTIAL_ACTION_VERBS = {
+    "create_credential": "创建",
+    "update_credential": "更新",
+    "delete_credential": "删除",
+    "decrypt_credential": "解密",
+}
+
+
+def _credential_action_label(detail_action: str, asset_category: Optional[str]) -> Optional[str]:
+    """Build an asset-category-specific credential action label, e.g.
+    "解密主机凭据" instead of the generic "解密凭据" — falls back to None
+    (letting the caller use the generic DETAIL_ACTION_LABELS) when the log
+    predates asset_category being recorded in details."""
+    if not asset_category:
+        return None
+    category_label = asset_category_label(asset_category)
+    if detail_action == "decrypt_oob_password":
+        return f"解密{category_label}OOB密码"
+    verb = CREDENTIAL_ACTION_VERBS.get(detail_action)
+    if not verb:
+        return None
+    return f"{verb}{category_label}凭据"
+
+
 DETAIL_ACTION_LABELS = {
     "bulk_delete": "批量删除资产",
     "bulk_update": "批量更新资产",
@@ -406,7 +430,7 @@ def _build_operation_summary(log: OperationLog, resource_name: str | None, actio
             return f"{base}；" + "；".join(f"将{item['label']}从{item['before']}修改为{item['after']}" for item in change_items)
         return base
     if detail_action in {"create_credential", "update_credential", "delete_credential", "decrypt_credential", "decrypt_oob_password"}:
-        label = detail_action_label or DETAIL_ACTION_LABELS.get(detail_action, detail_action)
+        label = _credential_action_label(detail_action, details.get("asset_category")) or detail_action_label or DETAIL_ACTION_LABELS.get(detail_action, detail_action)
         asset_name = details.get("asset_name")
         credential_name = details.get("credential_username") or details.get("username")
         if asset_name and credential_name:
